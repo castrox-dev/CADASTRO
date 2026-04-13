@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="card-premium" style="max-width: 400px; width: 100%;">
+        <div class="header-accent"></div>
+        <div class="p-4 text-center">
+            <img src="{% static 'img/logo2.webp' %}" alt="Fibramar" style="max-width: 180px; margin-bottom: 20px;">
+            <h4 class="mb-1">Portal do Consultor</h4>
+            <p class="text-muted small mb-4">Entre com suas credenciais para acessar o painel.</p>
+            
+            <form method="post">
+                {% csrf_token %}
+                <div class="text-start mb-3">
+                    <label class="form-label small fw-bold text-uppercase">Usuário</label>
+                    <input type="text" name="username" class="form-control form-control-premium" placeholder="Seu usuário" required>
+                </div>
+                <div class="text-start mb-4">
+                    <label class="form-label small fw-bold text-uppercase">Senha</label>
+                    <input type="password" name="password" class="form-control form-control-premium" placeholder="Sua senha" required>
+                </div>
+                
+                {% if form.errors %}
+                <div class="alert alert-danger py-2 small mb-3">
+                    Credenciais inválidas. Tente novamente.
+                </div>
+                {% endif %}
+
+                <button type="submit" class="btn-fibramar w-100 mb-3">Entrar no Sistema</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

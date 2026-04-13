@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<nav class="navbar navbar-expand-lg navbar-dark navbar-fibramar">
+    <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center" href="#">
+            <img src="{% static 'img/logo2.webp' %}" alt="Fibramar" style="height: 35px;" class="me-2">
+            <span class="fw-bold">CONSULTORES</span>
+        </a>
+        <div class="navbar-nav ms-auto">
+            <div class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle text-white" href="#" role="button" data-bs-toggle="dropdown">
+                    Olá, <strong>{{ user.first_name }}</strong>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                    <li>
+                        <form action="{% url 'logout' %}" method="post" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item">Sair do Sistema</button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<div class="dashboard-wrapper">
+    <div class="container-fluid">
+        <!-- Dashboard Stats -->
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <div class="card-premium stats-card">
+                    <div class="value">{{ cadastros.count }}</div>
+                    <div class="label">Total de Cadastros</div>
+                </div>
+            </div>
+            <div class="col-md-8 mb-3">
+                <div class="card-premium h-100 p-4 d-flex align-items-center justify-content-between">
+                    <div>
+                        <h5 class="mb-1">Link de Captação</h5>
+                        <p class="text-muted small mb-0">Envie este link para seus clientes preencherem a ficha.</p>
+                    </div>
+                    <button class="btn-fibramar" onclick="copyLink()">
+                        Copiar Link Único
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Cadastros -->
+        <div class="card-premium">
+            <div class="header-accent"></div>
+            <div class="p-4 border-bottom d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Cadastros Recebidos</h5>
+            </div>
+            <div class="p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="px-4 border-0 text-muted small fw-bold">DATA</th>
+                                <th class="border-0 text-muted small fw-bold">CLIENTE</th>
+                                <th class="border-0 text-muted small fw-bold">DOCUMENTO</th>
+                                <th class="border-0 text-muted small fw-bold">PLANO</th>
+                                <th class="border-0 text-muted small fw-bold text-center">ARQUIVO</th>
+                                <th class="border-0 text-muted small fw-bold text-center">MAPA</th>
+                                <th class="border-0 text-muted small fw-bold">DATA INSTALAÇÃO</th>
+                                <th class="border-0 text-muted small fw-bold">STATUS</th>
+                                <th class="px-4 border-0 text-muted small fw-bold text-end">AÇÕES</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in cadastros %}
+                            <tr>
+                                <td class="px-4 align-middle text-muted small">{{ c.data_cadastro|date:"d/m/Y H:i" }}</td>
+                                <td class="align-middle fw-bold text-primary">
+                                    {{ c.nome_razao }}
+                                </td>
+                                <td class="align-middle">{{ c.documento }}</td>
+                                <td class="align-middle"><span class="badge rounded-pill bg-light text-dark border">{{ c.plano_velocidade }}</span></td>
+                                <td class="align-middle text-center">
+                                    {% if c.contrato_social %}
+                                    <a href="{{ c.contrato_social.url }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Ver Contrato/Arquivo">
+                                        📄
+                                    </a>
+                                    {% else %}
+                                    <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="align-middle text-center">
+                                    {% if c.google_maps_link %}
+                                    <a href="{{ c.google_maps_link }}" target="_blank" class="btn btn-sm btn-outline-success py-0 px-2" title="Ver Localização">
+                                        📍
+                                    </a>
+                                    {% else %}
+                                    <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="align-middle fw-bold">{{ c.data_instalacao|date:"d/m/Y" }}</td>
+                                <td class="align-middle">
+                                    <span class="badge rounded-pill border badge-status-{{ c.status }}">
+                                        {{ c.get_status_display }}
+                                    </span>
+                                </td>
+                                <td class="px-4 align-middle text-end">
+                                    <a href="{% url 'cadastro_detail' c.pk %}" class="btn btn-sm btn-fibramar py-1">GERIR CADASTRO</a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center py-5 text-muted">
+                                    <p class="mb-0">Nenhum cadastro recebido ainda.</p>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function copyLink() {
+    const link = window.location.origin + "{% url 'client_form' %}?consultor={{ user.id }}";
+    navigator.clipboard.writeText(link).then(() => {
+        showNotify("Link exclusivo copiado com sucesso!", "success");
+    });
+}
+
+function updateStatus(pk, newStatus) {
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    
+    fetch(`/cadastro/${pk}/update-status/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrftoken,
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `status=${newStatus}`
+    })
+    .then(response => {
+        if (response.ok) {
+            // Sucesso silencioso ou feedback visual rápido
+            const select = document.querySelector(`select[onchange="updateStatus(${pk}, this.value)"]`);
+            if (select) {
+                select.style.borderColor = '#00b894';
+                setTimeout(() => select.style.borderColor = '', 2000);
+            }
+        } else {
+            showNotify('Erro ao atualizar status.', 'danger');
+            location.reload(); // Recarrega para voltar ao status original
+        }
+    })
+    .catch(error => {
+        console.error('Erro:', error);
+        showNotify('Erro ao atualizar status.', 'danger');
+    });
+}
+</script>
+{% endblock %}

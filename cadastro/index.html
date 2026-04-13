@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cadastro de Cliente - FIBRAMAR</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="form-header">
+            <div class="logo-container">
+                <img src="https://www.fibramar.com.br/assets/img/logo.png" alt="FIBRAMAR" class="logo-img" onerror="this.src='https://fibramar.com.br/logo.png'; this.onerror=function(){this.parentElement.innerHTML='<div class=\'logo\' style=\'color:#ff6b00;font-size:32px;font-weight:bold\'>FIBRAMAR</div>'}">
+            </div>
+            <h1>Ficha de Cadastro de Cliente</h1>
+            <p>Preencha os dados abaixo para iniciar sua solicitação.</p>
+            <div class="progress-bar">
+                <div class="progress" id="progress"></div>
+            </div>
+        </header>
+
+        <form id="registrationForm">
+            <!-- Step 1: Dados Pessoais -->
+            <div class="form-step active" id="step1">
+                <div class="section-title">Dados Cadastrais</div>
+                
+                <div class="input-group">
+                    <label for="documento">CPF ou CNPJ *</label>
+                    <input type="text" id="documento" name="documento" required placeholder="000.000.000-00 ou 00.000.000/0000-00" oninput="handleDocumentInput()">
+                    <input type="hidden" id="tipoPessoa" name="tipoPessoa" value="pf">
+                </div>
+
+                <div class="input-group">
+                    <label for="nome" id="labelNome">Nome Completo *</label>
+                    <input type="text" id="nome" name="nome" required placeholder="Digite seu nome completo">
+                </div>
+
+                <div class="input-group pj-only" style="display:none;">
+                    <label for="nomeFantasia">Nome Fantasia *</label>
+                    <input type="text" id="nomeFantasia" name="nomeFantasia" placeholder="Digite o nome fantasia">
+                </div>
+
+                <div class="row pf-only">
+                    <div class="input-group">
+                        <label for="rg">RG *</label>
+                        <input type="text" id="rg" name="rg" required placeholder="Digite seu RG">
+                    </div>
+                    <div class="input-group">
+                        <label for="dataNascimento">Data de Nascimento *</label>
+                        <input type="date" id="dataNascimento" name="dataNascimento" required>
+                    </div>
+                </div>
+
+                <div class="row pj-only" style="display:none;">
+                    <div class="input-group">
+                        <label for="inscricaoEstadual">Inscrição Estadual</label>
+                        <input type="text" id="inscricaoEstadual" name="inscricaoEstadual" placeholder="Digite a IE">
+                    </div>
+                </div>
+
+                <div class="input-group pj-only" style="display:none;">
+                    <label for="contratoSocial">Anexar Contrato Social (PDF ou Imagem) *</label>
+                    <div class="file-upload-wrapper">
+                        <input type="file" id="contratoSocial" name="contratoSocial" accept=".pdf,image/*">
+                        <div class="file-upload-info">Clique para selecionar o arquivo</div>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="email">E-mail *</label>
+                    <input type="email" id="email" name="email" required placeholder="seuemail@exemplo.com">
+                </div>
+
+                <div class="input-group">
+                    <label for="telefone">Telefone(s) *</label>
+                    <input type="text" id="telefone" name="telefone" required placeholder="(00) 00000-0000">
+                </div>
+
+                <div class="form-navigation">
+                    <button type="button" class="btn-next" onclick="nextStep(2)">Próximo</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Endereço -->
+            <div class="form-step" id="step2">
+                <div class="section-title">Endereço</div>
+                
+                <div class="row">
+                    <div class="input-group">
+                        <label for="cep">CEP *</label>
+                        <input type="text" id="cep" name="cep" required placeholder="00000-000">
+                    </div>
+                    <div class="input-group">
+                        <label for="cidade">Cidade *</label>
+                        <select id="cidade" name="cidade" required onchange="handleCityChange()">
+                            <option value="">Selecione a cidade</option>
+                            <option value="marica">Maricá</option>
+                            <option value="minas_gerais">Minas Gerais (Estado)</option>
+                            <option value="outra">Outra</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="input-group">
+                        <label for="bairro">Bairro *</label>
+                        <input type="text" id="bairro" name="bairro" required placeholder="Digite o bairro">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="endereco">Endereço Completo *</label>
+                    <input type="text" id="endereco" name="endereco" required placeholder="Rua, Número, Complemento">
+                </div>
+
+                <div class="input-group">
+                    <label for="referencia">Referência Visual *</label>
+                    <textarea id="referencia" name="referencia" required placeholder="Ponto de referência próximo"></textarea>
+                </div>
+
+                <div class="form-navigation">
+                    <button type="button" class="btn-prev" onclick="prevStep(1)">Anterior</button>
+                    <button type="button" class="btn-next" onclick="nextStep(3)">Próximo</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Plano e Fidelidade -->
+            <div class="form-step" id="step3">
+                <div class="section-title">Plano e Vencimento</div>
+
+                <div class="input-group">
+                    <label for="plano">Plano Desejado *</label>
+                    <select id="plano" name="plano" required onchange="handlePlanChange()">
+                        <option value="">Selecione o plano</option>
+                        <option value="essencial">📱 Plano Essencial – 240 MEGA (R$ 59,99)</option>
+                        <option value="rapido">🚀 Plano Rápido - 400 Mega (R$ 79,99)</option>
+                        <option value="turbo">⚡️ Plano Turbo - 500 Mega (R$ 99,99)</option>
+                        <option value="ultra">🔥 Plano Ultra + Benefícios - 600 Mega (R$ 119,99)</option>
+                        <option value="1giga">✨ Plano Novo – 1 GIGA (R$ 149,99)</option>
+                    </select>
+                </div>
+
+                <div class="info-box" id="planDetails" style="display:none;">
+                    <div id="planDescription"></div>
+                </div>
+
+                <div class="input-group" id="opcionaisGroup" style="display:none;">
+                    <label id="opcionalLabel"></label>
+                    <div class="radio-group">
+                        <input type="radio" id="opcional_sim" name="opcional" value="sim">
+                        <label for="opcional_sim" id="opcionalSimLabel">Sim</label>
+                        <input type="radio" id="opcional_nao" name="opcional" value="nao" checked>
+                        <label for="opcional_nao" id="opcionalNaoLabel">Não</label>
+                    </div>
+                </div>
+
+                <div class="input-group" id="fidelidadeGroup">
+                    <label>Gostaria da fidelidade de 12 meses? *</label>
+                    <div class="radio-group">
+                        <input type="radio" id="fidelidade_sim" name="fidelidade" value="sim" checked onchange="calculateInstallation()">
+                        <label for="fidelidade_sim">Sim</label>
+                        <input type="radio" id="fidelidade_nao" name="fidelidade" value="nao" onchange="calculateInstallation()">
+                        <label for="fidelidade_nao">Não</label>
+                    </div>
+                </div>
+
+                <div class="info-box" id="installationInfo" style="display:none;">
+                    <strong>Valor da Instalação:</strong> <span id="installPrice">R$ 0,00</span>
+                </div>
+
+                <div class="input-group">
+                    <label for="vencimento">Data de Vencimento *</label>
+                    <select id="vencimento" name="vencimento" required>
+                        <option value="">Selecione uma cidade primeiro</option>
+                    </select>
+                    <small id="vencimentoIdInfo" class="vencimento-info"></small>
+                </div>
+
+                <div class="form-navigation">
+                    <button type="button" class="btn-prev" onclick="prevStep(2)">Anterior</button>
+                    <button type="button" class="btn-next" onclick="nextStep(4)">Próximo</button>
+                </div>
+            </div>
+
+            <!-- Step 4: Instalação -->
+            <div class="form-step" id="step4">
+                <div class="section-title">Instalação e Conclusão</div>
+
+                <div class="input-group">
+                    <label for="pagamento">Modo de pagamento da instalação *</label>
+                    <select id="pagamento" name="pagamento" required>
+                        <option value="">Selecione</option>
+                        <option value="pix">PIX</option>
+                        <option value="dinheiro">Dinheiro</option>
+                        <option value="cartao">Cartão</option>
+                    </select>
+                </div>
+
+                <div class="row">
+                    <div class="input-group">
+                        <label for="dataInstalacao">Data para instalação *</label>
+                        <input type="date" id="dataInstalacao" name="dataInstalacao" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="periodoInstalacao">Período para instalação *</label>
+                        <select id="periodoInstalacao" name="periodoInstalacao" required>
+                            <option value="manha">Manhã</option>
+                            <option value="tarde">Tarde</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="origem">Por onde conheceu a empresa? *</label>
+                    <input type="text" id="origem" name="origem" required placeholder="Ex: Instagram, Indicação, Carro de som">
+                </div>
+
+                <div class="form-navigation">
+                    <button type="button" class="btn-prev" onclick="prevStep(3)">Anterior</button>
+                    <button type="button" class="btn-next" onclick="nextStep(5)">Revisar Dados</button>
+                </div>
+            </div>
+
+            <!-- Step 5: Confirmação -->
+            <div class="form-step" id="step5">
+                <div class="section-title">Confirme seus Dados</div>
+                
+                <div id="confirmationSummary" class="confirmation-summary">
+                    <!-- Preenchido via JS -->
+                </div>
+
+                <div class="form-navigation">
+                    <button type="button" class="btn-prev" onclick="prevStep(4)">Anterior</button>
+                    <button type="submit" class="btn-submit">Finalizar e Enviar</button>
+                </div>
+            </div>
+        </form>
+
+        <div id="successMessage" class="success-message" style="display:none;">
+            <h2>Cadastro Realizado com Sucesso!</h2>
+            <p>Seus dados foram enviados para análise. Em breve entraremos em contato.</p>
+            <button onclick="location.reload()" class="btn-next">Fazer Novo Cadastro</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

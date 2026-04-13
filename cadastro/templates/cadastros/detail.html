@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row">
+        <div class="col-lg-10 mx-auto">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="mb-0">Gestão de Cadastro</h2>
+                <a href="{% url 'dashboard' %}" class="btn btn-outline-fibramar">Voltar ao Painel</a>
+            </div>
+
+            <div class="row g-4">
+                <!-- Coluna da Esquerda: Ações e Status -->
+                <div class="col-md-4">
+                    <div class="card-premium mb-4">
+                        <div class="header-accent"></div>
+                        <div class="p-4">
+                            <h6 class="text-uppercase small fw-bold text-muted mb-3">Status do Processo</h6>
+                            <select class="form-select form-control-premium mb-3" id="statusSelect" onchange="updateStatus({{ cadastro.pk }}, this.value)" style="height: 45px;">
+                                {% for status_val, status_label in status_choices %}
+                                <option value="{{ status_val }}" {% if cadastro.status == status_val %}selected{% endif %}>
+                                    {{ status_label }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div id="statusFeedback" class="small text-success fw-bold" style="display:none;">✓ Status atualizado!</div>
+                        </div>
+                    </div>
+
+                    <div class="card-premium">
+                        <div class="p-4">
+                            <h6 class="text-uppercase small fw-bold text-muted mb-3">Ações Rápidas</h6>
+                            <button class="btn btn-fibramar w-100 mb-2" onclick="copyText('osContent')">COPIAR ORDEM DE SERVIÇO</button>
+                            <button class="btn btn-outline-fibramar w-100 mb-2" onclick="copyText('fichaContent')">COPIAR FICHA COMPLETA</button>
+                            
+                            {% if cadastro.google_maps_link %}
+                            <a href="{{ cadastro.google_maps_link }}" target="_blank" class="btn btn-success w-100 mb-2 d-flex align-items-center justify-content-center">
+                                <i class="me-2">📍</i> VER LOCALIZAÇÃO NO MAPA
+                            </a>
+                            {% endif %}
+                            
+                            {% if cadastro.tipo_pessoa == 'pf' %}
+                            <button onclick="consultarReceitaCPF('{{ cadastro.documento|add:"" }}', '{{ cadastro.data_nascimento|date:"d/m/Y" }}')" 
+                                    class="btn btn-info text-white w-100 mb-2 d-flex align-items-center justify-content-center">
+                                <i class="me-2">🔍</i> CONSULTAR RECEITA (CPF)
+                            </button>
+                            {% else %}
+                            <button onclick="consultarReceitaCNPJ('{{ cadastro.documento|add:"" }}')" 
+                                    class="btn btn-info text-white w-100 mb-2 d-flex align-items-center justify-content-center">
+                                <i class="me-2">🔍</i> CONSULTAR RECEITA (CNPJ)
+                            </button>
+                            {% endif %}
+                            
+                            <!-- Formulários Ocultos para Receita -->
+                            <form id="formReceitaCPF" action="https://servicos.receita.fazenda.gov.br/Servicos/CPF/ConsultaSituacao/ConsultaPublica.asp" method="GET" target="_blank" style="display:none;">
+                                <input type="hidden" name="txtCPF" id="receitaTxtCPF">
+                                <input type="hidden" name="txtDataNascimento" id="receitaTxtData">
+                            </form>
+
+                            <form id="formReceitaCNPJ" action="https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/cnpjreva_solicitacao.asp" method="GET" target="_blank" style="display:none;">
+                                <input type="hidden" name="cnpj" id="receitaCNPJ">
+                            </form>
+                            
+                            <a href="{% url 'admin:cadastros_cadastro_change' cadastro.pk %}" class="btn btn-dark w-100 mb-2" target="_blank">EDITAR DADOS NO SISTEMA</a>
+                            
+                            {% if cadastro.contrato_social %}
+                            <a href="{{ cadastro.contrato_social.url }}" target="_blank" class="btn btn-outline-secondary w-100 d-flex align-items-center justify-content-center">
+                                <i class="me-2">📁</i> VER ARQUIVO ANEXADO
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Coluna da Direita: OS e Ficha -->
+                <div class="col-md-8">
+                    <!-- Card da OS -->
+                    <div class="card-premium mb-4">
+                        <div class="p-4 bg-primary text-white rounded-top d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Padrão de Ordem de Serviço (OS)</h5>
+                            {% if cadastro.google_maps_link %}
+                            <a href="{{ cadastro.google_maps_link }}" target="_blank" class="btn btn-sm btn-light">
+                                📍 Ver no Google Maps
+                            </a>
+                            {% endif %}
+                        </div>
+                        <div class="p-4">
+                            <div class="bg-light p-3 rounded border" id="osContent">
+                                <pre style="white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 13px; margin-bottom: 0;">{{ cadastro.os_formatada }}</pre>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card da Ficha -->
+                    <div class="card-premium">
+                        <div class="p-4 bg-secondary text-white rounded-top">
+                            <h5 class="mb-0">Ficha Completa do Cliente</h5>
+                        </div>
+                        <div class="p-4">
+                            <div class="bg-light p-3 rounded border" id="fichaContent">
+                                <pre style="white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 13px; margin-bottom: 0;">{{ cadastro.ficha_formatada }}</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function copyText(elementId) {
+    const text = document.getElementById(elementId).innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        showNotify("Copiado com sucesso!", "success");
+    });
+}
+
+function consultarReceitaCPF(cpf, data) {
+    const cleanCPF = cpf.replace(/\D/g, '');
+    document.getElementById('receitaTxtCPF').value = cleanCPF;
+    document.getElementById('receitaTxtData').value = data;
+    
+    // Fallback: Copia para o clipboard também
+    navigator.clipboard.writeText(cleanCPF);
+    showNotify("CPF copiado! Redirecionando para a Receita...", "info");
+    
+    setTimeout(() => {
+        document.getElementById('formReceitaCPF').submit();
+    }, 500);
+}
+
+function consultarReceitaCNPJ(cnpj) {
+    const cleanCNPJ = cnpj.replace(/\D/g, '');
+    document.getElementById('receitaCNPJ').value = cleanCNPJ;
+    
+    // Fallback: Copia para o clipboard também
+    navigator.clipboard.writeText(cleanCNPJ);
+    showNotify("CNPJ copiado! Redirecionando para a Receita...", "info");
+    
+    setTimeout(() => {
+        document.getElementById('formReceitaCNPJ').submit();
+    }, 500);
+}
+
+function updateStatus(pk, newStatus) {
+    const csrftoken = '{{ csrf_token }}';
+    const feedback = document.getElementById('statusFeedback');
+    
+    fetch(`/cadastro/${pk}/update-status/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrftoken,
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `status=${newStatus}`
+    })
+    .then(response => {
+        if (response.ok) {
+            feedback.style.display = 'block';
+            setTimeout(() => feedback.style.display = 'none', 3000);
+            showNotify("Status atualizado com sucesso!", "success");
+        } else {
+            showNotify('Erro ao atualizar status.', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Erro:', error);
+        showNotify('Erro ao atualizar status.', 'danger');
+    });
+}
+</script>
+{% endblock %}

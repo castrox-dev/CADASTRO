@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="card-premium mx-auto" style="max-width: 650px;">
+        <div class="header-accent"></div>
+        <div class="p-4 text-center border-bottom bg-light">
+            <img src="{% static 'img/logo.webp' %}" alt="FIBRAMAR" style="max-width: 180px; margin-bottom: 15px;">
+            <h4 class="mb-1">Ficha de Cadastro</h4>
+            <p class="text-muted small mb-0">Preencha os dados abaixo para iniciar sua solicitação.</p>
+            
+            <div class="progress-bar-fibramar mt-4">
+                <div class="progress-fill" id="progress" style="width: 20%;"></div>
+            </div>
+        </div>
+
+        <form id="registrationForm" class="p-4" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="consultor_id" value="{{ consultor.id }}">
+            
+            <!-- Step 1: Identificação -->
+            <div class="form-step active" id="step1">
+                <div class="mb-4">
+                    <h6 class="text-uppercase small fw-bold text-muted mb-3">1. Identificação</h6>
+                    
+                    <div class="form-group mb-3">
+                        <label>CPF OU CNPJ *</label>
+                        <input type="text" id="documento" name="documento" class="form-control form-control-premium" required placeholder="000.000.000-00 ou 00.000.000/0000-00" oninput="handleDocumentInput()">
+                        <input type="hidden" id="tipoPessoa" name="tipoPessoa" value="pf">
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label id="labelNome">NOME COMPLETO *</label>
+                        <input type="text" id="nome" name="nome_razao" class="form-control form-control-premium" required placeholder="Seu nome completo">
+                    </div>
+
+                    <div class="form-group mb-3 pj-only" style="display:none;">
+                        <label>NOME FANTASIA *</label>
+                        <input type="text" id="nomeFantasia" name="nome_fantasia" class="form-control form-control-premium" placeholder="Nome da empresa">
+                    </div>
+
+                    <div class="row pf-only">
+                        <div class="col-md-6 mb-3">
+                            <div class="form-group">
+                                <label>RG *</label>
+                                <input type="text" id="rg" name="rg" class="form-control form-control-premium" placeholder="Seu RG">
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-group">
+                                <label>DATA DE NASCIMENTO *</label>
+                                <input type="date" id="dataNascimento" name="data_nascimento" class="form-control form-control-premium">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group mb-3 pj-only" style="display:none;">
+                        <label>INSCRIÇÃO ESTADUAL</label>
+                        <input type="text" id="inscricaoEstadual" name="inscricao_estadual" class="form-control form-control-premium" placeholder="Se houver">
+                    </div>
+
+                    <div class="form-group mb-3 pj-only" style="display:none;">
+                        <label>CONTRATO SOCIAL (PDF OU IMAGEM) *</label>
+                        <div class="file-upload-wrapper">
+                            <input type="file" id="contratoSocial" name="contrato_social" accept=".pdf,image/*">
+                            <div class="file-upload-info">Clique para anexar arquivo</div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="form-group">
+                                <label>E-MAIL *</label>
+                                <input type="email" name="email" class="form-control form-control-premium" required placeholder="seu@email.com">
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-group">
+                                <label>TELEFONE *</label>
+                                <input type="text" id="telefone" name="telefone" class="form-control form-control-premium" required placeholder="(00) 00000-0000">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end">
+                    <button type="button" class="btn-fibramar px-5" onclick="nextStep(2)">Próximo Passo</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Endereço -->
+            <div class="form-step" id="step2">
+                <div class="mb-4">
+                    <h6 class="text-uppercase small fw-bold text-muted mb-3">2. Localização</h6>
+                    
+                    <div class="row">
+                        <div class="col-md-5 mb-3">
+                            <div class="form-group">
+                                <label>CEP *</label>
+                                <input type="text" id="cep" name="cep" class="form-control form-control-premium" required placeholder="00000-000">
+                            </div>
+                        </div>
+                        <div class="col-md-7 mb-3">
+                            <div class="form-group">
+                                <label>CIDADE *</label>
+                                <select id="cidade" name="cidade" class="form-select form-control-premium" required onchange="handleCityChange()">
+                                    <option value="">Selecione...</option>
+                                    <option value="marica">Maricá</option>
+                                    <option value="minas_gerais">Minas Gerais</option>
+                                    <option value="outra">Outra Cidade</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label>BAIRRO *</label>
+                        <input type="text" id="bairro" name="bairro" class="form-control form-control-premium" required placeholder="Seu bairro">
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label>ENDEREÇO COMPLETO *</label>
+                        <input type="text" id="endereco" name="endereco" class="form-control form-control-premium" required placeholder="Rua, número, etc.">
+                    </div>
+
+                    <!-- Mapa e Localização -->
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-info w-100 mb-2" onclick="updateMapPreview()">
+                            📍 LOCALIZAR NO MAPA
+                        </button>
+                        <div id="mapPreviewContainer" class="rounded-3 border overflow-hidden" style="display:none; height: 200px;">
+                            <iframe id="mapIframe" width="100%" height="100%" frameborder="0" style="border:0" allowfullscreen></iframe>
+                        </div>
+                        <input type="hidden" name="google_maps_link" id="google_maps_link">
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label>PONTO DE REFERÊNCIA *</label>
+                        <textarea name="referencia" class="form-control form-control-premium" rows="2" required placeholder="Algo que facilite encontrar o local"></textarea>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between">
+                    <button type="button" class="btn-outline-fibramar" onclick="prevStep(1)">Voltar</button>
+                    <button type="button" class="btn-fibramar px-5" onclick="nextStep(3)">Próximo Passo</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Plano -->
+            <div class="form-step" id="step3">
+                <div class="mb-4">
+                    <h6 class="text-uppercase small fw-bold text-muted mb-3">3. Escolha seu Plano</h6>
+                    
+                    <div class="form-group mb-3">
+                        <label>PLANO DESEJADO *</label>
+                        <select id="plano" name="plano" class="form-select form-control-premium" required onchange="handlePlanChange()">
+                            <option value="">Selecione um plano...</option>
+                            <option value="essencial">📱 Plano Essencial – 240 MEGA</option>
+                            <option value="rapido">🚀 Plano Rápido - 400 Mega</option>
+                            <option value="turbo">⚡️ Plano Turbo - 500 Mega</option>
+                            <option value="ultra">🔥 Plano Ultra + Benefícios - 600 Mega</option>
+                            <option value="1giga">✨ Plano Novo – 1 GIGA</option>
+                        </select>
+                    </div>
+
+                    <div class="alert alert-info py-2 small" id="planDetails" style="display:none;">
+                        <div id="planDescription"></div>
+                    </div>
+
+                    <div class="mb-3" id="opcionaisGroup" style="display:none;">
+                        <label class="small fw-bold d-block mb-2" id="opcionalLabel"></label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="opcional" id="opc_sim" value="sim">
+                            <label class="btn btn-outline-fibramar py-2" for="opc_sim">Sim, desejo</label>
+                            
+                            <input type="radio" class="btn-check" name="opcional" id="opc_nao" value="nao" checked>
+                            <label class="btn btn-outline-fibramar py-2" for="opc_nao">Não, obrigado</label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="small fw-bold d-block mb-2">ACEITA FIDELIDADE DE 12 MESES? *</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="fidelidade" id="fid_sim" value="sim" checked onchange="calculateInstallation()">
+                            <label class="btn btn-outline-fibramar py-2" for="fid_sim">Sim, aceito</label>
+                            
+                            <input type="radio" class="btn-check" name="fidelidade" id="fid_nao" value="nao" onchange="calculateInstallation()">
+                            <label class="btn btn-outline-fibramar py-2" for="fid_nao">Não aceito</label>
+                        </div>
+                    </div>
+
+                    <div class="card bg-light border-0 p-3 mb-3" id="installationInfo" style="display:none;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="small fw-bold">VALOR DA INSTALAÇÃO:</span>
+                            <span class="h5 mb-0 text-primary fw-bold" id="installPrice">R$ 0,00</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label>DATA DE VENCIMENTO *</label>
+                        <select id="vencimento" name="vencimento" class="form-select form-control-premium" required>
+                            <option value="">Selecione a cidade primeiro</option>
+                        </select>
+                        <input type="hidden" name="vencimento_id" id="vencimento_id_hidden">
+                        <div id="vencimentoIdInfo" class="small text-orange fw-bold mt-1"></div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between">
+                    <button type="button" class="btn-outline-fibramar" onclick="prevStep(2)">Voltar</button>
+                    <button type="button" class="btn-fibramar px-5" onclick="nextStep(4)">Próximo Passo</button>
+                </div>
+            </div>
+
+            <!-- Step 4: Instalação -->
+            <div class="form-step" id="step4">
+                <div class="mb-4">
+                    <h6 class="text-uppercase small fw-bold text-muted mb-3">4. Agendamento</h6>
+                    
+                    <div class="form-group mb-3">
+                        <label>PAGAMENTO DA INSTALAÇÃO *</label>
+                        <select name="pagamento_instalacao" class="form-select form-control-premium" required>
+                            <option value="">Selecione o método...</option>
+                            <option value="pix">PIX (Mais rápido)</option>
+                            <option value="dinheiro">Dinheiro</option>
+                            <option value="cartao">Cartão de Crédito/Débito</option>
+                        </select>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-7 mb-3">
+                            <div class="form-group">
+                                <label>DATA PARA INSTALAÇÃO *</label>
+                                <input type="date" name="data_instalacao" class="form-control form-control-premium" required>
+                            </div>
+                        </div>
+                        <div class="col-md-5 mb-3">
+                            <div class="form-group">
+                                <label>PERÍODO *</label>
+                                <select name="periodo_instalacao" class="form-select form-control-premium" required>
+                                    <option value="manha">Manhã</option>
+                                    <option value="tarde">Tarde</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label>COMO NOS CONHECEU? *</label>
+                        <input type="text" name="origem" class="form-control form-control-premium" required placeholder="Ex: Instagram, Indicação, etc.">
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between">
+                    <button type="button" class="btn-outline-fibramar" onclick="prevStep(3)">Voltar</button>
+                    <button type="button" class="btn-fibramar px-5" onclick="nextStep(5)">Revisar Dados</button>
+                </div>
+            </div>
+
+            <!-- Step 5: Confirmação -->
+            <div class="form-step" id="step5">
+                <div class="mb-4">
+                    <h6 class="text-uppercase small fw-bold text-muted mb-3">5. Revisão Final</h6>
+                    <div id="confirmationSummary" class="bg-light rounded-4 p-3 border">
+                        <!-- Preenchido via JS -->
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center">
+                    <button type="button" class="btn-outline-fibramar" onclick="prevStep(4)">Corrigir</button>
+                    <button type="submit" class="btn-fibramar px-5">Enviar Cadastro</button>
+                </div>
+            </div>
+        </form>
+
+        <div id="successMessage" class="p-5 text-center" style="display:none;">
+            <div class="mb-4">
+                <div class="bg-success text-white d-inline-flex align-items-center justify-content-center rounded-circle" style="width: 80px; height: 80px;">
+                    <i class="fs-1">✓</i>
+                </div>
+            </div>
+            <h3>Cadastro Enviado!</h3>
+            <p class="text-muted">Seus dados foram recebidos com sucesso. Em breve nossa equipe entrará em contato para confirmar a instalação.</p>
+            <button onclick="location.reload()" class="btn-fibramar mt-3">Novo Cadastro</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/script.js' %}"></script>
+<script>
+    // Link the hidden vencimento_id
+    document.getElementById('vencimento').addEventListener('change', function() {
+        const selected = this.options[this.selectedIndex];
+        document.getElementById('vencimento_id_hidden').value = selected.dataset.id || '';
+    });
+</script>
+{% endblock %}
