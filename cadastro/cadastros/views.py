@@ -36,6 +36,7 @@ def client_form(request):
                 bairro=data.get('bairro'),
                 endereco=data.get('endereco'),
                 referencia=data.get('referencia'),
+                google_maps_link=data.get('google_maps_link'),
                 plano=data.get('plano'),
                 fidelidade=data.get('fidelidade') == 'sim',
                 vencimento=data.get('vencimento'),
@@ -79,3 +80,11 @@ def cadastro_detail(request, pk):
         'cadastro': cadastro,
         'status_choices': Cadastro.STATUS_CHOICES
     })
+
+@login_required
+def delete_cadastro(request, pk):
+    if request.method == 'POST':
+        cadastro = get_object_or_404(Cadastro, pk=pk, consultor=request.user)
+        cadastro.delete()
+        return JsonResponse({'status': 'success'})
+    return JsonResponse({'status': 'error'}, status=400)

@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}FIBRAMAR{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +17,7 @@
     {% block content %}{% endblock %}
     
     <!-- Custom Toast Notification System -->
-    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 2000;">
         <div id="fibramarToast" class="toast align-items-center text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
             <div class="d-flex">
                 <div class="toast-body" id="toastMessage">
@@ -26,22 +27,58 @@
             </div>
         </div>
     </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold text-primary" id="confirmTitle">Confirmação</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-4">
+                    <p class="mb-0 fs-5" id="confirmMessage">Tem certeza que deseja realizar esta ação?</p>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-light px-4 fw-bold" data-bs-dismiss="modal">CANCELAR</button>
+                    <button type="button" class="btn btn-danger px-4 fw-bold" id="confirmBtnAction">CONFIRMAR</button>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        let confirmationCallback = null;
+        const confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+
         function showNotify(message, type = 'primary') {
             const toastEl = document.getElementById('fibramarToast');
             const messageEl = document.getElementById('toastMessage');
-            
-            // Set message
             messageEl.innerText = message;
-            
-            // Set color based on type
             toastEl.className = `toast align-items-center text-white border-0 bg-${type}`;
-            
             const toast = new bootstrap.Toast(toastEl);
             toast.show();
         }
+
+        function showConfirm(title, message, callback, isDanger = true) {
+            document.getElementById('confirmTitle').innerText = title;
+            document.getElementById('confirmMessage').innerText = message;
+            
+            const actionBtn = document.getElementById('confirmBtnAction');
+            actionBtn.className = isDanger ? 'btn btn-danger px-4 fw-bold' : 'btn btn-primary px-4 fw-bold';
+            
+            confirmationCallback = callback;
+            confirmModal.show();
+        }
+
+        document.getElementById('confirmBtnAction').addEventListener('click', function() {
+            if (confirmationCallback) {
+                confirmationCallback();
+                confirmationCallback = null;
+            }
+            confirmModal.hide();
+        });
     </script>
     {% block extra_js %}{% endblock %}
 </body>

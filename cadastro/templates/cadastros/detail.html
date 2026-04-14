@@ -31,59 +31,105 @@
                     <div class="card-premium">
                         <div class="p-4">
                             <h6 class="text-uppercase small fw-bold text-muted mb-3">Ações Rápidas</h6>
-                            <button class="btn btn-fibramar w-100 mb-2" onclick="copyText('osContent')">COPIAR ORDEM DE SERVIÇO</button>
-                            <button class="btn btn-outline-fibramar w-100 mb-2" onclick="copyText('fichaContent')">COPIAR FICHA COMPLETA</button>
-                            
-                            {% if cadastro.google_maps_link %}
-                            <a href="{{ cadastro.google_maps_link }}" target="_blank" class="btn btn-success w-100 mb-2 d-flex align-items-center justify-content-center">
-                                <i class="me-2">📍</i> VER LOCALIZAÇÃO NO MAPA
-                            </a>
-                            {% endif %}
+                            <button class="btn btn-fibramar w-100 mb-2 d-flex align-items-center justify-content-center" onclick="copyText('osContent')">
+                                <i class="bi bi-file-earmark-text me-2"></i> COPIAR ORDEM DE SERVIÇO
+                            </button>
+                            <button class="btn btn-outline-fibramar w-100 mb-2 d-flex align-items-center justify-content-center" onclick="copyText('fichaContent')">
+                                <i class="bi bi-clipboard-check me-2"></i> COPIAR FICHA COMPLETA
+                            </button>
                             
                             {% if cadastro.tipo_pessoa == 'pf' %}
                             <button onclick="consultarReceitaCPF('{{ cadastro.documento|add:"" }}', '{{ cadastro.data_nascimento|date:"d/m/Y" }}')" 
                                     class="btn btn-info text-white w-100 mb-2 d-flex align-items-center justify-content-center">
-                                <i class="me-2">🔍</i> CONSULTAR RECEITA (CPF)
+                                <i class="bi bi-search me-2"></i> CONSULTAR RECEITA (CPF)
                             </button>
                             {% else %}
                             <button onclick="consultarReceitaCNPJ('{{ cadastro.documento|add:"" }}')" 
                                     class="btn btn-info text-white w-100 mb-2 d-flex align-items-center justify-content-center">
-                                <i class="me-2">🔍</i> CONSULTAR RECEITA (CNPJ)
+                                <i class="bi bi-search me-2"></i> CONSULTAR RECEITA (CNPJ)
                             </button>
                             {% endif %}
                             
-                            <!-- Formulários Ocultos para Receita -->
-                            <form id="formReceitaCPF" action="https://servicos.receita.fazenda.gov.br/Servicos/CPF/ConsultaSituacao/ConsultaPublica.asp" method="GET" target="_blank" style="display:none;">
-                                <input type="hidden" name="txtCPF" id="receitaTxtCPF">
-                                <input type="hidden" name="txtDataNascimento" id="receitaTxtData">
-                            </form>
-
-                            <form id="formReceitaCNPJ" action="https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/cnpjreva_solicitacao.asp" method="GET" target="_blank" style="display:none;">
-                                <input type="hidden" name="cnpj" id="receitaCNPJ">
-                            </form>
-                            
-                            <a href="{% url 'admin:cadastros_cadastro_change' cadastro.pk %}" class="btn btn-dark w-100 mb-2" target="_blank">EDITAR DADOS NO SISTEMA</a>
-                            
-                            {% if cadastro.contrato_social %}
-                            <a href="{{ cadastro.contrato_social.url }}" target="_blank" class="btn btn-outline-secondary w-100 d-flex align-items-center justify-content-center">
-                                <i class="me-2">📁</i> VER ARQUIVO ANEXADO
+                            <a href="{% url 'admin:cadastros_cadastro_change' cadastro.pk %}" class="btn btn-dark w-100 mb-2 d-flex align-items-center justify-content-center" target="_blank">
+                                <i class="bi bi-pencil-square me-2"></i> EDITAR NO SISTEMA
                             </a>
-                            {% endif %}
+                            
+                            <button class="btn btn-danger w-100 mt-4 d-flex align-items-center justify-content-center" onclick="confirmDelete({{ cadastro.pk }})">
+                                <i class="bi bi-trash3-fill me-2"></i> EXCLUIR CADASTRO
+                            </button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Coluna da Direita: OS e Ficha -->
                 <div class="col-md-8">
+                    <!-- Abas de Documentação e Localização -->
+                    <div class="card-premium mb-4">
+                        <div class="header-accent"></div>
+                        <div class="p-0">
+                            <ul class="nav nav-tabs nav-fill border-0" id="detailTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active py-3 fw-bold border-0 d-flex align-items-center justify-content-center" id="docs-tab" data-bs-toggle="tab" data-bs-target="#docs" type="button" role="tab">
+                                        <i class="bi bi-folder2-open me-2"></i> DOCUMENTOS
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link py-3 fw-bold border-0 d-flex align-items-center justify-content-center" id="map-tab" data-bs-toggle="tab" data-bs-target="#map" type="button" role="tab">
+                                        <i class="bi bi-geo-alt-fill me-2"></i> LOCALIZAÇÃO
+                                    </button>
+                                </li>
+                            </ul>
+                            <div class="tab-content p-4 border-top" id="detailTabsContent">
+                                <div class="tab-pane fade show active" id="docs" role="tabpanel">
+                                    {% if cadastro.contrato_social %}
+                                    <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded border">
+                                        <div class="d-flex align-items-center">
+                                            <div class="me-3 fs-3 text-primary"><i class="bi bi-file-pdf"></i></div>
+                                            <div>
+                                                <h6 class="mb-0 fw-bold">Arquivo Anexado</h6>
+                                                <p class="text-muted small mb-0">Contrato ou Documentação Social</p>
+                                            </div>
+                                        </div>
+                                        <a href="{{ cadastro.contrato_social.url }}" target="_blank" class="btn btn-fibramar btn-sm d-flex align-items-center">
+                                            <i class="bi bi-eye me-2"></i> VISUALIZAR
+                                        </a>
+                                    </div>
+                                    {% else %}
+                                    <div class="text-center py-4 text-muted">
+                                        <i class="bi bi-file-earmark-x fs-1 d-block mb-2 opacity-25"></i>
+                                        <p class="mb-0">Nenhum documento anexado para este cadastro.</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div class="tab-pane fade" id="map" role="tabpanel">
+                                    {% if cadastro.google_maps_link %}
+                                    <div class="text-center py-2">
+                                        <div class="mb-3">
+                                            <i class="bi bi-geo-alt-fill fs-1 text-success"></i>
+                                        </div>
+                                        <h6 class="fw-bold">Endereço de Instalação</h6>
+                                        <p class="text-muted mb-4">{{ cadastro.endereco }}, {{ cadastro.bairro }} - {{ cadastro.cidade }}</p>
+                                        <a href="{{ cadastro.google_maps_link }}" target="_blank" class="btn btn-success px-4 py-2 d-inline-flex align-items-center">
+                                            <i class="bi bi-google me-2"></i> ABRIR NO GOOGLE MAPS
+                                        </a>
+                                    </div>
+                                    {% else %}
+                                    <div class="text-center py-4 text-muted">
+                                        <i class="bi bi-map fs-1 d-block mb-2 opacity-25"></i>
+                                        <p class="mb-0">Link de localização não fornecido.</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Card da OS -->
                     <div class="card-premium mb-4">
                         <div class="p-4 bg-primary text-white rounded-top d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">Padrão de Ordem de Serviço (OS)</h5>
-                            {% if cadastro.google_maps_link %}
-                            <a href="{{ cadastro.google_maps_link }}" target="_blank" class="btn btn-sm btn-light">
-                                📍 Ver no Google Maps
-                            </a>
-                            {% endif %}
+                            <h5 class="mb-0 d-flex align-items-center">
+                                <i class="bi bi-file-text me-2"></i> Padrão de Ordem de Serviço (OS)
+                            </h5>
                         </div>
                         <div class="p-4">
                             <div class="bg-light p-3 rounded border" id="osContent">
@@ -94,8 +140,10 @@
 
                     <!-- Card da Ficha -->
                     <div class="card-premium">
-                        <div class="p-4 bg-secondary text-white rounded-top">
-                            <h5 class="mb-0">Ficha Completa do Cliente</h5>
+                        <div class="p-4 bg-secondary text-white rounded-top d-flex align-items-center">
+                            <h5 class="mb-0 d-flex align-items-center">
+                                <i class="bi bi-person-lines-fill me-2"></i> Ficha Completa do Cliente
+                            </h5>
                         </div>
                         <div class="p-4">
                             <div class="bg-light p-3 rounded border" id="fichaContent">
@@ -142,6 +190,39 @@ function consultarReceitaCNPJ(cnpj) {
     setTimeout(() => {
         document.getElementById('formReceitaCNPJ').submit();
     }, 500);
+}
+
+function confirmDelete(pk) {
+    showConfirm(
+        'Excluir Cadastro',
+        'ATENÇÃO: Você tem certeza que deseja excluir este cadastro permanentemente? Esta ação não pode ser desfeita.',
+        function() {
+            const csrftoken = '{{ csrf_token }}';
+            
+            fetch(`/cadastro/${pk}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    showNotify('Cadastro excluído com sucesso.', 'success');
+                    setTimeout(() => {
+                        window.location.href = "{% url 'dashboard' %}";
+                    }, 1500);
+                } else {
+                    showNotify('Erro ao excluir cadastro.', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Erro:', error);
+                showNotify('Erro de conexão ao excluir.', 'danger');
+            });
+        },
+        true // isDanger
+    );
 }
 
 function updateStatus(pk, newStatus) {

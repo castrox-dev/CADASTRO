@@ -1,6 +1,26 @@
 {% extends "base.html" %}
 {% load static %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+    #interactiveMap {
+        height: 250px;
+        width: 100%;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        margin-bottom: 10px;
+        z-index: 1;
+    }
+    .map-instruction {
+        font-size: 0.75rem;
+        color: #666;
+        margin-bottom: 8px;
+        display: block;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container py-5">
     <div class="card-premium mx-auto" style="max-width: 650px;">
@@ -126,12 +146,26 @@
 
                     <!-- Mapa e Localização -->
                     <div class="mb-3">
-                        <button type="button" class="btn btn-sm btn-outline-info w-100 mb-2" onclick="updateMapPreview()">
-                            📍 LOCALIZAR NO MAPA
-                        </button>
-                        <div id="mapPreviewContainer" class="rounded-3 border overflow-hidden" style="display:none; height: 200px;">
+                        <div class="d-flex gap-2 mb-2">
+                            <button type="button" class="btn btn-sm btn-outline-info flex-grow-1 d-flex align-items-center justify-content-center" onclick="updateMapPreview()">
+                                <i class="bi bi-geo-alt me-2"></i> LOCALIZAR PELO ENDEREÇO
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-warning flex-grow-1 d-flex align-items-center justify-content-center" onclick="toggleManualMap()">
+                                <i class="bi bi-pin-map me-2"></i> MARCAR MANUALMENTE
+                            </button>
+                        </div>
+                        
+                        <!-- Mapa de Busca Automática (Embed) -->
+                        <div id="mapPreviewContainer" class="rounded-3 border overflow-hidden mb-2" style="display:none; height: 200px;">
                             <iframe id="mapIframe" width="100%" height="100%" frameborder="0" style="border:0" allowfullscreen></iframe>
                         </div>
+
+                        <!-- Mapa Interativo para Ajuste Manual -->
+                        <div id="manualMapContainer" style="display:none;">
+                            <span class="map-instruction">Arraste o marcador azul para o local exato da sua casa:</span>
+                            <div id="interactiveMap"></div>
+                        </div>
+
                         <input type="hidden" name="google_maps_link" id="google_maps_link">
                     </div>
 
@@ -277,7 +311,7 @@
         <div id="successMessage" class="p-5 text-center" style="display:none;">
             <div class="mb-4">
                 <div class="bg-success text-white d-inline-flex align-items-center justify-content-center rounded-circle" style="width: 80px; height: 80px;">
-                    <i class="fs-1">✓</i>
+                    <i class="bi bi-check2-all fs-1"></i>
                 </div>
             </div>
             <h3>Cadastro Enviado!</h3>
@@ -289,8 +323,77 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="{% static 'js/script.js' %}"></script>
 <script>
+    // Leaflet Map Initialization
+    let lMap, lMarker;
+
+    function initManualMap(lat = -22.915, lng = -42.82) { // Default Maricá
+        if (lMap) return;
+
+        lMap = L.map('interactiveMap').setView([lat, lng], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(lMap);
+
+        lMarker = L.marker([lat, lng], { draggable: true }).addTo(lMap);
+        
+        lMarker.on('dragend', function() {
+            const pos = lMarker.getLatLng();
+            const gLink = `https://www.google.com/maps/search/?api=1&query=${pos.lat},${pos.lng}`;
+            document.getElementById('google_maps_link').value = gLink;
+        });
+    }
+
+    function toggleManualMap() {
+        const manualContainer = document.getElementById('manualMapContainer');
+        const autoContainer = document.getElementById('mapPreviewContainer');
+        
+        if (manualContainer.style.display === 'none') {
+            manualContainer.style.display = 'block';
+            autoContainer.style.display = 'none';
+            
+            // Tenta pegar coordenadas do endereço atual ou usa default
+            const endereco = document.getElementById('endereco').value;
+            const bairro = document.getElementById('bairro').value;
+            const cidade = document.getElementById('cidade').value;
+            
+            if (endereco) {
+                const fullAddress = `${endereco}, ${bairro}, ${cidade}, Brazil`;
+                fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data && data.length > 0) {
+                            const lat = parseFloat(data[0].lat);
+                            const lon = parseFloat(data[0].lon);
+                            initManualMap(lat, lon);
+                            lMap.setView([lat, lon], 16);
+                            lMarker.setLatLng([lat, lon]);
+                            
+                            // Update hidden input immediately
+                            const gLink = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+                            document.getElementById('google_maps_link').value = gLink;
+                        } else {
+                            initManualMap();
+                        }
+                    })
+                    .catch(() => initManualMap());
+            } else {
+                initManualMap();
+            }
+            
+            // Fix Leaflet rendering issues when container starts hidden
+            setTimeout(() => {
+                if (lMap) lMap.invalidateSize();
+            }, 200);
+            
+            showNotify('Use o mapa para marcar o local exato.', 'info');
+        } else {
+            manualContainer.style.display = 'none';
+        }
+    }
+
     // Link the hidden vencimento_id
     document.getElementById('vencimento').addEventListener('change', function() {
         const selected = this.options[this.selectedIndex];

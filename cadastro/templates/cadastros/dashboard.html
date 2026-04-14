@@ -31,19 +31,29 @@
         <!-- Dashboard Stats -->
         <div class="row mb-4">
             <div class="col-md-4 mb-3">
-                <div class="card-premium stats-card">
-                    <div class="value">{{ cadastros.count }}</div>
-                    <div class="label">Total de Cadastros</div>
+                <div class="card-premium stats-card d-flex align-items-center justify-content-center p-4">
+                    <div class="stats-icon me-3 bg-light-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                        <i class="bi bi-people-fill fs-3 text-primary"></i>
+                    </div>
+                    <div class="text-start">
+                        <div class="value mb-0">{{ cadastros.count }}</div>
+                        <div class="label">Total de Cadastros</div>
+                    </div>
                 </div>
             </div>
             <div class="col-md-8 mb-3">
                 <div class="card-premium h-100 p-4 d-flex align-items-center justify-content-between">
-                    <div>
-                        <h5 class="mb-1">Link de Captação</h5>
-                        <p class="text-muted small mb-0">Envie este link para seus clientes preencherem a ficha.</p>
+                    <div class="d-flex align-items-center">
+                        <div class="stats-icon me-3 bg-light-orange rounded-circle d-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                            <i class="bi bi-link-45deg fs-3 text-orange"></i>
+                        </div>
+                        <div>
+                            <h5 class="mb-1 fw-bold">Link de Captação</h5>
+                            <p class="text-muted small mb-0">Envie este link para seus clientes preencherem a ficha.</p>
+                        </div>
                     </div>
-                    <button class="btn-fibramar" onclick="copyLink()">
-                        Copiar Link Único
+                    <button class="btn-fibramar d-flex align-items-center" onclick="copyLink()">
+                        <i class="bi bi-copy me-2"></i> Copiar Link Único
                     </button>
                 </div>
             </div>
@@ -64,8 +74,6 @@
                                 <th class="border-0 text-muted small fw-bold">CLIENTE</th>
                                 <th class="border-0 text-muted small fw-bold">DOCUMENTO</th>
                                 <th class="border-0 text-muted small fw-bold">PLANO</th>
-                                <th class="border-0 text-muted small fw-bold text-center">ARQUIVO</th>
-                                <th class="border-0 text-muted small fw-bold text-center">MAPA</th>
                                 <th class="border-0 text-muted small fw-bold">DATA INSTALAÇÃO</th>
                                 <th class="border-0 text-muted small fw-bold">STATUS</th>
                                 <th class="px-4 border-0 text-muted small fw-bold text-end">AÇÕES</th>
@@ -74,43 +82,39 @@
                         <tbody>
                             {% for c in cadastros %}
                             <tr>
-                                <td class="px-4 align-middle text-muted small">{{ c.data_cadastro|date:"d/m/Y H:i" }}</td>
+                                <td class="px-4 align-middle text-muted small">
+                                    <i class="bi bi-calendar3 me-1"></i> {{ c.data_cadastro|date:"d/m/Y" }}<br>
+                                    <i class="bi bi-clock me-1 text-muted"></i> {{ c.data_cadastro|date:"H:i" }}
+                                </td>
                                 <td class="align-middle fw-bold text-primary">
                                     {{ c.nome_razao }}
                                 </td>
-                                <td class="align-middle">{{ c.documento }}</td>
-                                <td class="align-middle"><span class="badge rounded-pill bg-light text-dark border">{{ c.plano_velocidade }}</span></td>
-                                <td class="align-middle text-center">
-                                    {% if c.contrato_social %}
-                                    <a href="{{ c.contrato_social.url }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Ver Contrato/Arquivo">
-                                        📄
-                                    </a>
-                                    {% else %}
-                                    <span class="text-muted small">-</span>
-                                    {% endif %}
+                                <td class="align-middle text-muted small">
+                                    <i class="bi bi-person-vcard me-1"></i> {{ c.documento }}
                                 </td>
-                                <td class="align-middle text-center">
-                                    {% if c.google_maps_link %}
-                                    <a href="{{ c.google_maps_link }}" target="_blank" class="btn btn-sm btn-outline-success py-0 px-2" title="Ver Localização">
-                                        📍
-                                    </a>
-                                    {% else %}
-                                    <span class="text-muted small">-</span>
-                                    {% endif %}
-                                </td>
-                                <td class="align-middle fw-bold">{{ c.data_instalacao|date:"d/m/Y" }}</td>
                                 <td class="align-middle">
-                                    <span class="badge rounded-pill border badge-status-{{ c.status }}">
-                                        {{ c.get_status_display }}
+                                    <span class="badge rounded-pill bg-light text-dark border d-inline-flex align-items-center">
+                                        <i class="bi bi-router me-1 text-primary"></i> {{ c.plano_velocidade }}
+                                    </span>
+                                </td>
+                                <td class="align-middle fw-bold">
+                                    <i class="bi bi-calendar-check me-1 text-secondary"></i> {{ c.data_instalacao|date:"d/m/Y" }}
+                                </td>
+                                <td class="align-middle">
+                                    <span class="badge rounded-pill border badge-status-{{ c.status }} d-inline-flex align-items-center">
+                                        <i class="bi bi-info-circle me-1"></i> {{ c.get_status_display }}
                                     </span>
                                 </td>
                                 <td class="px-4 align-middle text-end">
-                                    <a href="{% url 'cadastro_detail' c.pk %}" class="btn btn-sm btn-fibramar py-1">GERIR CADASTRO</a>
+                                    <a href="{% url 'cadastro_detail' c.pk %}" class="btn btn-sm btn-fibramar py-1 px-3 d-inline-flex align-items-center">
+                                        <i class="bi bi-gear-fill me-2"></i> GERIR CADASTRO
+                                    </a>
                                 </td>
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="6" class="text-center py-5 text-muted">
+                                <td colspan="7" class="text-center py-5 text-muted">
+                                    <i class="bi bi-inbox fs-1 mb-3 d-block opacity-25"></i>
                                     <p class="mb-0">Nenhum cadastro recebido ainda.</p>
                                 </td>
                             </tr>

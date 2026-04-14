@@ -145,6 +145,11 @@ function updateMapPreview() {
     
     document.getElementById('mapIframe').src = mapUrl;
     document.getElementById('mapPreviewContainer').style.display = 'block';
+    
+    // Hide manual map if it's open
+    const manualContainer = document.getElementById('manualMapContainer');
+    if (manualContainer) manualContainer.style.display = 'none';
+
     document.getElementById('google_maps_link').value = directLink;
     
     showNotify('Localização marcada no mapa!', 'success');
@@ -246,23 +251,23 @@ function populateSummary() {
     let html = '';
     
     const sections = {
-        'Dados Cadastrais': { fields: ['documento', 'tipoPessoa', 'nome', 'nomeFantasia', 'rg', 'inscricaoEstadual', 'contratoSocial', 'dataNascimento', 'email', 'telefone'], step: 1 },
-        'Endereço': { fields: ['cep', 'cidade', 'bairro', 'endereco', 'google_maps_link', 'referencia'], step: 2 },
-        'Plano e Vencimento': { fields: ['plano', 'fidelidade', 'vencimento', 'opcional'], step: 3 },
-        'Instalação': { fields: ['pagamento', 'dataInstalacao', 'periodoInstalacao', 'origem'], step: 4 }
+        'DADOS CADASTRAIS': { fields: ['documento', 'tipoPessoa', 'nome', 'nomeFantasia', 'rg', 'inscricaoEstadual', 'contratoSocial', 'dataNascimento', 'email', 'telefone'], step: 1 },
+        'ENDEREÇO': { fields: ['cep', 'cidade', 'bairro', 'endereco', 'google_maps_link', 'referencia'], step: 2 },
+        'PLANO E VENCIMENTO': { fields: ['plano', 'fidelidade', 'vencimento', 'opcional'], step: 3 },
+        'INSTALAÇÃO': { fields: ['pagamento_instalacao', 'data_instalacao', 'periodo_instalacao', 'origem'], step: 4 }
     };
 
     const labels = {
         documento: 'CPF/CNPJ', tipoPessoa: 'Tipo de Pessoa', nome: 'Nome/Razão Social', 
         nomeFantasia: 'Nome Fantasia', rg: 'RG', 
-        inscricaoEstadual: 'Inscrição Estadual', contratoSocial: 'Contrato Social',
+        inscricaoEstadual: 'Inscrição Estadual', contratoSocial: 'Arquivo Anexado',
         dataNascimento: 'Data de Nascimento',
         email: 'E-mail', telefone: 'Telefone', cep: 'CEP', cidade: 'Cidade',
         bairro: 'Bairro', endereco: 'Endereço', google_maps_link: 'Localização Google Maps',
         referencia: 'Referência',
         plano: 'Plano', fidelidade: 'Fidelidade', vencimento: 'Dia de Vencimento',
-        opcional: 'Opcional do Plano', pagamento: 'Modo de Pagamento',
-        dataInstalacao: 'Data Instalação', periodoInstalacao: 'Período', origem: 'Origem'
+        opcional: 'Opcional do Plano', pagamento_instalacao: 'Modo de Pagamento',
+        data_instalacao: 'Data Instalação', periodo_instalacao: 'Período', origem: 'Origem'
     };
 
     for (const [section, config] of Object.entries(sections)) {
@@ -275,17 +280,17 @@ function populateSummary() {
         config.fields.forEach(field => {
             let value = formData.get(field);
             
-            // Tratamento especial para arquivos no resumo
+            // Especial para arquivos
             if (field === 'contratoSocial') {
                 const fileInput = document.getElementById('contratoSocial');
-                value = (fileInput.files && fileInput.files.length > 0) ? `📎 ${fileInput.files[0].name}` : null;
+                value = (fileInput && fileInput.files && fileInput.files.length > 0) ? `📎 ${fileInput.files[0].name}` : null;
             }
 
             if (!value) return;
 
-            // Tratamento especial para links de mapa
+            // Especial para links de mapa
             if (field === 'google_maps_link') {
-                value = `<a href="${value}" target="_blank" class="text-primary text-decoration-none">📍 Abrir no Google Maps</a>`;
+                value = `<a href="${value}" target="_blank" class="text-primary text-decoration-none fw-bold">📍 Abrir no Google Maps</a>`;
             }
 
             // Formatação amigável
@@ -309,8 +314,12 @@ function populateSummary() {
             if (field === 'fidelidade' || field === 'opcional') {
                 value = value === 'sim' ? 'Sim' : 'Não';
             }
-            if (field === 'periodoInstalacao') {
+            if (field === 'periodo_instalacao') {
                 value = value === 'manha' ? 'Manhã' : 'Tarde';
+            }
+            if (field === 'data_instalacao') {
+                const parts = value.split('-');
+                if (parts.length === 3) value = `${parts[2]}/${parts[1]}/${parts[0]}`;
             }
 
             html += `
@@ -322,15 +331,15 @@ function populateSummary() {
         });
     }
 
-    // Adiciona informação de instalação se for Maricá
+    // Financeiro
     if (formData.get('cidade') === 'marica') {
         const isFidelidade = formData.get('fidelidade') === 'sim';
         const price = isFidelidade ? 'R$ 100,00' : 'R$ 460,00';
         html += `
-            <div class="summary-section-header">Resumo Financeiro</div>
+            <div class="summary-section-header">RESUMO FINANCEIRO</div>
             <div class="summary-item">
                 <span class="summary-label">Valor da Instalação:</span>
-                <span class="summary-value">${price}</span>
+                <span class="summary-value fw-bold text-success">${price}</span>
             </div>
         `;
     }
@@ -466,7 +475,11 @@ document.getElementById('registrationForm').onsubmit = function(e) {
     .then(response => {
         if (response.ok) {
             document.getElementById('registrationForm').style.display = 'none';
-            document.querySelector('.form-header').style.display = 'none';
+            
+            // Remove error-prone header selector
+            const header = document.querySelector('.form-header');
+            if (header) header.style.display = 'none';
+            
             document.getElementById('successMessage').style.display = 'block';
             window.scrollTo(0, 0);
         } else {
