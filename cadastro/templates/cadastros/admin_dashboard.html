@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<nav class="navbar navbar-expand-lg navbar-dark navbar-fibramar">
+    <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center" href="{% url 'admin_dashboard' %}">
+            <img src="{% static 'img/logo2.webp' %}" alt="Fibramar" style="height: 35px;" class="me-2">
+            <span class="fw-bold">PAINEL ADMINISTRATIVO</span>
+        </a>
+        <div class="navbar-nav ms-auto align-items-center">
+            <a href="{% url 'reports' %}" class="btn btn-outline-light btn-sm me-3">
+                <i class="bi bi-graph-up me-1"></i> RELATÓRIOS
+            </a>
+            <button class="theme-toggle me-3" id="themeToggle" title="Alternar Tema">
+                <i class="bi bi-moon-fill" id="themeIcon"></i>
+            </button>
+            <div class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle text-white" href="#" role="button" data-bs-toggle="dropdown">
+                    ADM: <strong>{{ user.first_name|default:user.username }}</strong>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                    <li><a class="dropdown-item" href="{% url 'dashboard' %}"><i class="bi bi-person me-2"></i>Visão Consultor</a></li>
+                    <li><a class="dropdown-item" href="{% url 'admin:index' %}" target="_blank"><i class="bi bi-shield-lock me-2"></i>Django Admin</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <form action="{% url 'logout' %}" method="post" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item text-danger"><i class="bi bi-box-arrow-right me-2"></i>Sair</button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<div class="dashboard-wrapper">
+    <div class="container-fluid">
+        <!-- Overview Cards -->
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <div class="card-premium stats-card d-flex align-items-center justify-content-center p-4">
+                    <div class="stats-icon me-3 bg-light-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                        <i class="bi bi-database-fill-check fs-3 text-primary"></i>
+                    </div>
+                    <div class="text-start">
+                        <div class="value mb-0">{{ total_geral }}</div>
+                        <div class="label">Total Geral de Cadastros</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card-premium stats-card d-flex align-items-center justify-content-center p-4 border-start border-4 border-warning">
+                    <div class="stats-icon me-3 bg-light-orange rounded-circle d-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                        <i class="bi bi-lightning-charge-fill fs-3 text-orange"></i>
+                    </div>
+                    <div class="text-start">
+                        <div class="value mb-0">{{ total_hoje }}</div>
+                        <div class="label">Novos Cadastros Hoje</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card-premium stats-card d-flex align-items-center justify-content-center p-4 border-start border-4 border-success">
+                    <div class="stats-icon me-3 bg-light-success rounded-circle d-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                        <i class="bi bi-person-badge-fill fs-3 text-success"></i>
+                    </div>
+                    <div class="text-start">
+                        <div class="value mb-0">{{ consultores.count }}</div>
+                        <div class="label">Consultores Ativos</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Consultores List -->
+        <div class="card-premium mb-4">
+            <div class="header-accent"></div>
+            <div class="p-4 border-bottom d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold">Gestão de Consultores</h5>
+                <button type="button" class="btn btn-fibramar btn-sm d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#newConsultorModal">
+                    <i class="bi bi-person-plus me-2"></i> NOVO CONSULTOR
+                </button>
+            </div>
+            <div class="p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="px-4 border-0 text-muted small fw-bold">CONSULTOR</th>
+                                <th class="border-0 text-muted small fw-bold">USUÁRIO</th>
+                                <th class="border-0 text-muted small fw-bold text-center">TOTAL CADASTROS</th>
+                                <th class="border-0 text-muted small fw-bold text-center">PENDENTES</th>
+                                <th class="border-0 text-muted small fw-bold text-center">REALIZADOS</th>
+                                <th class="border-0 text-muted small fw-bold">ÚLTIMO ACESSO</th>
+                                <th class="px-4 border-0 text-muted small fw-bold text-end">AÇÕES</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in consultores %}
+                            <tr>
+                                <td class="px-4 align-middle">
+                                    <div class="fw-bold text-primary">{{ c.get_full_name|default:c.username }}</div>
+                                    <div class="small text-muted">{{ c.email }}</div>
+                                </td>
+                                <td class="align-middle"><code>{{ c.username }}</code></td>
+                                <td class="align-middle text-center">
+                                    <span class="badge bg-light text-dark border px-3">{{ c.total_cadastros }}</span>
+                                </td>
+                                <td class="align-middle text-center">
+                                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning px-3">{{ c.pendentes }}</span>
+                                </td>
+                                <td class="align-middle text-center">
+                                    <span class="badge bg-success-subtle text-success-emphasis border border-success px-3">{{ c.realizados }}</span>
+                                </td>
+                                <td class="align-middle text-muted small">
+                                    {% if c.last_login %}
+                                        {{ c.last_login|date:"d/m/Y H:i" }}
+                                    {% else %}
+                                        <span class="text-danger">Nunca acessou</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 align-middle text-end">
+                                    <div class="btn-group">
+                                        <button class="btn btn-sm btn-outline-primary" title="Editar Consultor" onclick="openEditModal({{ c.pk }}, '{{ c.first_name }}', '{{ c.email }}')">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-warning" title="Alterar Senha" onclick="openPasswordModal({{ c.pk }})">
+                                            <i class="bi bi-key"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" title="Excluir Consultor" onclick="confirmDeleteConsultor({{ c.pk }}, '{{ c.username }}')">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" class="text-center py-5 text-muted">
+                                    <i class="bi bi-people fs-1 mb-3 d-block opacity-25"></i>
+                                    <p class="mb-0">Nenhum consultor cadastrado.</p>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+<!-- New Consultor Modal -->
+<div class="modal fade" id="newConsultorModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0 bg-primary text-white">
+                <h5 class="modal-title fw-bold"><i class="bi bi-person-plus me-2"></i>Novo Consultor</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createConsultorForm">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">NOME</label>
+                        <input type="text" name="first_name" class="form-control form-control-premium" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">USUÁRIO (LOGIN)</label>
+                        <input type="text" name="username" class="form-control form-control-premium" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">E-MAIL</label>
+                        <input type="email" name="email" class="form-control form-control-premium" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">SENHA INICIAL</label>
+                        <input type="password" name="password" class="form-control form-control-premium" required>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">CANCELAR</button>
+                    <button type="submit" class="btn btn-fibramar">CRIAR CONSULTOR</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Consultor Modal -->
+<div class="modal fade" id="editConsultorModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0 bg-primary text-white">
+                <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i>Editar Consultor</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editConsultorForm">
+                <input type="hidden" id="edit_id" name="pk">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">NOME</label>
+                        <input type="text" id="edit_name" name="first_name" class="form-control form-control-premium" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">E-MAIL</label>
+                        <input type="email" id="edit_email" name="email" class="form-control form-control-premium" required>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">CANCELAR</button>
+                    <button type="submit" class="btn btn-fibramar">SALVAR ALTERAÇÕES</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Password Modal -->
+<div class="modal fade" id="passwordModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0 bg-warning text-dark">
+                <h5 class="modal-title fw-bold"><i class="bi bi-key-fill me-2"></i>Alterar Senha</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="passwordForm">
+                <input type="hidden" id="pass_id" name="pk">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">NOVA SENHA</label>
+                        <input type="password" name="password" class="form-control form-control-premium" required>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">CANCELAR</button>
+                    <button type="submit" class="btn btn-warning fw-bold">REDEFINIR SENHA</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const csrftoken = '{{ csrf_token }}';
+
+    // Create
+    document.getElementById('createConsultorForm').onsubmit = function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        formData.append('action', 'create');
+        
+        fetch("{% url 'manage_consultor' %}", {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrftoken},
+            body: formData
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                showNotify(data.message || 'Erro ao criar consultor', 'danger');
+            }
+        });
+    };
+
+    // Edit
+    function openEditModal(id, name, email) {
+        document.getElementById('edit_id').value = id;
+        document.getElementById('edit_name').value = name;
+        document.getElementById('edit_email').value = email;
+        new bootstrap.Modal(document.getElementById('editConsultorModal')).show();
+    }
+
+    document.getElementById('editConsultorForm').onsubmit = function(e) {
+        e.preventDefault();
+        const id = document.getElementById('edit_id').value;
+        const formData = new FormData(this);
+        formData.append('action', 'edit');
+        
+        fetch(`/admin-dash/manage/${id}/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrftoken},
+            body: formData
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') location.reload();
+        });
+    };
+
+    // Password
+    function openPasswordModal(id) {
+        document.getElementById('pass_id').value = id;
+        new bootstrap.Modal(document.getElementById('passwordModal')).show();
+    }
+
+    document.getElementById('passwordForm').onsubmit = function(e) {
+        e.preventDefault();
+        const id = document.getElementById('pass_id').value;
+        const formData = new FormData(this);
+        formData.append('action', 'password');
+        
+        fetch(`/admin-dash/manage/${id}/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrftoken},
+            body: formData
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                showNotify('Senha redefinida com sucesso', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('passwordModal')).hide();
+            }
+        });
+    };
+
+    // Delete
+    function confirmDeleteConsultor(id, username) {
+        showConfirm(
+            'Excluir Consultor',
+            `ATENÇÃO: Deseja realmente excluir o consultor "${username}"? Todos os cadastros vinculados a ele serão mantidos, mas sem consultor responsável.`,
+            function() {
+                const formData = new FormData();
+                formData.append('action', 'delete');
+                fetch(`/admin-dash/manage/${id}/`, {
+                    method: 'POST',
+                    headers: {'X-CSRFToken': csrftoken},
+                    body: formData
+                }).then(r => r.json()).then(data => {
+                    if (data.status === 'success') location.reload();
+                });
+            },
+            true
+        );
+    }
+</script>
+{% endblock %}

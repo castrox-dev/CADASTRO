@@ -8,12 +8,20 @@
             <img src="{% static 'img/logo2.webp' %}" alt="Fibramar" style="height: 35px;" class="me-2">
             <span class="fw-bold">CONSULTORES</span>
         </a>
-        <div class="navbar-nav ms-auto">
+        <div class="navbar-nav ms-auto align-items-center">
+            <button class="theme-toggle me-3" id="themeToggle" title="Alternar Tema">
+                <i class="bi bi-moon-fill" id="themeIcon"></i>
+            </button>
             <div class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle text-white" href="#" role="button" data-bs-toggle="dropdown">
                     Olá, <strong>{{ user.first_name }}</strong>
                 </a>
                 <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                    {% if user.is_superuser %}
+                    <li><a class="dropdown-item fw-bold text-primary" href="{% url 'admin_dashboard' %}"><i class="bi bi-speedometer2 me-2"></i>Painel Admin</a></li>
+                    <li><a class="dropdown-item" href="{% url 'reports' %}"><i class="bi bi-graph-up me-2"></i>Relatórios</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    {% endif %}
                     <li>
                         <form action="{% url 'logout' %}" method="post" class="d-inline">
                             {% csrf_token %}

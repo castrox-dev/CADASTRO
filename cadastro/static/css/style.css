@@ -10,6 +10,23 @@
     --danger: #d63031;
     --border-radius: 12px;
     --shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    --border-color: #dfe6e9;
+    --input-bg: #ffffff;
+    --table-header: #f8f9fa;
+    --pre-bg: #f8f9fa;
+}
+
+[data-theme="dark"] {
+    --bg-gradient: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%);
+    --card-bg: #1e1e2f;
+    --text-main: #e0e0e0;
+    --text-muted: #a0a0a0;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    --border-color: #2d2d44;
+    --input-bg: #2d2d44;
+    --table-header: #252538;
+    --pre-bg: #161625;
+    --primary-color: #3f3f6e;
 }
 
 * {
@@ -25,6 +42,7 @@ body {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    transition: background 0.3s ease, color 0.3s ease;
 }
 
 /* Layout Containers */
@@ -45,9 +63,9 @@ body {
     background: var(--card-bg);
     border-radius: var(--border-radius);
     box-shadow: var(--shadow);
-    border: none;
+    border: 1px solid var(--border-color);
     overflow: hidden;
-    transition: transform 0.3s ease;
+    transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease;
 }
 
 .card-premium:hover {
@@ -56,19 +74,31 @@ body {
 
 .header-accent {
     height: 5px;
-    background: linear-gradient(to right, var(--secondary-color), var(--primary-color));
+    background: linear-gradient(to right, var(--secondary-color), #1a1a3a);
 }
 
 /* Typography */
-h1, h2, h3, h4 {
-    color: var(--primary-color);
+h1, h2, h3, h4, h5, h6 {
+    color: var(--text-main);
     font-weight: 700;
+}
+
+.text-primary {
+    color: var(--secondary-color) !important;
+}
+
+.text-main {
+    color: var(--text-main) !important;
+}
+
+.text-muted {
+    color: var(--text-muted) !important;
 }
 
 /* Buttons */
 .btn-fibramar {
     background-color: var(--secondary-color);
-    color: white;
+    color: white !important;
     border: none;
     padding: 12px 25px;
     border-radius: 8px;
@@ -82,7 +112,6 @@ h1, h2, h3, h4 {
 .btn-fibramar:hover {
     background-color: #e65a00;
     box-shadow: 0 5px 15px rgba(255, 107, 0, 0.3);
-    color: white;
 }
 
 .btn-outline-fibramar {
@@ -97,35 +126,157 @@ h1, h2, h3, h4 {
 
 .btn-outline-fibramar:hover {
     background-color: var(--secondary-color);
-    color: white;
+    color: white !important;
+}
+
+.btn-light {
+    background-color: var(--table-header);
+    border-color: var(--border-color);
+    color: var(--text-main);
 }
 
 /* Navigation */
 .navbar-fibramar {
-    background-color: var(--primary-color) !important;
+    background-color: #1a1a3a !important;
     padding: 15px 30px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+[data-theme="dark"] .navbar-fibramar {
+    background-color: #0f0f1a !important;
+    border-bottom: 1px solid var(--border-color);
 }
 
 /* Forms */
 .form-group label {
     font-weight: 500;
     margin-bottom: 8px;
-    color: var(--primary-color);
+    color: var(--text-main);
     font-size: 14px;
 }
 
-.form-control-premium {
+.form-control-premium, .form-select {
+    background-color: var(--input-bg);
+    color: var(--text-main);
     padding: 12px 15px;
     border-radius: 8px;
-    border: 1px solid #dfe6e9;
-    transition: border-color 0.3s ease;
+    border: 1px solid var(--border-color);
+    transition: border-color 0.3s ease, background 0.3s ease;
 }
 
-.form-control-premium:focus {
+.form-control-premium:focus, .form-select:focus {
+    background-color: var(--input-bg);
+    color: var(--text-main);
     border-color: var(--secondary-color);
     box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.1);
 }
+
+/* Multi-step Form Specifics */
+.bg-light {
+    background-color: var(--table-header) !important;
+}
+
+.border-bottom, .border-top, .border {
+    border-color: var(--border-color) !important;
+}
+
+/* Tables */
+.table {
+    color: var(--text-main);
+    background-color: transparent !important;
+}
+
+.table thead th {
+    background-color: var(--table-header) !important;
+    color: var(--text-muted) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+.table tbody tr {
+    background-color: transparent !important;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(255, 107, 0, 0.05) !important;
+    color: var(--text-main);
+}
+
+/* Fix for table backgrounds in dark mode */
+[data-theme="dark"] .table {
+    --bs-table-bg: transparent;
+    --bs-table-hover-bg: rgba(255, 107, 0, 0.05);
+}
+
+[data-theme="dark"] .bg-light {
+    background-color: var(--table-header) !important;
+}
+
+/* Badge and specific element fixes for Dark Mode */
+.badge.bg-light {
+    background-color: var(--table-header) !important;
+    color: var(--text-main) !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+.bg-warning-subtle { background-color: rgba(241, 196, 15, 0.1) !important; }
+.bg-success-subtle { background-color: rgba(46, 204, 113, 0.1) !important; }
+.text-warning-emphasis { color: #f1c40f !important; }
+.text-success-emphasis { color: #2ecc71 !important; }
+
+/* Modal and Toast customization for Dark Mode */
+[data-theme="dark"] .modal-content {
+    background-color: var(--card-bg);
+    color: var(--text-main);
+}
+
+[data-theme="dark"] .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+[data-theme="dark"] .bg-light-primary { background-color: rgba(63, 63, 110, 0.2); }
+[data-theme="dark"] .bg-light-orange { background-color: rgba(255, 107, 0, 0.2); }
+
+/* OS and Ficha Pre formatting */
+pre {
+    background-color: var(--pre-bg);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+}
+
+/* Tab styling */
+.nav-tabs .nav-link {
+    color: var(--text-muted);
+}
+
+.nav-tabs .nav-link.active {
+    background-color: var(--card-bg);
+    color: var(--secondary-color);
+    border-bottom: 3px solid var(--secondary-color);
+}
+
+.nav-tabs .nav-link:hover {
+    color: var(--secondary-color);
+}
+
+/* Theme Toggle Button */
+.theme-toggle {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 50%;
+    transition: background 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
 
 /* Multi-step Form Specifics */
 .form-step { display: none; }

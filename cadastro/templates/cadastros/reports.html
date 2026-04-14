@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<nav class="navbar navbar-expand-lg navbar-dark navbar-fibramar">
+    <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center" href="{% url 'admin_dashboard' %}">
+            <i class="bi bi-arrow-left-circle me-2 fs-3 text-white"></i>
+            <span class="fw-bold">RELATÓRIOS E MÉTRICAS</span>
+        </a>
+        <div class="navbar-nav ms-auto align-items-center">
+            <button class="theme-toggle me-3" id="themeToggle" title="Alternar Tema">
+                <i class="bi bi-moon-fill" id="themeIcon"></i>
+            </button>
+            <div class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle text-white" href="#" role="button" data-bs-toggle="dropdown">
+                    ADM: <strong>{{ user.first_name|default:user.username }}</strong>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                    <li><a class="dropdown-item" href="{% url 'admin_dashboard' %}"><i class="bi bi-speedometer2 me-2"></i>Painel Admin</a></li>
+                    <li><a class="dropdown-item" href="{% url 'dashboard' %}"><i class="bi bi-person me-2"></i>Visão Consultor</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <form action="{% url 'logout' %}" method="post" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item text-danger"><i class="bi bi-box-arrow-right me-2"></i>Sair</button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<div class="dashboard-wrapper">
+    <div class="container-fluid">
+        <div class="row mb-4">
+            <!-- Gráfico de Status (Pizza) -->
+            <div class="col-md-5 mb-4">
+                <div class="card-premium h-100 p-4">
+                    <h5 class="mb-4 fw-bold d-flex align-items-center">
+                        <i class="bi bi-pie-chart-fill me-2 text-primary"></i> DISTRIBUIÇÃO POR STATUS
+                    </h5>
+                    <div style="max-height: 300px;">
+                        <canvas id="statusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráfico de Crescimento (Linha) -->
+            <div class="col-md-7 mb-4">
+                <div class="card-premium h-100 p-4">
+                    <h5 class="mb-4 fw-bold d-flex align-items-center">
+                        <i class="bi bi-graph-up-arrow me-2 text-success"></i> CADASTROS (ÚLTIMOS 7 DIAS)
+                    </h5>
+                    <div style="height: 300px;">
+                        <canvas id="growthChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Tabela de Planos Populares -->
+            <div class="col-md-6 mb-4">
+                <div class="card-premium p-4">
+                    <h5 class="mb-4 fw-bold d-flex align-items-center">
+                        <i class="bi bi-star-fill me-2 text-warning"></i> PLANOS MAIS VENDIDOS
+                    </h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-borderless align-middle mb-0">
+                            <tbody>
+                                {% for p in planos_data %}
+                                <tr class="border-bottom border-secondary border-opacity-10">
+                                    <td class="py-3">
+                                        <div class="fw-bold text-main">{{ p.plano|upper }}</div>
+                                    </td>
+                                    <td class="text-end">
+                                        <span class="badge bg-primary bg-opacity-75 rounded-pill px-3">{{ p.total }}</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metas Mensais (Mockup) -->
+            <div class="col-md-6 mb-4">
+                <div class="card-premium p-4 h-100">
+                    <h5 class="mb-4 fw-bold d-flex align-items-center">
+                        <i class="bi bi-trophy-fill me-2 text-orange"></i> DESEMPENHO DA EQUIPE
+                    </h5>
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between mb-2 small fw-bold text-main">
+                            <span class="opacity-75">META MENSAL (GERAL)</span>
+                            <span>{{ total_geral }} <span class="text-muted">/ 500</span></span>
+                        </div>
+                        <div class="progress bg-dark bg-opacity-10" style="height: 12px; border-radius: 6px;">
+                            <div class="progress-bar bg-success shadow-sm" style="width: {% widthratio total_geral 500 100 %}%"></div>
+                        </div>
+                    </div>
+                    <div class="alert bg-light bg-opacity-50 border-0 small text-muted d-flex align-items-center">
+                        <i class="bi bi-info-circle-fill me-2 text-info fs-5"></i> 
+                        <span>O volume de cadastros este mês aumentou 12% em relação ao mês anterior.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Configurações Globais do Chart.js para Dark Mode
+    const isDarkMode = document.body.getAttribute('data-theme') === 'dark';
+    const textColor = isDarkMode ? '#e0e0e0' : '#2d3436';
+    const gridColor = isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
+
+    // Gráfico de Status
+    const statusCtx = document.getElementById('statusChart').getContext('2d');
+    new Chart(statusCtx, {
+        type: 'doughnut',
+        data: {
+            labels: {{ status_labels|safe }},
+            datasets: [{
+                data: {{ status_values|safe }},
+                backgroundColor: [
+                    '#f1c40f', // pendente
+                    '#3498db', // aguardando
+                    '#2ecc71', // realizado
+                    '#e74c3c'  // cancelado
+                ],
+                borderWidth: 0,
+                hoverOffset: 15
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: textColor, font: { weight: 'bold' } }
+                }
+            }
+        }
+    });
+
+    // Gráfico de Crescimento
+    const growthCtx = document.getElementById('growthChart').getContext('2d');
+    new Chart(growthCtx, {
+        type: 'line',
+        data: {
+            labels: {{ days_labels|safe }},
+            datasets: [{
+                label: 'Cadastros',
+                data: {{ days_values|safe }},
+                borderColor: '#ff6b00',
+                backgroundColor: 'rgba(255, 107, 0, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 6,
+                pointBackgroundColor: '#ff6b00',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: gridColor },
+                    ticks: { color: textColor, stepSize: 1 }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: textColor }
+                }
+            },
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+</script>
+{% endblock %}
