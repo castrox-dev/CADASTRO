@@ -28,7 +28,19 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-$#*kr*^$v@(e-w%h+#wtr
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=lambda v: [s.strip() for s in v.split(',')])
+# Função para limpar ALLOWED_HOSTS caso o usuário cole a URL completa
+def parse_allowed_hosts(v):
+    hosts = [s.strip() for s in v.split(',')]
+    clean_hosts = []
+    for host in hosts:
+        # Remove https:// ou http://
+        host = host.replace('https://', '').replace('http://', '')
+        # Remove barras finais
+        host = host.split('/')[0]
+        clean_hosts.append(host)
+    return clean_hosts
+
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=parse_allowed_hosts)
 
 # Se estiver na Vercel e não tiver DATABASE_URL, o SQLite vai dar erro de escrita.
 # Use o Vercel Postgres para produção!
