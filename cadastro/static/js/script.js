@@ -35,10 +35,10 @@ function handleDocumentInput() {
     const pjOnly = document.querySelectorAll('.pj-only');
     const labelNome = document.getElementById('labelNome');
     const inputNome = document.getElementById('nome');
-    const nomeFantasia = document.getElementById('nomeFantasia');
-    const contratoSocial = document.getElementById('contratoSocial');
+    const nomeFantasia = document.getElementById('nome_fantasia');
+    const contratoSocial = document.getElementById('contrato_social');
     const rg = document.getElementById('rg');
-    const dataNascimento = document.getElementById('dataNascimento');
+    const dataNascimento = document.getElementById('data_nascimento');
 
     if (cleanValue.length > 11) {
         // Switch to PJ
@@ -49,10 +49,10 @@ function handleDocumentInput() {
         });
         labelNome.innerText = 'Razão Social *';
         inputNome.placeholder = 'Digite a Razão Social';
-        nomeFantasia.required = true;
-        contratoSocial.required = true;
-        rg.required = false;
-        dataNascimento.required = false;
+        if (nomeFantasia) nomeFantasia.required = true;
+        if (contratoSocial) contratoSocial.required = true;
+        if (rg) rg.required = false;
+        if (dataNascimento) dataNascimento.required = false;
     } else {
         // Default to PF
         typeHidden.value = 'pf';
@@ -62,31 +62,43 @@ function handleDocumentInput() {
         pjOnly.forEach(el => el.style.display = 'none');
         labelNome.innerText = 'Nome Completo *';
         inputNome.placeholder = 'Digite seu nome completo';
-        nomeFantasia.required = false;
-        contratoSocial.required = false;
-        rg.required = true;
-        dataNascimento.required = true;
+        if (nomeFantasia) nomeFantasia.required = false;
+        if (contratoSocial) contratoSocial.required = false;
+        if (rg) rg.required = true;
+        if (dataNascimento) dataNascimento.required = true;
     }
 }
 
 // File Upload Listener
 document.addEventListener('DOMContentLoaded', function() {
-    const fileInput = document.getElementById('contratoSocial');
-    const fileWrapper = document.querySelector('.file-upload-wrapper');
-    const fileInfo = document.querySelector('.file-upload-info');
-
-    if (fileInput) {
-        fileInput.addEventListener('change', function(e) {
-            if (this.files && this.files.length > 0) {
-                const fileName = this.files[0].name;
-                fileInfo.innerText = `Arquivo selecionado: ${fileName}`;
-                fileWrapper.classList.add('file-selected');
-            } else {
-                fileInfo.innerText = 'Clique para selecionar o arquivo';
-                fileWrapper.classList.remove('file-selected');
-            }
-        });
+    // Set minimum date for installation (tomorrow)
+    const dateInput = document.getElementById('data_instalacao');
+    if (dateInput) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const minDate = tomorrow.toISOString().split('T')[0];
+        dateInput.setAttribute('min', minDate);
     }
+
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    
+    fileInputs.forEach(input => {
+        const wrapper = input.closest('.file-upload-wrapper');
+        const info = wrapper ? wrapper.querySelector('.file-upload-info') : null;
+
+        if (input) {
+            input.addEventListener('change', function(e) {
+                if (this.files && this.files.length > 0) {
+                    const fileName = this.files[0].name;
+                    if (info) info.innerText = `Arquivo selecionado: ${fileName}`;
+                    if (wrapper) wrapper.classList.add('file-selected');
+                } else {
+                    if (info) info.innerText = 'Clique para selecionar o arquivo';
+                    if (wrapper) wrapper.classList.remove('file-selected');
+                }
+            });
+        }
+    });
 });
 
 // CEP Lookup logic
@@ -157,42 +169,106 @@ function updateMapPreview() {
 
 // Plan Change logic
 const planDetails = {
-    essencial: {
-        desc: "R$ 59,99/mês (até o vencimento)<br>R$ 79,99/mês (após vencimento)<br>Instalação em até 48h<br>Permanência 12 meses",
-        opcional: "Deseja alugar roteador Wi-Fi por R$ 10,00/mês?"
+    // Muqui e Piúma
+    muqui_piuma: {
+        essencial: {
+            name: "Plano Essencial – 100 MEGA",
+            desc: "R$ 59,99/mês (até o vencimento)<br>R$ 79,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Sem roteador incluso",
+            opcional: "Deseja alugar roteador Wi-Fi por R$ 10,00/mês?"
+        },
+        rapido: {
+            name: "Plano Rápido – 300 MEGA",
+            desc: "R$ 89,99/mês (até o vencimento)<br>R$ 109,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi 5Ghz incluso"
+        },
+        turbo: {
+            name: "Plano Turbo – 500 MEGA",
+            desc: "R$ 99,99/mês (até o vencimento)<br>R$ 119,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi 5Ghz incluso"
+        },
+        "1giga": {
+            name: "Plano 1 GIGA Fibramar",
+            desc: "R$ 149,99/mês (até o vencimento)<br>R$ 169,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Wi-Fi 6 incluso",
+            opcional: "Deseja Repetidor Mesh por apenas R$ 29,99/mês?"
+        }
     },
-    rapido: {
-        desc: "R$ 79,99/mês* (até o vencimento)<br>R$ 99,99/mês* (após vencimento)<br>Super Wi-Fi 5Ghz incluso<br>Permanência 12 meses",
-        opcional: null
+    // Mimoso
+    mimoso: {
+        essencial: {
+            name: "Plano Essencial – 240 MEGA",
+            desc: "R$ 59,99/mês (até o vencimento)<br>R$ 79,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Sem roteador incluso",
+            opcional: "Deseja alugar roteador Wi-Fi por R$ 10,00/mês?"
+        },
+        plano_300: {
+            name: "Plano 300 Mega",
+            desc: "R$ 69,99/mês<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi incluso"
+        },
+        rapido: {
+            name: "Plano Rápido – 400 MEGA",
+            desc: "R$ 79,99/mês (até o vencimento)<br>R$ 99,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi 5Ghz incluso"
+        },
+        turbo: {
+            name: "Plano Turbo – 500 MEGA",
+            desc: "R$ 99,99/mês (até o vencimento)<br>R$ 119,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi 5Ghz incluso"
+        },
+        ultra: {
+            name: "Plano Ultra – 600 MEGA",
+            desc: "R$ 119,99/mês (até o vencimento)<br>R$ 139,99/mês (após vencimento)<br>Watch TV, Paramount+, Qualifica, Mediquo e McAfee inclusos"
+        },
+        plano_700: {
+            name: "Plano 700 Mega",
+            desc: "R$ 89,99/mês<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi + Qualifica App incluso"
+        },
+        "1giga": {
+            name: "Plano 1 GIGA Fibramar",
+            desc: "R$ 149,99/mês (até o vencimento)<br>R$ 169,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Wi-Fi 6 incluso",
+            opcional: "Deseja Repetidor Mesh por apenas R$ 29,99/mês?"
+        }
     },
-    turbo: {
-        desc: "R$ 99,99/mês* (até o vencimento)<br>R$ 119,99/mês* (após vencimento)<br>Ideal para gamers e streamers<br>Super Wi-Fi 5Ghz incluso<br>Permanência 12 meses",
-        opcional: null
-    },
-    ultra: {
-        desc: "R$ 119,99/mês* (até o vencimento)<br>R$ 139,99/mês* (após vencimento)<br>Watch TV, Paramount, Qualifica, Mediquo e McAfee inclusos<br>Permanência 12 meses",
-        opcional: null
-    },
-    "1giga": {
-        desc: "R$ 149,99 (até o vencimento)<br>R$ 169,99 (valor normal)<br>Wi-Fi 6 incluso 🚀<br>Contrato 12 meses",
-        opcional: "Deseja Repetidor Mesh por apenas R$ 29,99 mensais?"
+    // Padrão (Maricá e outros)
+    default: {
+        essencial: {
+            name: "Plano Essencial – 240 MEGA",
+            desc: "R$ 59,99/mês (até o vencimento)<br>R$ 79,99/mês (após vencimento)<br>Contrato 12 meses",
+            opcional: "Deseja alugar roteador Wi-Fi por R$ 10,00/mês?"
+        },
+        rapido: {
+            name: "Plano Rápido - 400 Mega",
+            desc: "R$ 79,99/mês* (até o vencimento)<br>R$ 99,99/mês* (após vencimento)<br>Super Wi-Fi 5Ghz incluso"
+        },
+        turbo: {
+            name: "Plano Turbo - 500 Mega",
+            desc: "R$ 99,99/mês* (até o vencimento)<br>R$ 119,99/mês* (após vencimento)<br>Super Wi-Fi 5Ghz incluso"
+        },
+        ultra: {
+            name: "Plano Ultra + Benefícios - 600 Mega",
+            desc: "R$ 119,99/mês* (até o vencimento)<br>R$ 139,99/mês* (após vencimento)<br>Watch TV, Paramount, Qualifica, Mediquo e McAfee inclusos"
+        },
+        "1giga": {
+            name: "Plano Novo – 1 GIGA",
+            desc: "R$ 149,99 (até o vencimento)<br>R$ 169,99 (valor normal)<br>Wi-Fi 6 incluso 🚀",
+            opcional: "Deseja Repetidor Mesh por apenas R$ 29,99 mensais?"
+        }
     }
 };
 
 function handlePlanChange() {
+    const city = document.getElementById('cidade').value;
     const plan = document.getElementById('plano').value;
     const detailsBox = document.getElementById('planDetails');
     const descDiv = document.getElementById('planDescription');
     const opcionalGroup = document.getElementById('opcionaisGroup');
     const opcionalLabel = document.getElementById('opcionalLabel');
 
-    if (plan && planDetails[plan]) {
+    let cityPlans = planDetails.default;
+    if (city === 'muqui' || city === 'piuma') cityPlans = planDetails.muqui_piuma;
+    else if (city === 'mimoso') cityPlans = planDetails.mimoso;
+
+    if (plan && cityPlans[plan]) {
         detailsBox.style.display = 'block';
-        descDiv.innerHTML = `<strong>Detalhes do Plano:</strong><br>${planDetails[plan].desc}`;
+        descDiv.innerHTML = `<strong>Detalhes do Plano:</strong><br>${cityPlans[plan].desc}`;
         
-        if (planDetails[plan].opcional) {
+        if (cityPlans[plan].opcional) {
             opcionalGroup.style.display = 'block';
-            opcionalLabel.innerText = planDetails[plan].opcional;
+            opcionalLabel.innerText = cityPlans[plan].opcional;
         } else {
             opcionalGroup.style.display = 'none';
         }
@@ -221,26 +297,74 @@ document.getElementById('rg').addEventListener('input', function(e) {
 // Navigation logic
 let currentStep = 1;
 
+function nextStep(step) {
+    const city = document.getElementById('cidade').value;
+    
+    if (!validateStep(currentStep)) return;
+
+    // Skip Step 4 (Documents) for Maricá and Minas Gerais
+    if (step === 4 && (city === 'marica' || city === 'minas_gerais')) {
+        showStep(5);
+        return;
+    }
+
+    showStep(step);
+}
+
+function prevStep(step) {
+    const city = document.getElementById('cidade').value;
+
+    // Skip Step 4 (Documents) when going back from 5 for Maricá and Minas Gerais
+    if (step === 4 && (city === 'marica' || city === 'minas_gerais')) {
+        showStep(3);
+        return;
+    }
+
+    showStep(step);
+}
+
 function showStep(step) {
+    const city = document.getElementById('cidade').value;
+    const isSpecialCity = (city === 'marica' || city === 'minas_gerais');
+    
+    // Toggle required status for Step 4 fields based on city
+    const step4Inputs = document.getElementById('step4').querySelectorAll('input[type="file"]');
+    step4Inputs.forEach(input => {
+        if (isSpecialCity) {
+            input.required = false;
+            input.classList.remove('required-field');
+        } else {
+            // Re-enable required if not special city, except for comprovante if termo is checked
+            if (input.name === 'comprovante_residencia') {
+                const levarTermo = document.getElementById('levar_termo');
+                input.required = !(levarTermo && levarTermo.checked);
+            } else {
+                input.required = true;
+            }
+        }
+    });
+
     document.querySelectorAll('.form-step').forEach(s => s.classList.remove('active'));
     document.getElementById(`step${step}`).classList.add('active');
     
     // Update progress bar
-    const progress = document.getElementById('progress');
-    progress.style.width = `${(step / 5) * 100}%`;
+    const totalSteps = 6;
+    let progressWidth = (step / totalSteps) * 100;
     
-    if (step === 5) {
+    // Visual adjustment for skipped step in progress bar
+    if (isSpecialCity && step >= 5) {
+        progressWidth = ((step) / totalSteps) * 100;
+    }
+
+    const progress = document.getElementById('progress');
+    if (progress) progress.style.width = `${progressWidth}%`;
+    
+    if (step === 6) {
         populateSummary();
     }
     
     currentStep = step;
     window.scrollTo(0, 0);
-}
-
-function nextStep(step) {
-    if (validateStep(currentStep)) {
-        showStep(step);
-    }
 }
 
 function populateSummary() {
@@ -251,26 +375,37 @@ function populateSummary() {
     let html = '';
     
     const sections = {
-        'DADOS CADASTRAIS': { fields: ['documento', 'tipoPessoa', 'nome', 'nomeFantasia', 'rg', 'inscricaoEstadual', 'contratoSocial', 'dataNascimento', 'email', 'telefone'], step: 1 },
+        'DADOS CADASTRAIS': { fields: ['documento', 'tipoPessoa', 'nome_razao', 'nome_fantasia', 'rg', 'inscricao_estadual', 'data_nascimento', 'email', 'telefone'], step: 1 },
         'ENDEREÇO': { fields: ['cep', 'cidade', 'bairro', 'endereco', 'google_maps_link', 'referencia'], step: 2 },
-        'PLANO E VENCIMENTO': { fields: ['plano', 'fidelidade', 'vencimento', 'opcional'], step: 3 },
-        'INSTALAÇÃO': { fields: ['pagamento_instalacao', 'data_instalacao', 'periodo_instalacao', 'origem'], step: 4 }
+        'PLANO E VENCIMENTO': { fields: ['plano', 'fidelidade', 'vencimento'], step: 3 },
+        'DOCUMENTOS': { fields: ['levar_termo', 'comprovante_residencia', 'foto_documento_frente', 'foto_documento_verso', 'selfie_documento'], step: 4 },
+        'INSTALAÇÃO': { fields: ['pagamento_instalacao', 'data_instalacao', 'periodo_instalacao', 'origem'], step: 5 }
     };
 
     const labels = {
-        documento: 'CPF/CNPJ', tipoPessoa: 'Tipo de Pessoa', nome: 'Nome/Razão Social', 
-        nomeFantasia: 'Nome Fantasia', rg: 'RG', 
-        inscricaoEstadual: 'Inscrição Estadual', contratoSocial: 'Arquivo Anexado',
-        dataNascimento: 'Data de Nascimento',
+        documento: 'CPF/CNPJ', tipoPessoa: 'Tipo de Pessoa', nome_razao: 'Nome/Razão Social', 
+        nome_fantasia: 'Nome Fantasia', rg: 'RG', 
+        inscricao_estadual: 'Inscrição Estadual', data_nascimento: 'Data de Nascimento',
         email: 'E-mail', telefone: 'Telefone', cep: 'CEP', cidade: 'Cidade',
         bairro: 'Bairro', endereco: 'Endereço', google_maps_link: 'Localização Google Maps',
         referencia: 'Referência',
         plano: 'Plano', fidelidade: 'Fidelidade', vencimento: 'Dia de Vencimento',
-        opcional: 'Opcional do Plano', pagamento_instalacao: 'Modo de Pagamento',
+        levar_termo: 'Levar Termo?',
+        comprovante_residencia: 'Comprovante de Residência',
+        foto_documento_frente: 'Foto Doc. (Frente)',
+        foto_documento_verso: 'Foto Doc. (Verso)',
+        selfie_documento: 'Selfie com Documento',
+        pagamento_instalacao: 'Modo de Pagamento',
         data_instalacao: 'Data Instalação', periodo_instalacao: 'Período', origem: 'Origem'
     };
 
+    const city = formData.get('cidade');
+    const isSpecialCity = (city === 'marica' || city === 'minas_gerais');
+
     for (const [section, config] of Object.entries(sections)) {
+        // Skip DOCUMENTOS section header for special cities
+        if (section === 'DOCUMENTOS' && isSpecialCity) continue;
+
         html += `
             <div class="summary-section-header">
                 <span>${section}</span>
@@ -281,12 +416,13 @@ function populateSummary() {
             let value = formData.get(field);
             
             // Especial para arquivos
-            if (field === 'contratoSocial') {
-                const fileInput = document.getElementById('contratoSocial');
+            const fileFields = ['comprovante_residencia', 'foto_documento_frente', 'foto_documento_verso', 'selfie_documento'];
+            if (fileFields.includes(field)) {
+                const fileInput = document.getElementsByName(field)[0];
                 value = (fileInput && fileInput.files && fileInput.files.length > 0) ? `📎 ${fileInput.files[0].name}` : null;
             }
 
-            if (!value) return;
+            if (!value && field !== 'levar_termo') return;
 
             // Especial para links de mapa
             if (field === 'google_maps_link') {
@@ -294,29 +430,25 @@ function populateSummary() {
             }
 
             // Formatação amigável
-            if (field === 'tipoPessoa') {
-                value = value === 'pf' ? 'Pessoa Física' : 'Pessoa Jurídica';
-            }
+            if (field === 'tipoPessoa') value = value === 'pf' ? 'Pessoa Física' : 'Pessoa Jurídica';
+            if (field === 'levar_termo') value = value ? 'Sim' : 'Não (Vou anexar comprovante)';
+            
             if (field === 'cidade') {
-                const cityMap = { marica: 'Maricá', minas_gerais: 'Minas Gerais', outra: 'Outra' };
+                const cityMap = { 
+                    marica: 'Maricá - RJ', muqui: 'Muqui - ES', piuma: 'Piúma - ES', 
+                    mimoso: 'Mimoso do Sul - ES', cabo_frio: 'Cabo Frio - RJ', 
+                    unamar: 'Unamar - RJ', sao_paulo: 'São Paulo - SP', outra: 'Outra' 
+                };
                 value = cityMap[value] || value;
             }
             if (field === 'plano') {
-                const planMap = { 
-                    essencial: 'Plano Essencial – 240 MEGA', 
-                    rapido: 'Plano Rápido - 400 Mega',
-                    turbo: 'Plano Turbo - 500 Mega',
-                    ultra: 'Plano Ultra - 600 Mega',
-                    '1giga': 'Plano Novo – 1 GIGA'
-                };
-                value = planMap[value] || value;
+                let cityPlans = planDetails.default;
+                if (city === 'muqui' || city === 'piuma') cityPlans = planDetails.muqui_piuma;
+                else if (city === 'mimoso') cityPlans = planDetails.mimoso;
+                value = cityPlans[value] ? cityPlans[value].name : value;
             }
-            if (field === 'fidelidade' || field === 'opcional') {
-                value = value === 'sim' ? 'Sim' : 'Não';
-            }
-            if (field === 'periodo_instalacao') {
-                value = value === 'manha' ? 'Manhã' : 'Tarde';
-            }
+            if (field === 'fidelidade') value = value === 'sim' ? 'Sim (12 meses)' : 'Não';
+            if (field === 'periodo_instalacao') value = value === 'manha' ? 'Manhã' : 'Tarde';
             if (field === 'data_instalacao') {
                 const parts = value.split('-');
                 if (parts.length === 3) value = `${parts[2]}/${parts[1]}/${parts[0]}`;
@@ -324,7 +456,7 @@ function populateSummary() {
 
             html += `
                 <div class="summary-item">
-                    <span class="summary-label">${labels[field]}:</span>
+                    <span class="summary-label">${labels[field] || field}:</span>
                     <span class="summary-value">${value}</span>
                 </div>
             `;
@@ -332,110 +464,159 @@ function populateSummary() {
     }
 
     // Financeiro
-    if (formData.get('cidade') === 'marica') {
-        const isFidelidade = formData.get('fidelidade') === 'sim';
-        const price = isFidelidade ? 'R$ 100,00' : 'R$ 460,00';
-        html += `
-            <div class="summary-section-header">RESUMO FINANCEIRO</div>
-            <div class="summary-item">
-                <span class="summary-label">Valor da Instalação:</span>
-                <span class="summary-value fw-bold text-success">${price}</span>
-            </div>
-        `;
+    const isFidelidade = formData.get('fidelidade') === 'sim';
+    let price = '';
+    
+    if (city === 'marica') {
+        price = isFidelidade ? 'R$ 100,00' : 'R$ 460,00';
+    } else {
+        price = isFidelidade ? 'GRÁTIS' : 'R$ 360,00';
     }
+
+    html += `
+        <div class="summary-section-header">RESUMO FINANCEIRO</div>
+        <div class="summary-item">
+            <span class="summary-label">Valor da Instalação:</span>
+            <span class="summary-value fw-bold text-success">${price}</span>
+        </div>
+    `;
 
     summary.innerHTML = html;
 }
 
-function prevStep(step) {
-    showStep(step);
-}
+
 
 function validateStep(step) {
-    const inputs = document.getElementById(`step${step}`).querySelectorAll('input[required], select[required], textarea[required]');
+    const inputs = document.getElementById(`step${step}`).querySelectorAll('input[required], select[required], textarea[required], input[min]');
     let valid = true;
     inputs.forEach(input => {
-        if (!input.value) {
+        if (!input.value || !input.checkValidity()) {
             input.style.borderColor = 'red';
             valid = false;
+            
+            // Show specific message for date if invalid
+            if (input.id === 'data_instalacao' && input.validity.rangeUnderflow) {
+                showNotify('A data de instalação deve ser a partir de amanhã.', 'warning');
+            }
         } else {
             input.style.borderColor = '#ddd';
         }
     });
 
-    if (!valid) {
-        showNotify('Por favor, preencha todos os campos obrigatórios.', 'warning');
+    if (!valid && !document.querySelector('.toast.show')) {
+        showNotify('Por favor, preencha todos os campos corretamente.', 'warning');
     }
     return valid;
 }
 
-// Logic for Maricá and MG
+// Logic for Cities
 function handleCityChange() {
     const city = document.getElementById('cidade').value;
-    const fidelidadeGroup = document.getElementById('fidelidadeGroup');
     const installationInfo = document.getElementById('installationInfo');
-    const vencimentoSelect = document.getElementById('vencimento');
+    const termoOption = document.getElementById('termo_option');
 
-    // Show/Hide installation info based on city
-    if (city === 'marica') {
-        installationInfo.style.display = 'block';
-        calculateInstallation();
-    } else {
-        installationInfo.style.display = 'none';
+    // Update Plans list based on city
+    updatePlanOptions(city);
+
+    // Show/Hide installation info
+    installationInfo.style.display = 'block';
+    calculateInstallation();
+
+    // Show/Hide Termo option (Unamar, Cabo Frio, SP)
+    const canLevarTermo = ['cabo_frio', 'unamar', 'sao_paulo'].includes(city);
+    if (termoOption) {
+        termoOption.style.display = canLevarTermo ? 'block' : 'none';
+    }
+    if (!canLevarTermo) {
+        const levarTermoInput = document.getElementById('levar_termo');
+        if (levarTermoInput) levarTermoInput.checked = false;
+        toggleComprovanteUpload();
     }
 
     // Update Vencimento options
     updateVencimentoOptions(city);
 }
 
+function updatePlanOptions(city) {
+    const planoSelect = document.getElementById('plano');
+    if (!planoSelect) return;
+    const currentVal = planoSelect.value;
+    planoSelect.innerHTML = '<option value="">Selecione um plano...</option>';
+
+    let cityPlans = planDetails.default;
+    if (city === 'muqui' || city === 'piuma') cityPlans = planDetails.muqui_piuma;
+    else if (city === 'mimoso') cityPlans = planDetails.mimoso;
+
+    for (const [key, plan] of Object.entries(cityPlans)) {
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = plan.name;
+        planoSelect.appendChild(opt);
+    }
+    
+    if (cityPlans[currentVal]) planoSelect.value = currentVal;
+    handlePlanChange();
+}
+
+function toggleComprovanteUpload() {
+    const levarTermoInput = document.getElementById('levar_termo');
+    const isLevarTermo = levarTermoInput ? levarTermoInput.checked : false;
+    const uploadWrapper = document.getElementById('comprovante_upload_wrapper');
+    const input = document.getElementById('comprovante_residencia');
+    
+    if (uploadWrapper && input) {
+        if (isLevarTermo) {
+            uploadWrapper.style.opacity = '0.5';
+            uploadWrapper.style.pointerEvents = 'none';
+            input.required = false;
+        } else {
+            uploadWrapper.style.opacity = '1';
+            uploadWrapper.style.pointerEvents = 'auto';
+            input.required = true;
+        }
+    }
+}
+
 function calculateInstallation() {
     const city = document.getElementById('cidade').value;
-    const isFidelidade = document.querySelector('input[name="fidelidade"]:checked').value === 'sim';
+    const fidInput = document.querySelector('input[name="fidelidade"]:checked');
+    if (!fidInput) return;
+    
+    const isFidelidade = fidInput.value === 'sim';
     const installPriceSpan = document.getElementById('installPrice');
 
     if (city === 'marica') {
         const price = isFidelidade ? 100 : 460;
         installPriceSpan.innerText = `R$ ${price.toFixed(2).replace('.', ',')}`;
+    } else if (city) {
+        const price = isFidelidade ? 0 : 360;
+        installPriceSpan.innerText = isFidelidade ? 'GRÁTIS' : `R$ ${price.toFixed(2).replace('.', ',')}`;
     }
 }
 
 function updateVencimentoOptions(city) {
     const vencimentoSelect = document.getElementById('vencimento');
     const vencimentoIdInfo = document.getElementById('vencimentoIdInfo');
+    if (!vencimentoSelect) return;
     vencimentoSelect.innerHTML = '<option value="">Selecione o vencimento</option>';
-    vencimentoIdInfo.innerText = '';
+    if (vencimentoIdInfo) vencimentoIdInfo.innerText = '';
 
     const today = new Date().getDate();
     let options = [];
 
+    // Maricá e Minas Gerais (Antiga lógica)
     if (city === 'marica' || city === 'minas_gerais') {
-        // Specific logic for Maricá and MG
         if (today >= 2 && today <= 10) {
-            options = [
-                { day: '03', id: '107' },
-                { day: '06', id: '91' },
-                { day: '09', id: '106' }
-            ];
+            options = [{ day: '03', id: '107' }, { day: '06', id: '91' }, { day: '09', id: '106' }];
         } else if (today >= 11 && today <= 20) {
-            options = [
-                { day: '13', id: '105' },
-                { day: '18', id: '93' }
-            ];
-        } else { // 21 to 1
-            options = [
-                { day: '22', id: '160' },
-                { day: '26', id: '161' },
-                { day: '01', id: '159' }
-            ];
+            options = [{ day: '13', id: '105' }, { day: '18', id: '93' }];
+        } else {
+            options = [{ day: '22', id: '160' }, { day: '26', id: '161' }, { day: '01', id: '159' }];
         }
     } else {
-        // Default options for other cities
-        options = [
-            { day: '05', id: 'DEFAULT' },
-            { day: '10', id: 'DEFAULT' },
-            { day: '15', id: 'DEFAULT' },
-            { day: '20', id: 'DEFAULT' }
-        ];
+        // Novas Regiões (1, 3, 6, 7, 9, 13, 18)
+        const days = ['01', '03', '06', '07', '09', '13', '18'];
+        options = days.map(d => ({ day: d, id: 'IXC' }));
     }
 
     options.forEach(opt => {
@@ -445,15 +626,6 @@ function updateVencimentoOptions(city) {
         el.textContent = `Dia ${opt.day}`;
         vencimentoSelect.appendChild(el);
     });
-
-    vencimentoSelect.onchange = function() {
-        const selected = vencimentoSelect.options[vencimentoSelect.selectedIndex];
-        if (selected.dataset.id && selected.dataset.id !== 'DEFAULT') {
-            vencimentoIdInfo.innerText = `ID Interno: ${selected.dataset.id}`;
-        } else {
-            vencimentoIdInfo.innerText = '';
-        }
-    };
 }
 
 // Form submission

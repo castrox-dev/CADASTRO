@@ -330,7 +330,7 @@ pre {
 
 /* Summary Review Styles */
 .summary-section-header {
-    background: #f8f9fa;
+    background: var(--table-header);
     padding: 12px 15px;
     border-radius: 8px;
     margin: 25px 0 12px;
@@ -338,9 +338,11 @@ pre {
     justify-content: space-between;
     align-items: center;
     font-weight: 700;
-    color: var(--primary-color);
-    border-left: 5px solid var(--secondary-color);
-    box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+    color: var(--secondary-color);
+    border-left: 4px solid var(--secondary-color);
+    box-shadow: var(--shadow);
+    font-size: 13px;
+    text-transform: uppercase;
 }
 
 .btn-edit {
@@ -405,6 +407,93 @@ pre {
 .stats-card .label {
     font-size: 11px;
     letter-spacing: 0.5px;
+}
+
+/* File Upload Styles */
+.file-upload-wrapper {
+    position: relative;
+    border: 2px dashed var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 25px 15px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: var(--input-bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 120px;
+    width: 100%;
+}
+
+.file-upload-wrapper:hover {
+    border-color: var(--secondary-color);
+    background: rgba(255, 107, 0, 0.04);
+}
+
+.file-upload-wrapper input[type="file"] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0 !important;
+    cursor: pointer;
+    z-index: 10;
+    font-size: 0; /* Hide potential browser text remnants */
+}
+
+.file-upload-info {
+    font-size: 13px;
+    color: var(--text-muted);
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.4;
+}
+
+.file-upload-info::before {
+    content: '\F3D1'; /* bi-cloud-arrow-up */
+    font-family: 'bootstrap-icons';
+    font-size: 28px;
+    margin-bottom: 12px;
+    color: var(--secondary-color);
+    transition: transform 0.3s ease;
+}
+
+.file-upload-wrapper:hover .file-upload-info::before {
+    transform: translateY(-3px);
+}
+
+.file-selected {
+    border-color: var(--success);
+    background: rgba(0, 184, 148, 0.05);
+    border-style: solid;
+}
+
+.file-selected .file-upload-info {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.file-selected .file-upload-info::before {
+    content: '\F26E'; /* bi-check-circle-fill */
+    color: var(--success);
+}
+
+/* Custom styles for labels and spacing */
+.form-group label {
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    display: block;
+}
+
+/* Document Grid in Step 4 */
+#step4 .row {
+    margin-bottom: 15px;
 }
 
 /* Responsive */

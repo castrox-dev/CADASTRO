@@ -31,7 +31,7 @@
             <p class="text-muted small mb-0">Preencha os dados abaixo para iniciar sua solicitação.</p>
             
             <div class="progress-bar-fibramar mt-4">
-                <div class="progress-fill" id="progress" style="width: 20%;"></div>
+                <div class="progress-fill" id="progress" style="width: 16.6%;"></div>
             </div>
         </div>
 
@@ -126,8 +126,14 @@
                                 <label>CIDADE *</label>
                                 <select id="cidade" name="cidade" class="form-select form-control-premium" required onchange="handleCityChange()">
                                     <option value="">Selecione...</option>
-                                    <option value="marica">Maricá</option>
-                                    <option value="minas_gerais">Minas Gerais</option>
+                                    <option value="marica">Maricá - RJ</option>
+                                    <option value="minas_gerais">Minas Gerais - MG</option>
+                                    <option value="muqui">Muqui - ES</option>
+                                    <option value="piuma">Piúma - ES</option>
+                                    <option value="mimoso">Mimoso do Sul - ES</option>
+                                    <option value="cabo_frio">Cabo Frio - RJ</option>
+                                    <option value="unamar">Unamar - RJ</option>
+                                    <option value="sao_paulo">São Paulo - SP</option>
                                     <option value="outra">Outra Cidade</option>
                                 </select>
                             </div>
@@ -189,12 +195,7 @@
                     <div class="form-group mb-3">
                         <label>PLANO DESEJADO *</label>
                         <select id="plano" name="plano" class="form-select form-control-premium" required onchange="handlePlanChange()">
-                            <option value="">Selecione um plano...</option>
-                            <option value="essencial">📱 Plano Essencial – 240 MEGA</option>
-                            <option value="rapido">🚀 Plano Rápido - 400 Mega</option>
-                            <option value="turbo">⚡️ Plano Turbo - 500 Mega</option>
-                            <option value="ultra">🔥 Plano Ultra + Benefícios - 600 Mega</option>
-                            <option value="1giga">✨ Plano Novo – 1 GIGA</option>
+                            <option value="">Selecione a cidade primeiro...</option>
                         </select>
                     </div>
 
@@ -217,10 +218,10 @@
                         <label class="small fw-bold d-block mb-2">ACEITA FIDELIDADE DE 12 MESES? *</label>
                         <div class="btn-group w-100" role="group">
                             <input type="radio" class="btn-check" name="fidelidade" id="fid_sim" value="sim" checked onchange="calculateInstallation()">
-                            <label class="btn btn-outline-fibramar py-2" for="fid_sim">Sim, aceito</label>
+                            <label class="btn btn-outline-fibramar py-2" for="fid_sim">Sim (12 meses)</label>
                             
                             <input type="radio" class="btn-check" name="fidelidade" id="fid_nao" value="nao" onchange="calculateInstallation()">
-                            <label class="btn btn-outline-fibramar py-2" for="fid_nao">Não aceito</label>
+                            <label class="btn btn-outline-fibramar py-2" for="fid_nao">Não</label>
                         </div>
                     </div>
 
@@ -232,12 +233,12 @@
                     </div>
 
                     <div class="form-group mb-3">
-                        <label>DATA DE VENCIMENTO *</label>
+                        <label>DIA DE VENCIMENTO *</label>
                         <select id="vencimento" name="vencimento" class="form-select form-control-premium" required>
-                            <option value="">Selecione a cidade primeiro</option>
+                            <option value="">Selecione a cidade...</option>
                         </select>
                         <input type="hidden" name="vencimento_id" id="vencimento_id_hidden">
-                        <div id="vencimentoIdInfo" class="small text-orange fw-bold mt-1"></div>
+                        <div id="vencimentoIdInfo" class="small text-muted mt-1"></div>
                     </div>
                 </div>
 
@@ -247,10 +248,64 @@
                 </div>
             </div>
 
-            <!-- Step 4: Instalação -->
+            <!-- Step 4: Documentação -->
             <div class="form-step" id="step4">
                 <div class="mb-4">
-                    <h6 class="text-uppercase small fw-bold text-muted mb-3">4. Agendamento</h6>
+                    <h6 class="text-uppercase small fw-bold text-muted mb-3">4. Documentação Obrigatória</h6>
+                    
+                    <div id="docs_comprovante_residencia" class="mb-3">
+                        <label class="small fw-bold mb-2">1. COMPROVANTE DE RESIDÊNCIA *</label>
+                        <div id="termo_option" style="display:none;" class="mb-2">
+                            <div class="form-check form-switch p-0 ms-4">
+                                <input class="form-check-input" type="checkbox" id="levar_termo" name="levar_termo" onchange="toggleComprovanteUpload()">
+                                <label class="form-check-label small" for="levar_termo">Prefiro levar o termo (disponível nesta região)</label>
+                            </div>
+                        </div>
+                        <div id="comprovante_upload_wrapper" class="file-upload-wrapper">
+                            <input type="file" id="comprovante_residencia" name="comprovante_residencia" accept="image/*,.pdf">
+                            <div class="file-upload-info">Anexar comprovante de residência (legível e no nome do titular)</div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="small fw-bold mb-2">2. FOTO DOC. (FRENTE) *</label>
+                            <div class="file-upload-wrapper">
+                                <input type="file" name="foto_documento_frente" accept="image/*" required>
+                                <div class="file-upload-info">RG ou CNH (Frente)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="small fw-bold mb-2">3. FOTO DOC. (VERSO) *</label>
+                            <div class="file-upload-wrapper">
+                                <input type="file" name="foto_documento_verso" accept="image/*" required>
+                                <div class="file-upload-info">RG ou CNH (Verso)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="small fw-bold mb-2">4. SELFIE COM DOCUMENTO *</label>
+                        <div class="file-upload-wrapper">
+                            <input type="file" name="selfie_documento" accept="image/*" required>
+                            <div class="file-upload-info">Selfie segurando o documento (RG ou CNH)</div>
+                        </div>
+                        <p class="text-muted" style="font-size: 0.7rem; margin-top: 5px;">
+                            <i class="bi bi-info-circle me-1"></i> Garanta boa iluminação e que os dados fiquem visíveis.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between">
+                    <button type="button" class="btn-outline-fibramar" onclick="prevStep(3)">Voltar</button>
+                    <button type="button" class="btn-fibramar px-5" onclick="nextStep(5)">Próximo Passo</button>
+                </div>
+            </div>
+
+            <!-- Step 5: Agendamento -->
+            <div class="form-step" id="step5">
+                <div class="mb-4">
+                    <h6 class="text-uppercase small fw-bold text-muted mb-3">5. Agendamento</h6>
                     
                     <div class="form-group mb-3">
                         <label>PAGAMENTO DA INSTALAÇÃO *</label>
@@ -259,6 +314,7 @@
                             <option value="pix">PIX (Mais rápido)</option>
                             <option value="dinheiro">Dinheiro</option>
                             <option value="cartao">Cartão de Crédito/Débito</option>
+                            <option value="gratis">Instalação Grátis (Fidelidade)</option>
                         </select>
                     </div>
 
@@ -266,7 +322,7 @@
                         <div class="col-md-7 mb-3">
                             <div class="form-group">
                                 <label>DATA PARA INSTALAÇÃO *</label>
-                                <input type="date" name="data_instalacao" class="form-control form-control-premium" required>
+                                <input type="date" id="data_instalacao" name="data_instalacao" class="form-control form-control-premium" required>
                             </div>
                         </div>
                         <div class="col-md-5 mb-3">
@@ -287,22 +343,22 @@
                 </div>
 
                 <div class="d-flex justify-content-between">
-                    <button type="button" class="btn-outline-fibramar" onclick="prevStep(3)">Voltar</button>
-                    <button type="button" class="btn-fibramar px-5" onclick="nextStep(5)">Revisar Dados</button>
+                    <button type="button" class="btn-outline-fibramar" onclick="prevStep(4)">Voltar</button>
+                    <button type="button" class="btn-fibramar px-5" onclick="nextStep(6)">Revisar Dados</button>
                 </div>
             </div>
 
-            <!-- Step 5: Confirmação -->
-            <div class="form-step" id="step5">
+            <!-- Step 6: Confirmação -->
+            <div class="form-step" id="step6">
                 <div class="mb-4">
-                    <h6 class="text-uppercase small fw-bold text-muted mb-3">5. Revisão Final</h6>
+                    <h6 class="text-uppercase small fw-bold text-muted mb-3">6. Revisão Final</h6>
                     <div id="confirmationSummary" class="bg-light rounded-4 p-3 border">
                         <!-- Preenchido via JS -->
                     </div>
                 </div>
 
                 <div class="d-flex justify-content-between align-items-center">
-                    <button type="button" class="btn-outline-fibramar" onclick="prevStep(4)">Corrigir</button>
+                    <button type="button" class="btn-outline-fibramar" onclick="prevStep(5)">Corrigir</button>
                     <button type="submit" class="btn-fibramar px-5">Enviar Cadastro</button>
                 </div>
             </div>

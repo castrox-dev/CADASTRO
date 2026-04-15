@@ -11,4 +11,5 @@ urlpatterns = [
     path('cadastro/<int:pk>/', views.cadastro_detail, name='cadastro_detail'),
     path('cadastro/<int:pk>/update-status/', views.update_status, name='update_status'),
     path('cadastro/<int:pk>/delete/', views.delete_cadastro, name='delete_cadastro'),
+    path('cadastro/<int:pk>/send-ixc/', views.send_to_ixc, name='send_to_ixc'),
 ]

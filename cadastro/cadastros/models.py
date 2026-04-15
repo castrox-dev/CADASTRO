@@ -29,6 +29,13 @@ class Cadastro(models.Model):
     data_nascimento = models.DateField(blank=True, null=True)
     contrato_social = models.FileField(upload_to='contratos/', blank=True, null=True)
     
+    # Documentos Adicionais
+    comprovante_residencia = models.FileField(upload_to='comprovantes/', blank=True, null=True)
+    foto_documento_frente = models.FileField(upload_to='documentos/', blank=True, null=True)
+    foto_documento_verso = models.FileField(upload_to='documentos/', blank=True, null=True)
+    selfie_documento = models.FileField(upload_to='selfies/', blank=True, null=True)
+    levar_termo = models.BooleanField(default=False) # Opção para Unamar/Cabo Frio/SP
+    
     # Contato
     email = models.EmailField()
     telefone = models.CharField(max_length=20)
@@ -69,7 +76,9 @@ class Cadastro(models.Model):
             'rapido': '400 MEGA',
             'turbo': '500 MEGA',
             'ultra': '600 MEGA',
-            '1giga': '1 GIGA'
+            '1giga': '1 GIGA',
+            'plano_300': '300 MEGA',
+            'plano_700': '700 MEGA'
         }
         return planos_nomes.get(self.plano, self.plano)
 
@@ -83,7 +92,9 @@ class Cadastro(models.Model):
             'rapido': '400 MEGA',
             'turbo': '500 MEGA',
             'ultra': '600 MEGA',
-            '1giga': '1 GIGA'
+            '1giga': '1 GIGA',
+            'plano_300': '300 MEGA',
+            'plano_700': '700 MEGA'
         }
         plano_label = planos_nomes.get(self.plano, self.plano)
         
@@ -92,7 +103,9 @@ class Cadastro(models.Model):
             'rapido': '79,99',
             'turbo': '99,99',
             'ultra': '119,99',
-            '1giga': '149,99'
+            '1giga': '149,99',
+            'plano_300': '69,99',
+            'plano_700': '89,99'
         }
         plano_valor = precos.get(self.plano, "0,00")
         
@@ -122,7 +135,9 @@ class Cadastro(models.Model):
             'rapido': '400 MEGA',
             'turbo': '500 MEGA',
             'ultra': '600 MEGA',
-            '1giga': '1 GIGA'
+            '1giga': '1 GIGA',
+            'plano_300': '300 MEGA',
+            'plano_700': '700 MEGA'
         }
         plano_display = planos_nomes.get(self.plano, self.plano)
 

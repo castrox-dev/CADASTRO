@@ -54,6 +54,12 @@
                                 <i class="bi bi-pencil-square me-2"></i> EDITAR NO SISTEMA
                             </a>
                             
+                            <hr class="my-4 opacity-10">
+
+                            <button id="btnSendIXC" class="btn btn-primary w-100 mb-2 d-flex align-items-center justify-content-center" onclick="sendToIXC({{ cadastro.pk }})">
+                                <i class="bi bi-send-check-fill me-2"></i> ENVIAR PARA IXC
+                            </button>
+                            
                             <button class="btn btn-danger w-100 mt-4 d-flex align-items-center justify-content-center" onclick="confirmDelete({{ cadastro.pk }})">
                                 <i class="bi bi-trash3-fill me-2"></i> EXCLUIR CADASTRO
                             </button>
@@ -81,20 +87,94 @@
                             </ul>
                             <div class="tab-content p-4 border-top" id="detailTabsContent">
                                 <div class="tab-pane fade show active" id="docs" role="tabpanel">
-                                    {% if cadastro.contrato_social %}
-                                    <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded border">
-                                        <div class="d-flex align-items-center">
-                                            <div class="me-3 fs-3 text-primary"><i class="bi bi-file-pdf"></i></div>
-                                            <div>
-                                                <h6 class="mb-0 fw-bold">Arquivo Anexado</h6>
-                                                <p class="text-muted small mb-0">Contrato ou Documentação Social</p>
+                                    <div class="row g-3">
+                                        {% if cadastro.contrato_social %}
+                                        <div class="col-md-6">
+                                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded border h-100">
+                                                <div class="d-flex align-items-center">
+                                                    <div class="me-3 fs-4 text-primary"><i class="bi bi-file-pdf"></i></div>
+                                                    <div>
+                                                        <h6 class="mb-0 fw-bold small">Contrato Social</h6>
+                                                        <p class="text-muted mb-0" style="font-size: 0.65rem;">Documentação PJ</p>
+                                                    </div>
+                                                </div>
+                                                <a href="{{ cadastro.contrato_social.url }}" target="_blank" class="btn btn-fibramar btn-sm p-1 px-2"><i class="bi bi-eye"></i></a>
                                             </div>
                                         </div>
-                                        <a href="{{ cadastro.contrato_social.url }}" target="_blank" class="btn btn-fibramar btn-sm d-flex align-items-center">
-                                            <i class="bi bi-eye me-2"></i> VISUALIZAR
-                                        </a>
+                                        {% endif %}
+
+                                        {% if cadastro.comprovante_residencia %}
+                                        <div class="col-md-6">
+                                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded border h-100">
+                                                <div class="d-flex align-items-center">
+                                                    <div class="me-3 fs-4 text-info"><i class="bi bi-house-door"></i></div>
+                                                    <div>
+                                                        <h6 class="mb-0 fw-bold small">Comprovante Residência</h6>
+                                                        <p class="text-muted mb-0" style="font-size: 0.65rem;">Titularidade</p>
+                                                    </div>
+                                                </div>
+                                                <a href="{{ cadastro.comprovante_residencia.url }}" target="_blank" class="btn btn-fibramar btn-sm p-1 px-2"><i class="bi bi-eye"></i></a>
+                                            </div>
+                                        </div>
+                                        {% elif cadastro.levar_termo %}
+                                        <div class="col-md-6">
+                                            <div class="d-flex align-items-center p-3 bg-warning bg-opacity-10 border border-warning rounded h-100">
+                                                <div class="me-3 fs-4 text-warning"><i class="bi bi-file-earmark-text"></i></div>
+                                                <div>
+                                                    <h6 class="mb-0 fw-bold small text-warning-emphasis">Levar Termo</h6>
+                                                    <p class="text-muted mb-0" style="font-size: 0.65rem;">Opção selecionada pelo cliente</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+
+                                        {% if cadastro.foto_documento_frente %}
+                                        <div class="col-md-6">
+                                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded border h-100">
+                                                <div class="d-flex align-items-center">
+                                                    <div class="me-3 fs-4 text-success"><i class="bi bi-person-vcard"></i></div>
+                                                    <div>
+                                                        <h6 class="mb-0 fw-bold small">Doc. Identificação (Frente)</h6>
+                                                        <p class="text-muted mb-0" style="font-size: 0.65rem;">RG / CNH</p>
+                                                    </div>
+                                                </div>
+                                                <a href="{{ cadastro.foto_documento_frente.url }}" target="_blank" class="btn btn-fibramar btn-sm p-1 px-2"><i class="bi bi-eye"></i></a>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+
+                                        {% if cadastro.foto_documento_verso %}
+                                        <div class="col-md-6">
+                                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded border h-100">
+                                                <div class="d-flex align-items-center">
+                                                    <div class="me-3 fs-4 text-success"><i class="bi bi-person-vcard-fill"></i></div>
+                                                    <div>
+                                                        <h6 class="mb-0 fw-bold small">Doc. Identificação (Verso)</h6>
+                                                        <p class="text-muted mb-0" style="font-size: 0.65rem;">RG / CNH</p>
+                                                    </div>
+                                                </div>
+                                                <a href="{{ cadastro.foto_documento_verso.url }}" target="_blank" class="btn btn-fibramar btn-sm p-1 px-2"><i class="bi bi-eye"></i></a>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+
+                                        {% if cadastro.selfie_documento %}
+                                        <div class="col-md-6">
+                                            <div class="d-flex align-items-center justify-content-between p-3 bg-light rounded border h-100">
+                                                <div class="d-flex align-items-center">
+                                                    <div class="me-3 fs-4 text-danger"><i class="bi bi-camera"></i></div>
+                                                    <div>
+                                                        <h6 class="mb-0 fw-bold small">Selfie com Documento</h6>
+                                                        <p class="text-muted mb-0" style="font-size: 0.65rem;">Validação Facial</p>
+                                                    </div>
+                                                </div>
+                                                <a href="{{ cadastro.selfie_documento.url }}" target="_blank" class="btn btn-fibramar btn-sm p-1 px-2"><i class="bi bi-eye"></i></a>
+                                            </div>
+                                        </div>
+                                        {% endif %}
                                     </div>
-                                    {% else %}
+
+                                    {% if not cadastro.contrato_social and not cadastro.comprovante_residencia and not cadastro.foto_documento_frente and not cadastro.levar_termo %}
                                     <div class="text-center py-4 text-muted">
                                         <i class="bi bi-file-earmark-x fs-1 d-block mb-2 opacity-25"></i>
                                         <p class="mb-0">Nenhum documento anexado para este cadastro.</p>
@@ -190,6 +270,37 @@ function consultarReceitaCNPJ(cnpj) {
     setTimeout(() => {
         document.getElementById('formReceitaCNPJ').submit();
     }, 500);
+}
+
+function sendToIXC(pk) {
+    const btn = document.getElementById('btnSendIXC');
+    const originalText = btn.innerHTML;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>ENVIANDO...';
+
+    fetch(`/cadastro/${pk}/send-ixc/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'success') {
+            showNotify(data.message, 'success');
+        } else {
+            showNotify('Erro: ' + data.message, 'danger');
+        }
+    })
+    .catch(e => {
+        showNotify('Erro de conexão com o servidor.', 'danger');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    });
 }
 
 function confirmDelete(pk) {

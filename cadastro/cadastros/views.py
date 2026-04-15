@@ -11,6 +11,30 @@ from datetime import timedelta
 def is_admin(user):
     return user.is_superuser
 
+from .integrations import IXCIntegration
+
+@login_required
+def send_to_ixc(request, pk):
+    """
+    Aciona a integração para enviar os dados para o IXC.
+    """
+    if request.method == 'POST':
+        cadastro = get_object_or_404(Cadastro, pk=pk)
+        
+        # Instancia a integração
+        ixc = IXCIntegration()
+        result = ixc.create_lead(cadastro)
+        
+        if result['status'] == 'success':
+            # Se desejar, pode salvar o ID do IXC no modelo Cadastro para referência futura
+            # cadastro.ixc_id = result['data'].get('id')
+            # cadastro.save()
+            return JsonResponse({'status': 'success', 'message': 'Cadastro enviado para o IXC com sucesso!'})
+        else:
+            return JsonResponse({'status': 'error', 'message': result['message']})
+            
+    return JsonResponse({'status': 'error'}, status=400)
+
 @login_required
 @user_passes_test(is_admin)
 def admin_dashboard(request):
@@ -121,6 +145,11 @@ def client_form(request):
                 inscricao_estadual=data.get('inscricao_estadual'),
                 data_nascimento=parse_date(data.get('data_nascimento')) if data.get('data_nascimento') else None,
                 contrato_social=files.get('contrato_social'),
+                comprovante_residencia=files.get('comprovante_residencia'),
+                foto_documento_frente=files.get('foto_documento_frente'),
+                foto_documento_verso=files.get('foto_documento_verso'),
+                selfie_documento=files.get('selfie_documento'),
+                levar_termo=data.get('levar_termo') == 'on',
                 email=data.get('email'),
                 telefone=data.get('telefone'),
                 cep=data.get('cep'),
