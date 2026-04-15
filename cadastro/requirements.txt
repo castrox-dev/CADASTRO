@@ -4,3 +4,9 @@ crispy-bootstrap5
 pillow
 python-decouple
 whitenoise
+gunicorn
+psycopg2-binary
+dj-database-url
+cloudinary-storage
+cloudinary
+requests
