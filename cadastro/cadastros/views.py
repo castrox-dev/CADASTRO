@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
+from django.core.exceptions import ValidationError
 from .models import Cadastro
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
@@ -136,7 +137,7 @@ def client_form(request):
         files = request.FILES
         
         try:
-            cadastro = Cadastro.objects.create(
+            cadastro = Cadastro(
                 tipo_pessoa=data.get('tipoPessoa'),
                 documento=data.get('documento'),
                 nome_razao=data.get('nome_razao'),
@@ -169,9 +170,15 @@ def client_form(request):
                 origem=data.get('origem'),
                 consultor=consultor
             )
+            # O save() agora chama full_clean() que valida CPF/CNPJ e Duplicidade
+            cadastro.save()
             return JsonResponse({'status': 'success', 'id': cadastro.id})
+        except ValidationError as e:
+            # Pega a mensagem de erro amigável (do validador ou da duplicidade)
+            msg = e.messages[0] if hasattr(e, 'messages') else str(e)
+            return JsonResponse({'status': 'error', 'message': msg}, status=400)
         except Exception as e:
-            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+            return JsonResponse({'status': 'error', 'message': f"Erro inesperado: {str(e)}"}, status=400)
 
     return render(request, 'cadastros/form.html', {'consultor': consultor})
 

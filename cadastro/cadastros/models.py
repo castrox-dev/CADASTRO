@@ -1,5 +1,25 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
+from localflavor.br.validators import BRCPFValidator, BRCNPJValidator
+from simple_history.models import HistoricalRecords
+import os
+from PIL import Image
+from io import BytesIO
+from django.core.files.base import ContentFile
+
+def get_file_path(instance, filename, field_name):
+    ext = filename.split('.')[-1]
+    # Limpa o documento para o nome do arquivo
+    clean_doc = instance.documento.replace('.', '').replace('-', '').replace('/', '')
+    filename = f"{clean_doc}_{field_name}.{ext}"
+    return os.path.join('documentos_clientes', filename)
+
+def path_contrato(instance, filename): return get_file_path(instance, filename, 'contrato_social')
+def path_comprovante(instance, filename): return get_file_path(instance, filename, 'comprovante_residencia')
+def path_doc_frente(instance, filename): return get_file_path(instance, filename, 'doc_frente')
+def path_doc_verso(instance, filename): return get_file_path(instance, filename, 'doc_verso')
+def path_selfie(instance, filename): return get_file_path(instance, filename, 'selfie')
 
 class Cadastro(models.Model):
     TIPO_PESSOA_CHOICES = [
@@ -21,19 +41,19 @@ class Cadastro(models.Model):
 
     # Identificação
     tipo_pessoa = models.CharField(max_length=2, choices=TIPO_PESSOA_CHOICES, default='pf')
-    documento = models.CharField(max_length=20) # CPF ou CNPJ
+    documento = models.CharField(max_length=20, db_index=True) # CPF ou CNPJ
     nome_razao = models.CharField(max_length=255) # Nome ou Razão Social
     nome_fantasia = models.CharField(max_length=255, blank=True, null=True)
     rg = models.CharField(max_length=20, blank=True, null=True)
     inscricao_estadual = models.CharField(max_length=50, blank=True, null=True)
     data_nascimento = models.DateField(blank=True, null=True)
-    contrato_social = models.FileField(upload_to='contratos/', blank=True, null=True)
+    contrato_social = models.FileField(upload_to=path_contrato, blank=True, null=True)
     
     # Documentos Adicionais
-    comprovante_residencia = models.FileField(upload_to='comprovantes/', blank=True, null=True)
-    foto_documento_frente = models.FileField(upload_to='documentos/', blank=True, null=True)
-    foto_documento_verso = models.FileField(upload_to='documentos/', blank=True, null=True)
-    selfie_documento = models.FileField(upload_to='selfies/', blank=True, null=True)
+    comprovante_residencia = models.FileField(upload_to=path_comprovante, blank=True, null=True)
+    foto_documento_frente = models.FileField(upload_to=path_doc_frente, blank=True, null=True)
+    foto_documento_verso = models.FileField(upload_to=path_doc_verso, blank=True, null=True)
+    selfie_documento = models.FileField(upload_to=path_selfie, blank=True, null=True)
     levar_termo = models.BooleanField(default=False) # Opção para Unamar/Cabo Frio/SP
     
     # Contato
@@ -65,6 +85,48 @@ class Cadastro(models.Model):
     consultor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     data_cadastro = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pendente')
+
+    history = HistoricalRecords()
+
+    def clean(self):
+        # Sanitização e Validação no clean
+        self.documento = ''.join(filter(str.isdigit, self.documento))
+        self.cep = ''.join(filter(str.isdigit, self.cep))
+        self.telefone = ''.join(filter(str.isdigit, self.telefone))
+
+        if self.tipo_pessoa == 'pf':
+            BRCPFValidator()(self.documento)
+        else:
+            BRCNPJValidator()(self.documento)
+
+        # Verificação de Duplicidade
+        existing = Cadastro.objects.filter(documento=self.documento).exclude(pk=self.pk)
+        if existing.exists():
+            raise ValidationError(f"Já existe um cadastro com este CPF/CNPJ. Status: {existing.first().get_status_display()}")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        
+        # Compressão de Imagens
+        for field in ['comprovante_residencia', 'foto_documento_frente', 'foto_documento_verso', 'selfie_documento']:
+            file = getattr(self, field)
+            if file and not file._committed: # Apenas se for um novo upload
+                try:
+                    img = Image.open(file)
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    
+                    output = BytesIO()
+                    img.save(output, format='JPEG', quality=70, optimize=True)
+                    output.seek(0)
+                    
+                    # Substitui o arquivo original pelo comprimido
+                    new_filename = f"{os.path.splitext(file.name)[0]}.jpg"
+                    setattr(self, field, ContentFile(output.read(), name=new_filename))
+                except Exception:
+                    pass # Se não for imagem ou erro na compressão, segue original
+        
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.nome_razao} - {self.documento}"

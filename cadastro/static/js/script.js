@@ -27,10 +27,12 @@ function handleDocumentInput() {
     const pjOnly = document.querySelectorAll('.pj-only');
     const labelNome = document.getElementById('labelNome');
     const inputNome = document.getElementById('nome');
-    const nomeFantasia = document.getElementById('nome_fantasia');
-    const contratoSocial = document.getElementById('contrato_social');
+    
+    // IDs corretos do form.html
+    const nomeFantasia = document.getElementById('nomeFantasia');
+    const contratoSocial = document.getElementById('contratoSocial');
     const rg = document.getElementById('rg');
-    const dataNascimento = document.getElementById('data_nascimento');
+    const dataNascimento = document.getElementById('dataNascimento');
 
     // Feedback visual de validação
     if (cleanValue.length === 11) {
@@ -65,7 +67,9 @@ function handleDocumentInput() {
         labelNome.innerText = 'RAZÃO SOCIAL *';
         inputNome.placeholder = 'Digite a Razão Social';
         if (nomeFantasia) nomeFantasia.required = true;
-        // contratoSocial e outros ids podem variar no HTML, ajustar conforme necessário
+        if (contratoSocial) contratoSocial.required = true;
+        if (rg) rg.required = false;
+        if (dataNascimento) dataNascimento.required = false;
     } else {
         // Default to PF
         typeHidden.value = 'pf';
@@ -75,6 +79,10 @@ function handleDocumentInput() {
         pjOnly.forEach(el => el.style.display = 'none');
         labelNome.innerText = 'NOME COMPLETO *';
         inputNome.placeholder = 'Digite seu nome completo';
+        if (nomeFantasia) nomeFantasia.required = false;
+        if (contratoSocial) contratoSocial.required = false;
+        if (rg) rg.required = true;
+        if (dataNascimento) dataNascimento.required = true;
     }
 }
 
@@ -660,6 +668,8 @@ function handleCityChange() {
     const city = document.getElementById('cidade').value;
     const installationInfo = document.getElementById('installationInfo');
     const termoOption = document.getElementById('termo_option');
+    const pagamentoWrapper = document.getElementById('pagamento_instalacao_wrapper');
+    const pagamentoSelect = document.getElementById('pagamento_instalacao');
 
     // Update Plans list based on city
     updatePlanOptions(city);
@@ -667,6 +677,27 @@ function handleCityChange() {
     // Show/Hide installation info
     installationInfo.style.display = 'block';
     calculateInstallation();
+
+    // Lógica para o campo de pagamento da instalação
+    const fidInput = document.querySelector('input[name="fidelidade"]:checked');
+    const isFidelidade = fidInput ? fidInput.value === 'sim' : true;
+
+    if (city === 'marica') {
+        pagamentoWrapper.style.display = 'block';
+        pagamentoSelect.required = true;
+        if (isFidelidade) {
+            pagamentoSelect.value = 'pix'; // Default para Maricá com fidelidade
+        }
+    } else if (city) {
+        if (isFidelidade) {
+            pagamentoWrapper.style.display = 'none';
+            pagamentoSelect.required = false;
+            pagamentoSelect.value = 'gratis';
+        } else {
+            pagamentoWrapper.style.display = 'block';
+            pagamentoSelect.required = true;
+        }
+    }
 
     // Show/Hide Termo option (Unamar, Cabo Frio, SP)
     const canLevarTermo = ['cabo_frio', 'unamar', 'sao_paulo'].includes(city);
@@ -730,13 +761,26 @@ function calculateInstallation() {
     
     const isFidelidade = fidInput.value === 'sim';
     const installPriceSpan = document.getElementById('installPrice');
+    const pagamentoWrapper = document.getElementById('pagamento_instalacao_wrapper');
+    const pagamentoSelect = document.getElementById('pagamento_instalacao');
 
     if (city === 'marica') {
         const price = isFidelidade ? 100 : 460;
         installPriceSpan.innerText = `R$ ${price.toFixed(2).replace('.', ',')}`;
+        pagamentoWrapper.style.display = 'block';
+        pagamentoSelect.required = true;
     } else if (city) {
         const price = isFidelidade ? 0 : 360;
         installPriceSpan.innerText = isFidelidade ? 'GRÁTIS' : `R$ ${price.toFixed(2).replace('.', ',')}`;
+        
+        if (isFidelidade) {
+            pagamentoWrapper.style.display = 'none';
+            pagamentoSelect.required = false;
+            pagamentoSelect.value = 'gratis';
+        } else {
+            pagamentoWrapper.style.display = 'block';
+            pagamentoSelect.required = true;
+        }
     }
 }
 
@@ -778,35 +822,51 @@ function updateVencimentoOptions(city) {
 document.getElementById('registrationForm').onsubmit = function(e) {
     e.preventDefault();
     
-    const formData = new FormData(this);
-    
-    // Get the CSRF token from the cookie
-    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const submitBtn = this.querySelector('button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
+    }
 
-    fetch('', {
+    const formData = new FormData(this);
+    const csrftokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
+    const csrftoken = csrftokenEl ? csrftokenEl.value : '';
+
+    // Usa a URL atual para o post
+    const postUrl = window.location.href;
+
+    fetch(postUrl, {
         method: 'POST',
         headers: {
             'X-CSRFToken': csrftoken,
+            'X-Requested-With': 'XMLHttpRequest'
         },
         body: formData
     })
-    .then(response => {
-        if (response.ok) {
+    .then(async response => {
+        const data = await response.json();
+        if (response.ok && data.status === 'success') {
             document.getElementById('registrationForm').style.display = 'none';
-            
-            // Remove error-prone header selector
             const header = document.querySelector('.form-header');
             if (header) header.style.display = 'none';
-            
             document.getElementById('successMessage').style.display = 'block';
             window.scrollTo(0, 0);
         } else {
-            showNotify('Erro ao enviar o cadastro. Por favor, tente novamente.', 'danger');
+            const errorMsg = data.message || 'Erro ao enviar o cadastro.';
+            showNotify(errorMsg, 'danger');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Enviar Cadastro';
+            }
         }
     })
     .catch(error => {
-        console.error('Erro:', error);
-        showNotify('Erro ao enviar o cadastro. Por favor, tente novamente.', 'danger');
+        console.error('Erro na submissão:', error);
+        showNotify('Erro de conexão. Verifique se o servidor está rodando ou sua internet.', 'danger');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Enviar Cadastro';
+        }
     });
 };
 

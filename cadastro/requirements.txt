@@ -10,3 +10,6 @@ dj-database-url
 django-cloudinary-storage
 cloudinary
 requests
+django-localflavor
+django-simple-history
+Pillow
