@@ -1,35 +1,27 @@
-// Document Auto-detection logic
+// Document Auto-detection logic and Masks
+$(document).ready(function() {
+    // Inicializar máscaras jQuery Mask
+    $('#cep').mask('00000-000');
+    $('#telefone').mask('(00) 00000-0000');
+    $('#rg').mask('00.000.000-0');
+    
+    // Máscara dinâmica para CPF/CNPJ
+    var options = {
+        onKeyPress: function(val, e, field, options) {
+            var masks = ['000.000.000-00##', '00.000.000/0000-00'];
+            var mask = (val.replace(/\D/g, '').length > 11) ? masks[1] : masks[0];
+            $('#documento').mask(mask, options);
+            handleDocumentInput(); // Mantém a lógica de troca PF/PJ
+        }
+    };
+    $('#documento').mask('000.000.000-00##', options);
+});
+
 function handleDocumentInput() {
     const input = document.getElementById('documento');
-    let value = input.value.replace(/\D/g, '');
-    
-    // Apply masks based on length
-    if (value.length <= 11) {
-        // CPF Mask
-        if (value.length > 9) {
-            value = value.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-        } else if (value.length > 6) {
-            value = value.replace(/(\d{3})(\d{3})(\d{3})/, "$1.$2.$3");
-        } else if (value.length > 3) {
-            value = value.replace(/(\d{3})(\d{3})/, "$1.$2");
-        }
-    } else {
-        // CNPJ Mask
-        if (value.length > 14) value = value.slice(0, 14);
-        if (value.length > 12) {
-            value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
-        } else if (value.length > 8) {
-            value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})/, "$1.$2.$3/$4");
-        } else if (value.length > 5) {
-            value = value.replace(/(\d{2})(\d{3})(\d{3})/, "$1.$2.$3");
-        } else if (value.length > 2) {
-            value = value.replace(/(\d{2})(\d{3})/, "$1.$2");
-        }
-    }
-    input.value = value;
-
-    // Detection logic
+    const value = input.value;
     const cleanValue = value.replace(/\D/g, '');
+    
     const typeHidden = document.getElementById('tipoPessoa');
     const pfOnly = document.querySelectorAll('.pf-only');
     const pjOnly = document.querySelectorAll('.pj-only');
@@ -40,6 +32,29 @@ function handleDocumentInput() {
     const rg = document.getElementById('rg');
     const dataNascimento = document.getElementById('data_nascimento');
 
+    // Feedback visual de validação
+    if (cleanValue.length === 11) {
+        if (validarCPF(cleanValue)) {
+            input.style.borderColor = '#28a745';
+            showInputFeedback(input, true, 'CPF Válido');
+        } else {
+            input.style.borderColor = '#dc3545';
+            showInputFeedback(input, false, 'CPF Inválido');
+        }
+    } else if (cleanValue.length === 14) {
+        if (validarCNPJ(cleanValue)) {
+            input.style.borderColor = '#28a745';
+            showInputFeedback(input, true, 'CNPJ Válido');
+            buscarDadosCNPJ(cleanValue);
+        } else {
+            input.style.borderColor = '#dc3545';
+            showInputFeedback(input, false, 'CNPJ Inválido');
+        }
+    } else {
+        input.style.borderColor = '#ddd';
+        removeInputFeedback(input);
+    }
+
     if (cleanValue.length > 11) {
         // Switch to PJ
         typeHidden.value = 'pj';
@@ -47,12 +62,10 @@ function handleDocumentInput() {
         pjOnly.forEach(el => {
             el.style.display = el.classList.contains('row') ? 'flex' : 'block';
         });
-        labelNome.innerText = 'Razão Social *';
+        labelNome.innerText = 'RAZÃO SOCIAL *';
         inputNome.placeholder = 'Digite a Razão Social';
         if (nomeFantasia) nomeFantasia.required = true;
-        if (contratoSocial) contratoSocial.required = true;
-        if (rg) rg.required = false;
-        if (dataNascimento) dataNascimento.required = false;
+        // contratoSocial e outros ids podem variar no HTML, ajustar conforme necessário
     } else {
         // Default to PF
         typeHidden.value = 'pf';
@@ -60,16 +73,90 @@ function handleDocumentInput() {
             el.style.display = el.classList.contains('row') ? 'flex' : 'block';
         });
         pjOnly.forEach(el => el.style.display = 'none');
-        labelNome.innerText = 'Nome Completo *';
+        labelNome.innerText = 'NOME COMPLETO *';
         inputNome.placeholder = 'Digite seu nome completo';
-        if (nomeFantasia) nomeFantasia.required = false;
-        if (contratoSocial) contratoSocial.required = false;
-        if (rg) rg.required = true;
-        if (dataNascimento) dataNascimento.required = true;
     }
 }
 
-// File Upload Listener
+// Funções de Validação e Feedback
+function showInputFeedback(input, isSuccess, message) {
+    removeInputFeedback(input);
+    const feedback = document.createElement('div');
+    feedback.className = `small mt-1 ${isSuccess ? 'text-success' : 'text-danger'} feedback-msg`;
+    feedback.innerHTML = `<i class="bi bi-${isSuccess ? 'check-circle' : 'exclamation-circle'} me-1"></i>${message}`;
+    input.parentNode.appendChild(feedback);
+}
+
+function removeInputFeedback(input) {
+    const existing = input.parentNode.querySelector('.feedback-msg');
+    if (existing) existing.remove();
+}
+
+function validarCPF(cpf) {
+    cpf = cpf.replace(/[^\d]+/g, '');
+    if (cpf == '' || cpf.length != 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+    let add = 0;
+    for (let i = 0; i < 9; i++) add += parseInt(cpf.charAt(i)) * (10 - i);
+    let rev = 11 - (add % 11);
+    if (rev == 10 || rev == 11) rev = 0;
+    if (rev != parseInt(cpf.charAt(9))) return false;
+    add = 0;
+    for (let i = 0; i < 10; i++) add += parseInt(cpf.charAt(i)) * (11 - i);
+    rev = 11 - (add % 11);
+    if (rev == 10 || rev == 11) rev = 0;
+    if (rev != parseInt(cpf.charAt(10))) return false;
+    return true;
+}
+
+function validarCNPJ(cnpj) {
+    cnpj = cnpj.replace(/[^\d]+/g, '');
+    if (cnpj == '' || cnpj.length != 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+    let tamanho = cnpj.length - 2;
+    let numeros = cnpj.substring(0, tamanho);
+    let digitos = cnpj.substring(tamanho);
+    let soma = 0;
+    let pos = tamanho - 7;
+    for (let i = tamanho; i >= 1; i--) {
+        soma += numeros.charAt(tamanho - i) * pos--;
+        if (pos < 2) pos = 9;
+    }
+    let resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
+    if (resultado != digitos.charAt(0)) return false;
+    tamanho = tamanho + 1;
+    numeros = cnpj.substring(0, tamanho);
+    soma = 0;
+    pos = tamanho - 7;
+    for (let i = tamanho; i >= 1; i--) {
+        soma += numeros.charAt(tamanho - i) * pos--;
+        if (pos < 2) pos = 9;
+    }
+    resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
+    if (resultado != digitos.charAt(1)) return false;
+    return true;
+}
+
+function buscarDadosCNPJ(cnpj) {
+    showNotify('Buscando dados da empresa...', 'info');
+    fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.razao_social) {
+                document.getElementById('nome').value = data.razao_social;
+                const nomeFantasia = document.getElementById('nomeFantasia');
+                if (nomeFantasia) nomeFantasia.value = data.nome_fantasia || data.razao_social;
+                
+                // Auto-preencher endereço se disponível
+                if (data.cep) {
+                    document.getElementById('cep').value = data.cep;
+                    $('#cep').trigger('blur'); // Aciona a busca de CEP já existente
+                }
+                showNotify('Dados da empresa carregados!', 'success');
+            }
+        })
+        .catch(() => showNotify('Não foi possível carregar os dados do CNPJ automaticamente.', 'warning'));
+}
+
+// File Upload Listener e Drag-and-Drop
 document.addEventListener('DOMContentLoaded', function() {
     // Set minimum date for installation (tomorrow)
     const dateInput = document.getElementById('data_instalacao');
@@ -86,20 +173,79 @@ document.addEventListener('DOMContentLoaded', function() {
         const wrapper = input.closest('.file-upload-wrapper');
         const info = wrapper ? wrapper.querySelector('.file-upload-info') : null;
 
+        // Adicionar suporte a Drag and Drop
+        if (wrapper) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                wrapper.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                wrapper.addEventListener(eventName, () => wrapper.classList.add('drag-over'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                wrapper.addEventListener(eventName, () => wrapper.classList.remove('drag-over'), false);
+            });
+
+            wrapper.addEventListener('drop', handleDrop, false);
+
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                input.files = files;
+                handleFiles(input, files, info, wrapper);
+            }
+        }
+
         if (input) {
             input.addEventListener('change', function(e) {
-                if (this.files && this.files.length > 0) {
-                    const fileName = this.files[0].name;
-                    if (info) info.innerText = `Arquivo selecionado: ${fileName}`;
-                    if (wrapper) wrapper.classList.add('file-selected');
-                } else {
-                    if (info) info.innerText = 'Clique para selecionar o arquivo';
-                    if (wrapper) wrapper.classList.remove('file-selected');
-                }
+                handleFiles(this, this.files, info, wrapper);
             });
         }
     });
 });
+
+function handleFiles(input, files, info, wrapper) {
+    if (files && files.length > 0) {
+        const file = files[0];
+        const fileName = file.name;
+        if (info) info.innerText = `Arquivo selecionado: ${fileName}`;
+        if (wrapper) {
+            wrapper.classList.add('file-selected');
+            
+            // Preview da imagem
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    let preview = wrapper.querySelector('.file-preview');
+                    if (!preview) {
+                        preview = document.createElement('img');
+                        preview.className = 'file-preview';
+                        wrapper.appendChild(preview);
+                    }
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                }
+                reader.readAsDataURL(file);
+            } else {
+                const preview = wrapper.querySelector('.file-preview');
+                if (preview) preview.style.display = 'none';
+            }
+        }
+    } else {
+        if (info) info.innerText = 'Clique para selecionar o arquivo';
+        if (wrapper) {
+            wrapper.classList.remove('file-selected');
+            const preview = wrapper.querySelector('.file-preview');
+            if (preview) preview.style.display = 'none';
+        }
+    }
+}
 
 // CEP Lookup logic
 document.getElementById('cep').addEventListener('blur', function() {

@@ -467,6 +467,21 @@ pre {
     transform: translateY(-3px);
 }
 
+.file-upload-wrapper.drag-over {
+    border-color: var(--secondary-color);
+    background: rgba(255, 107, 0, 0.1);
+    transform: scale(1.02);
+}
+
+.file-preview {
+    max-width: 100%;
+    max-height: 150px;
+    margin-top: 10px;
+    border-radius: 8px;
+    display: none;
+    border: 1px solid var(--border-color);
+}
+
 .file-selected {
     border-color: var(--success);
     background: rgba(0, 184, 148, 0.05);
