@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+    #interactiveMap {
+        height: 250px;
+        width: 100%;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        margin-bottom: 10px;
+        z-index: 1;
+    }
+    .map-instruction {
+        font-size: 0.75rem;
+        color: #666;
+        margin-bottom: 8px;
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="card-premium mx-auto" style="max-width: 750px;">
+        <div class="header-accent"></div>
+        <div class="p-4 border-bottom d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="mb-1">Editar Cadastro</h4>
+                <p class="text-muted small mb-0">Atualize as informações do cliente abaixo.</p>
+            </div>
+            <a href="{% url 'cadastro_detail' cadastro.pk %}" class="btn btn-outline-fibramar btn-sm">Cancelar</a>
+        </div>
+
+        <form id="registrationForm" class="p-4" enctype="multipart/form-data">
+            {% csrf_token %}
+            
+            <!-- Identificação -->
+            <div class="mb-5">
+                <h6 class="text-uppercase small fw-bold text-primary mb-3">1. Identificação</h6>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label>CPF OU CNPJ *</label>
+                            <input type="text" id="documento" name="documento" class="form-control form-control-premium" required value="{{ cadastro.documento }}" oninput="handleDocumentInput()">
+                            <input type="hidden" id="tipoPessoa" name="tipoPessoa" value="{{ cadastro.tipo_pessoa }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label id="labelNome">NOME COMPLETO *</label>
+                            <input type="text" id="nome" name="nome_razao" class="form-control form-control-premium" required value="{{ cadastro.nome_razao }}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group mb-3 pj-only" style="{% if cadastro.tipo_pessoa == 'pf' %}display:none;{% endif %}">
+                    <label>NOME FANTASIA *</label>
+                    <input type="text" id="nomeFantasia" name="nome_fantasia" class="form-control form-control-premium" value="{{ cadastro.nome_fantasia|default:'' }}">
+                </div>
+
+                <div class="row pf-only" style="{% if cadastro.tipo_pessoa == 'pj' %}display:none;{% endif %}">
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label>RG *</label>
+                            <input type="text" id="rg" name="rg" class="form-control form-control-premium" value="{{ cadastro.rg|default:'' }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label>DATA DE NASCIMENTO *</label>
+                            <input type="date" id="dataNascimento" name="data_nascimento" class="form-control form-control-premium" value="{{ cadastro.data_nascimento|date:'Y-m-d' }}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label>E-MAIL *</label>
+                            <input type="email" name="email" class="form-control form-control-premium" required value="{{ cadastro.email }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label>TELEFONE *</label>
+                            <input type="text" id="telefone" name="telefone" class="form-control form-control-premium" required value="{{ cadastro.telefone }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Localização -->
+            <div class="mb-5">
+                <h6 class="text-uppercase small fw-bold text-primary mb-3">2. Localização</h6>
+                
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <div class="form-group">
+                            <label>CEP *</label>
+                            <input type="text" id="cep" name="cep" class="form-control form-control-premium" required value="{{ cadastro.cep }}">
+                        </div>
+                    </div>
+                    <div class="col-md-8 mb-3">
+                        <div class="form-group">
+                            <label>CIDADE *</label>
+                            <select id="cidade" name="cidade" class="form-select form-control-premium" required onchange="handleCityChange()">
+                                <option value="">Selecione...</option>
+                                <option value="marica" {% if cadastro.cidade == 'marica' %}selected{% endif %}>Maricá - RJ</option>
+                                <option value="minas_gerais" {% if cadastro.cidade == 'minas_gerais' %}selected{% endif %}>Minas Gerais - MG</option>
+                                <option value="muqui" {% if cadastro.cidade == 'muqui' %}selected{% endif %}>Muqui - ES</option>
+                                <option value="piuma" {% if cadastro.cidade == 'piuma' %}selected{% endif %}>Piúma - ES</option>
+                                <option value="mimoso" {% if cadastro.cidade == 'mimoso' %}selected{% endif %}>Mimoso do Sul - ES</option>
+                                <option value="cabo_frio" {% if cadastro.cidade == 'cabo_frio' %}selected{% endif %}>Cabo Frio - RJ</option>
+                                <option value="unamar" {% if cadastro.cidade == 'unamar' %}selected{% endif %}>Unamar - RJ</option>
+                                <option value="sao_paulo" {% if cadastro.cidade == 'sao_paulo' %}selected{% endif %}>São Paulo - SP</option>
+                                <option value="outra" {% if cadastro.cidade == 'outra' %}selected{% endif %}>Outra Cidade</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group mb-3">
+                    <label>BAIRRO *</label>
+                    <input type="text" id="bairro" name="bairro" class="form-control form-control-premium" required value="{{ cadastro.bairro }}">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label>ENDEREÇO COMPLETO *</label>
+                    <input type="text" id="endereco" name="endereco" class="form-control form-control-premium" required value="{{ cadastro.endereco }}">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label>PONTO DE REFERÊNCIA *</label>
+                    <textarea name="referencia" class="form-control form-control-premium" rows="2" required>{{ cadastro.referencia }}</textarea>
+                </div>
+                
+                <input type="hidden" name="google_maps_link" id="google_maps_link" value="{{ cadastro.google_maps_link|default:'' }}">
+            </div>
+
+            <!-- Plano e Instalação -->
+            <div class="mb-5">
+                <h6 class="text-uppercase small fw-bold text-primary mb-3">3. Plano e Instalação</h6>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label>PLANO *</label>
+                            <select id="plano" name="plano" class="form-select form-control-premium" required>
+                                <option value="{{ cadastro.plano }}" selected>{{ cadastro.plano }}</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label>VENCIMENTO *</label>
+                            <select id="vencimento" name="vencimento" class="form-select form-control-premium" required>
+                                <option value="{{ cadastro.vencimento }}" selected>{{ cadastro.vencimento }}</option>
+                            </select>
+                            <input type="hidden" name="vencimento_id" id="vencimento_id_hidden" value="{{ cadastro.vencimento_id|default:'' }}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label>DATA INSTALAÇÃO *</label>
+                            <input type="date" id="data_instalacao" name="data_instalacao" class="form-control form-control-premium" required value="{{ cadastro.data_instalacao|date:'Y-m-d' }}">
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label>PERÍODO *</label>
+                            <select name="periodo_instalacao" class="form-select form-control-premium" required>
+                                <option value="manha" {% if cadastro.periodo_instalacao == 'manha' %}selected{% endif %}>Manhã</option>
+                                <option value="tarde" {% if cadastro.periodo_instalacao == 'tarde' %}selected{% endif %}>Tarde</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label>PAGAMENTO INSTALAÇÃO *</label>
+                            <select id="pagamento_instalacao" name="pagamento_instalacao" class="form-select form-control-premium" required>
+                                <option value="pix" {% if cadastro.pagamento_instalacao == 'pix' %}selected{% endif %}>PIX</option>
+                                <option value="dinheiro" {% if cadastro.pagamento_instalacao == 'dinheiro' %}selected{% endif %}>Dinheiro</option>
+                                <option value="cartao" {% if cadastro.pagamento_instalacao == 'cartao' %}selected{% endif %}>Cartão</option>
+                                <option value="gratis" {% if cadastro.pagamento_instalacao == 'gratis' %}selected{% endif %}>Grátis</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-group">
+                            <label>ORIGEM *</label>
+                            <input type="text" name="origem" class="form-control form-control-premium" required value="{{ cadastro.origem }}">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="small fw-bold d-block mb-2">FIDELIDADE? *</label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="fidelidade" id="fid_sim" value="sim" {% if cadastro.fidelidade %}checked{% endif %}>
+                        <label class="btn btn-outline-fibramar py-2" for="fid_sim">Sim</label>
+                        
+                        <input type="radio" class="btn-check" name="fidelidade" id="fid_nao" value="nao" {% if not cadastro.fidelidade %}checked{% endif %}>
+                        <label class="btn btn-outline-fibramar py-2" for="fid_nao">Não</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Documentação -->
+            <div class="mb-5">
+                <h6 class="text-uppercase small fw-bold text-primary mb-3">4. Documentação (Upload apenas para alterar)</h6>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="small fw-bold mb-2">DOC. FRENTE</label>
+                        <div class="file-upload-wrapper">
+                            <input type="file" name="foto_documento_frente" accept="image/*">
+                            <div class="file-upload-info">{% if cadastro.foto_documento_frente %}Já possui arquivo{% else %}Clique para anexar{% endif %}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="small fw-bold mb-2">DOC. VERSO</label>
+                        <div class="file-upload-wrapper">
+                            <input type="file" name="foto_documento_verso" accept="image/*">
+                            <div class="file-upload-info">{% if cadastro.foto_documento_verso %}Já possui arquivo{% else %}Clique para anexar{% endif %}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-grid gap-2">
+                <button type="submit" class="btn-fibramar py-3">SALVAR ALTERAÇÕES</button>
+                <a href="{% url 'cadastro_detail' cadastro.pk %}" class="btn btn-light py-2">CANCELAR</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/script.js' %}"></script>
+<script>
+    // Sobrescrever o onsubmit para a página de edição
+    document.getElementById('registrationForm').onsubmit = function(e) {
+        e.preventDefault();
+        const submitBtn = this.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>SALVANDO...';
+
+        const formData = new FormData(this);
+        fetch(window.location.href, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: formData
+        })
+        .then(async r => {
+            const data = await r.json();
+            if (r.ok) {
+                showNotify(data.message, 'success');
+                setTimeout(() => {
+                    window.location.href = "{% url 'cadastro_detail' cadastro.pk %}";
+                }, 1500);
+            } else {
+                showNotify(data.message || 'Erro ao salvar', 'danger');
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'SALVAR ALTERAÇÕES';
+            }
+        })
+        .catch(err => {
+            showNotify('Erro de conexão', 'danger');
+            submitBtn.disabled = false;
+        });
+    };
+
+    // Inicializar planos e máscaras ao carregar
+    $(document).ready(function() {
+        const city = $('#cidade').val();
+        if (city) {
+            updatePlanOptions(city);
+            // Re-seleciona o plano atual após popular a lista
+            setTimeout(() => {
+                $('#plano').val("{{ cadastro.plano }}");
+                $('#vencimento').val("{{ cadastro.vencimento }}");
+            }, 100);
+        }
+        handleDocumentInput();
+    });
+</script>
+{% endblock %}

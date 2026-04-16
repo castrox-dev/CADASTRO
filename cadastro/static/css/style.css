@@ -17,16 +17,82 @@
 }
 
 [data-theme="dark"] {
-    --bg-gradient: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%);
-    --card-bg: #1e1e2f;
-    --text-main: #e0e0e0;
-    --text-muted: #a0a0a0;
-    --shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    --bg-gradient: linear-gradient(135deg, #0a0a0e 0%, #12121f 100%);
+    --card-bg: #1a1a2e;
+    --text-main: #f0f0f5;
+    --text-muted: #b0b0c0;
+    --shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
     --border-color: #2d2d44;
-    --input-bg: #2d2d44;
-    --table-header: #252538;
-    --pre-bg: #161625;
-    --primary-color: #3f3f6e;
+    --input-bg: #252538;
+    --table-header: #212135;
+    --pre-bg: #0f0f1a;
+    --primary-color: #ff6b00; /* Destaque laranja no modo escuro */
+}
+
+/* Polimento geral Dark Mode */
+[data-theme="dark"] body {
+    background: var(--bg-gradient);
+    color: var(--text-main);
+}
+
+[data-theme="dark"] .card, 
+[data-theme="dark"] .form-container,
+[data-theme="dark"] .dashboard-card,
+[data-theme="dark"] .card-premium {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow);
+}
+
+[data-theme="dark"] .card-premium .border-bottom {
+    border-color: var(--border-color) !important;
+}
+
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select {
+    background-color: var(--input-bg);
+    border-color: var(--border-color);
+    color: var(--text-main);
+}
+
+[data-theme="dark"] .form-control:focus,
+[data-theme="dark"] .form-select:focus {
+    background-color: #2d2d44;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.25rem rgba(255, 107, 0, 0.25);
+}
+
+[data-theme="dark"] .table {
+    color: var(--text-main);
+}
+
+[data-theme="dark"] .table thead th {
+    background-color: var(--table-header);
+    border-bottom-color: var(--border-color);
+}
+
+[data-theme="dark"] .modal-content {
+    background-color: var(--card-bg);
+    color: var(--text-main);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .modal-header,
+[data-theme="dark"] .modal-footer {
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .btn-outline-light {
+    border-color: var(--border-color);
+    color: var(--text-main);
+}
+
+[data-theme="dark"] .btn-outline-light:hover {
+    background-color: var(--border-color);
+}
+
+[data-theme="dark"] .text-muted {
+    color: var(--text-muted) !important;
 }
 
 * {
@@ -201,10 +267,42 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--text-main);
 }
 
-/* Fix for table backgrounds in dark mode */
 [data-theme="dark"] .table {
     --bs-table-bg: transparent;
     --bs-table-hover-bg: rgba(255, 107, 0, 0.05);
+    color: var(--text-main);
+}
+
+[data-theme="dark"] .table td {
+    color: var(--text-main) !important;
+}
+
+[data-theme="dark"] .table td.text-muted {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="dark"] .table thead th {
+    background-color: var(--table-header) !important;
+    color: var(--text-muted) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+[data-theme="dark"] .badge.bg-light.text-dark {
+    background-color: var(--input-bg) !important;
+    color: var(--text-main) !important;
+    border-color: var(--border-color) !important;
+}
+
+[data-theme="dark"] .text-secondary {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="dark"] .text-primary {
+    color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .bi-calendar-check.text-secondary {
+    color: var(--primary-color) !important;
 }
 
 [data-theme="dark"] .bg-light {
@@ -259,6 +357,121 @@ pre {
 }
 
 /* Theme Toggle Button */
+/* Custom Navbar Buttons */
+.btn-navbar-custom {
+    background-color: rgba(255, 107, 0, 0.1);
+    color: var(--secondary-color) !important;
+    border: 1px solid var(--secondary-color);
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 11px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    text-transform: uppercase;
+    text-decoration: none;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+}
+
+.btn-navbar-custom:hover {
+    background-color: var(--secondary-color);
+    color: white !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(255, 107, 0, 0.3);
+}
+
+[data-theme="dark"] .btn-navbar-custom {
+    background-color: rgba(255, 107, 0, 0.15);
+}
+
+/* Action Buttons Premium Redesign */
+.btn-action-premium {
+    border-radius: 12px;
+    padding: 14px 20px;
+    font-weight: 700;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    width: 100%;
+    margin-bottom: 12px;
+    position: relative;
+    overflow: hidden;
+    color: white !important;
+}
+
+.btn-action-premium i {
+    font-size: 1.2rem;
+    margin-right: 12px;
+    transition: transform 0.3s ease;
+}
+
+.btn-action-premium:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.btn-action-premium:hover i {
+    transform: scale(1.2);
+}
+
+.btn-action-premium:active {
+    transform: translateY(-1px);
+}
+
+/* Specific Colors for Actions */
+.btn-action-os {
+    background: linear-gradient(135deg, #ff6b00 0%, #e65a00 100%);
+    box-shadow: 0 4px 15px rgba(255, 107, 0, 0.25);
+}
+
+.btn-action-ficha {
+    background: transparent;
+    border: 2px solid #ff6b00;
+    color: #ff6b00 !important;
+}
+
+.btn-action-ficha:hover {
+    background: #ff6b00;
+    color: white !important;
+}
+
+.btn-action-receita {
+    background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+    box-shadow: 0 4px 15px rgba(58, 123, 213, 0.25);
+}
+
+.btn-action-edit {
+    background: #2d3436;
+    color: #dfe6e9 !important;
+}
+
+.btn-action-ixc {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    color: #1a1a3a !important;
+    font-weight: 800;
+}
+
+.btn-action-delete {
+    background: linear-gradient(135deg, #ff0844 0%, #ffb199 100%);
+    box-shadow: 0 4px 15px rgba(255, 8, 68, 0.25);
+    margin-top: 20px;
+}
+
+[data-theme="dark"] .btn-action-edit {
+    background: #252538;
+    border: 1px solid #2d2d44;
+}
+
+[data-theme="dark"] .btn-action-ficha {
+    border-color: #ff6b00;
+}
+
 .theme-toggle {
     background: none;
     border: none;

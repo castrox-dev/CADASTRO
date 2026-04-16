@@ -3,6 +3,18 @@
 
 {% block content %}
 <div class="container py-5">
+    <!-- Formulários Ocultos para Consulta na Receita Federal -->
+    <form id="formReceitaCPF" action="https://servicos.receita.fazenda.gov.br/Servicos/CPF/ConsultaSituacao/ConsultaPublica.asp" method="POST" target="_blank" style="display:none;">
+        <input type="hidden" name="txtCPF" id="receitaTxtCPF">
+        <input type="hidden" name="txtDataNascimento" id="receitaTxtData">
+        <input type="hidden" name="Enviar" value="Consultar">
+        <input type="hidden" name="id_cp" value="">
+    </form>
+
+    <form id="formReceitaCNPJ" action="https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp" method="POST" target="_blank" style="display:none;">
+        <input type="hidden" name="cnpj" id="receitaCNPJ">
+    </form>
+
     <div class="row">
         <div class="col-lg-10 mx-auto">
             <div class="d-flex justify-content-between align-items-center mb-4">
@@ -31,37 +43,37 @@
                     <div class="card-premium">
                         <div class="p-4">
                             <h6 class="text-uppercase small fw-bold text-muted mb-3">Ações Rápidas</h6>
-                            <button class="btn btn-fibramar w-100 mb-2 d-flex align-items-center justify-content-center" onclick="copyText('osContent')">
-                                <i class="bi bi-file-earmark-text me-2"></i> COPIAR ORDEM DE SERVIÇO
+                            <button class="btn-action-premium btn-action-os" onclick="copyText('osContent')">
+                                <i class="bi bi-file-earmark-text"></i> COPIAR ORDEM DE SERVIÇO
                             </button>
-                            <button class="btn btn-outline-fibramar w-100 mb-2 d-flex align-items-center justify-content-center" onclick="copyText('fichaContent')">
-                                <i class="bi bi-clipboard-check me-2"></i> COPIAR FICHA COMPLETA
+                            <button class="btn-action-premium btn-action-ficha" onclick="copyText('fichaContent')">
+                                <i class="bi bi-clipboard-check"></i> COPIAR FICHA COMPLETA
                             </button>
                             
                             {% if cadastro.tipo_pessoa == 'pf' %}
                             <button onclick="consultarReceitaCPF('{{ cadastro.documento|add:"" }}', '{{ cadastro.data_nascimento|date:"d/m/Y" }}')" 
-                                    class="btn btn-info text-white w-100 mb-2 d-flex align-items-center justify-content-center">
-                                <i class="bi bi-search me-2"></i> CONSULTAR RECEITA (CPF)
+                                    class="btn-action-premium btn-action-receita">
+                                <i class="bi bi-search"></i> CONSULTAR RECEITA (CPF)
                             </button>
                             {% else %}
                             <button onclick="consultarReceitaCNPJ('{{ cadastro.documento|add:"" }}')" 
-                                    class="btn btn-info text-white w-100 mb-2 d-flex align-items-center justify-content-center">
-                                <i class="bi bi-search me-2"></i> CONSULTAR RECEITA (CNPJ)
+                                    class="btn-action-premium btn-action-receita">
+                                <i class="bi bi-search"></i> CONSULTAR RECEITA (CNPJ)
                             </button>
                             {% endif %}
                             
-                            <a href="{% url 'admin:cadastros_cadastro_change' cadastro.pk %}" class="btn btn-dark w-100 mb-2 d-flex align-items-center justify-content-center" target="_blank">
-                                <i class="bi bi-pencil-square me-2"></i> EDITAR NO SISTEMA
+                            <a href="{% url 'edit_cadastro' cadastro.pk %}" class="btn-action-premium btn-action-edit">
+                                <i class="bi bi-pencil-square"></i> EDITAR NO SISTEMA
                             </a>
                             
                             <hr class="my-4 opacity-10">
 
-                            <button id="btnSendIXC" class="btn btn-primary w-100 mb-2 d-flex align-items-center justify-content-center" onclick="sendToIXC({{ cadastro.pk }})">
-                                <i class="bi bi-send-check-fill me-2"></i> ENVIAR PARA IXC
+                            <button id="btnSendIXC" class="btn-action-premium btn-action-ixc" onclick="sendToIXC({{ cadastro.pk }})">
+                                <i class="bi bi-send-check-fill"></i> ENVIAR PARA IXC
                             </button>
                             
-                            <button class="btn btn-danger w-100 mt-4 d-flex align-items-center justify-content-center" onclick="confirmDelete({{ cadastro.pk }})">
-                                <i class="bi bi-trash3-fill me-2"></i> EXCLUIR CADASTRO
+                            <button class="btn-action-premium btn-action-delete" onclick="confirmDelete({{ cadastro.pk }})">
+                                <i class="bi bi-trash3-fill"></i> EXCLUIR CADASTRO
                             </button>
                         </div>
                     </div>
@@ -240,8 +252,12 @@
 <script>
 function copyText(elementId) {
     const text = document.getElementById(elementId).innerText;
+    copyToClipboard(text, "Copiado com sucesso!");
+}
+
+function copyToClipboard(text, message) {
     navigator.clipboard.writeText(text).then(() => {
-        showNotify("Copiado com sucesso!", "success");
+        showNotify(message, "success");
     });
 }
 
@@ -250,10 +266,12 @@ function consultarReceitaCPF(cpf, data) {
     document.getElementById('receitaTxtCPF').value = cleanCPF;
     document.getElementById('receitaTxtData').value = data;
     
-    // Fallback: Copia para o clipboard também
+    // Copia para o clipboard também como segurança
     navigator.clipboard.writeText(cleanCPF);
-    showNotify("CPF copiado! Redirecionando para a Receita...", "info");
+    showNotify("CPF copiado! Preenchendo dados...", "info");
     
+    // Tenta o submit. Nota: Sites governamentais podem bloquear POST direto.
+    // O formulário agora tem target="_blank"
     setTimeout(() => {
         document.getElementById('formReceitaCPF').submit();
     }, 500);
@@ -351,8 +369,10 @@ function updateStatus(pk, newStatus) {
     .then(response => {
         if (response.ok) {
             feedback.style.display = 'block';
-            setTimeout(() => feedback.style.display = 'none', 3000);
             showNotify("Status atualizado com sucesso!", "success");
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
         } else {
             showNotify('Erro ao atualizar status.', 'danger');
         }

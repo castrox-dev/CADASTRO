@@ -210,9 +210,67 @@ def cadastro_detail(request, pk):
     })
 
 @login_required
+def edit_cadastro(request, pk):
+    cadastro = get_object_or_404(Cadastro, pk=pk, consultor=request.user)
+    if request.method == 'POST':
+        # Lógica de atualização simplificada para exemplo, pode-se usar um Form
+        data = request.POST
+        files = request.FILES
+        
+        try:
+            cadastro.tipo_pessoa = data.get('tipoPessoa')
+            cadastro.documento = data.get('documento')
+            cadastro.nome_razao = data.get('nome_razao')
+            cadastro.nome_fantasia = data.get('nome_fantasia')
+            cadastro.rg = data.get('rg')
+            cadastro.inscricao_estadual = data.get('inscricao_estadual')
+            if data.get('data_nascimento'):
+                cadastro.data_nascimento = parse_date(data.get('data_nascimento'))
+            
+            if files.get('contrato_social'): cadastro.contrato_social = files.get('contrato_social')
+            if files.get('comprovante_residencia'): cadastro.comprovante_residencia = files.get('comprovante_residencia')
+            if files.get('foto_documento_frente'): cadastro.foto_documento_frente = files.get('foto_documento_frente')
+            if files.get('foto_documento_verso'): cadastro.foto_documento_verso = files.get('foto_documento_verso')
+            if files.get('selfie_documento'): cadastro.selfie_documento = files.get('selfie_documento')
+            
+            cadastro.levar_termo = data.get('levar_termo') == 'on'
+            cadastro.email = data.get('email')
+            cadastro.telefone = data.get('telefone')
+            cadastro.cep = data.get('cep')
+            cadastro.cidade = data.get('cidade')
+            cadastro.bairro = data.get('bairro')
+            cadastro.endereco = data.get('endereco')
+            cadastro.referencia = data.get('referencia')
+            cadastro.google_maps_link = data.get('google_maps_link')
+            cadastro.plano = data.get('plano')
+            cadastro.fidelidade = data.get('fidelidade') == 'sim'
+            cadastro.vencimento = data.get('vencimento')
+            cadastro.vencimento_id = data.get('vencimento_id')
+            cadastro.opcional = data.get('opcional') == 'sim'
+            cadastro.pagamento_instalacao = data.get('pagamento_instalacao')
+            if data.get('data_instalacao'):
+                cadastro.data_instalacao = parse_date(data.get('data_instalacao'))
+            cadastro.periodo_instalacao = data.get('periodo_instalacao')
+            cadastro.origem = data.get('origem')
+            
+            cadastro.save()
+            return JsonResponse({'status': 'success', 'message': 'Cadastro atualizado com sucesso!'})
+        except ValidationError as e:
+            msg = e.messages[0] if hasattr(e, 'messages') else str(e)
+            return JsonResponse({'status': 'error', 'message': msg}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+    return render(request, 'cadastros/edit.html', {'cadastro': cadastro})
+
+@login_required
 def delete_cadastro(request, pk):
     if request.method == 'POST':
         cadastro = get_object_or_404(Cadastro, pk=pk, consultor=request.user)
         cadastro.delete()
         return JsonResponse({'status': 'success'})
     return JsonResponse({'status': 'error'}, status=400)
+
+@login_required
+def standard_scripts(request):
+    return render(request, 'cadastros/scripts.html')
