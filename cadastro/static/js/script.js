@@ -450,11 +450,19 @@ document.getElementById('rg').addEventListener('input', function(e) {
 
 // Navigation logic
 let currentStep = 1;
+let isEditingMode = false;
 
 function nextStep(step) {
     const city = document.getElementById('cidade').value;
     
     if (!validateStep(currentStep)) return;
+
+    // Se estiver em modo de edição, pula direto para a revisão
+    if (isEditingMode) {
+        isEditingMode = false; // Reset flag
+        showStep(6);
+        return;
+    }
 
     // Skip Step 4 (Documents) for Maricá and Minas Gerais
     if (step === 4 && (city === 'marica' || city === 'minas_gerais')) {
@@ -467,6 +475,9 @@ function nextStep(step) {
 
 function prevStep(step) {
     const city = document.getElementById('cidade').value;
+    
+    // Se estiver voltando durante uma edição, cancela o modo edição
+    isEditingMode = false;
 
     // Skip Step 4 (Documents) when going back from 5 for Maricá and Minas Gerais
     if (step === 4 && (city === 'marica' || city === 'minas_gerais')) {
@@ -474,6 +485,11 @@ function prevStep(step) {
         return;
     }
 
+    showStep(step);
+}
+
+function startEditing(step) {
+    isEditingMode = true;
     showStep(step);
 }
 
@@ -563,7 +579,7 @@ function populateSummary() {
         html += `
             <div class="summary-section-header">
                 <span>${section}</span>
-                <button type="button" class="btn-edit" onclick="showStep(${config.step})">Editar</button>
+                <button type="button" class="btn-edit" onclick="startEditing(${config.step})">Editar</button>
             </div>
         `;
         config.fields.forEach(field => {
@@ -641,24 +657,92 @@ function populateSummary() {
 
 
 function validateStep(step) {
-    const inputs = document.getElementById(`step${step}`).querySelectorAll('input[required], select[required], textarea[required], input[min]');
+    const city = document.getElementById('cidade').value;
+    const type = document.getElementById('tipoPessoa').value;
+    const levarTermo = document.getElementById('levar_termo') ? document.getElementById('levar_termo').checked : false;
+    
+    // Define os campos obrigatórios por passo
+    const requiredFields = {
+        1: ['documento', 'nome_razao', 'email', 'telefone'],
+        2: ['cep', 'cidade', 'bairro', 'endereco', 'referencia'],
+        3: ['plano', 'vencimento'],
+        4: [], // Documentos variam
+        5: ['data_instalacao', 'periodo_instalacao', 'origem']
+    };
+
+    // Ajustes específicos do Passo 1 (PF/PJ)
+    if (step === 1) {
+        if (type === 'pf') {
+            requiredFields[1].push('rg', 'data_nascimento');
+        } else {
+            requiredFields[1].push('nome_fantasia');
+        }
+    }
+
+    // Ajustes específicos do Passo 4 (Documentos)
+    if (step === 4) {
+        const isSpecialCity = (city === 'marica' || city === 'minas_gerais');
+        if (!isSpecialCity) {
+            if (!levarTermo) requiredFields[4].push('comprovante_residencia');
+            requiredFields[4].push('foto_documento_frente', 'foto_documento_verso', 'selfie_documento');
+        }
+    }
+
+    // Ajuste específico do Passo 5 (Pagamento)
+    if (step === 5) {
+        const fidInput = document.querySelector('input[name="fidelidade"]:checked');
+        const isFidelidade = fidInput ? fidInput.value === 'sim' : true;
+        if (city === 'marica' || !isFidelidade) {
+            requiredFields[5].push('pagamento_instalacao');
+        }
+    }
+
     let valid = true;
-    inputs.forEach(input => {
-        if (!input.value || !input.checkValidity()) {
-            input.style.borderColor = 'red';
-            valid = false;
-            
-            // Show specific message for date if invalid
-            if (input.id === 'data_instalacao' && input.validity.rangeUnderflow) {
+    const fieldsToValidate = requiredFields[step] || [];
+    
+    fieldsToValidate.forEach(fieldName => {
+        const input = document.getElementsByName(fieldName)[0] || document.getElementById(fieldName);
+        if (!input) return;
+
+        let isFieldValid = true;
+        if (input.type === 'file') {
+            isFieldValid = input.files && input.files.length > 0;
+        } else {
+            isFieldValid = input.value && input.value.trim() !== '';
+        }
+
+        // Validação extra para data de instalação
+        if (fieldName === 'data_instalacao' && isFieldValid) {
+            const selectedDate = new Date(input.value + 'T00:00:00');
+            const tomorrow = new Date();
+            tomorrow.setHours(0,0,0,0);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            if (selectedDate < tomorrow) {
+                isFieldValid = false;
                 showNotify('A data de instalação deve ser a partir de amanhã.', 'warning');
             }
+        }
+
+        if (!isFieldValid) {
+            if (input.type === 'file') {
+                const wrapper = input.closest('.file-upload-wrapper');
+                if (wrapper) wrapper.style.borderColor = 'red';
+            } else {
+                input.style.borderColor = 'red';
+            }
+            valid = false;
         } else {
-            input.style.borderColor = '#ddd';
+            if (input.type === 'file') {
+                const wrapper = input.closest('.file-upload-wrapper');
+                if (wrapper) wrapper.style.borderColor = '#ddd';
+            } else {
+                input.style.borderColor = '#ddd';
+            }
         }
     });
 
     if (!valid && !document.querySelector('.toast.show')) {
-        showNotify('Por favor, preencha todos os campos corretamente.', 'warning');
+        showNotify('Por favor, preencha todos os campos obrigatórios (*).', 'warning');
     }
     return valid;
 }
@@ -684,18 +768,15 @@ function handleCityChange() {
 
     if (city === 'marica') {
         pagamentoWrapper.style.display = 'block';
-        pagamentoSelect.required = true;
         if (isFidelidade) {
             pagamentoSelect.value = 'pix'; // Default para Maricá com fidelidade
         }
     } else if (city) {
         if (isFidelidade) {
             pagamentoWrapper.style.display = 'none';
-            pagamentoSelect.required = false;
             pagamentoSelect.value = 'gratis';
         } else {
             pagamentoWrapper.style.display = 'block';
-            pagamentoSelect.required = true;
         }
     }
 
@@ -745,11 +826,9 @@ function toggleComprovanteUpload() {
         if (isLevarTermo) {
             uploadWrapper.style.opacity = '0.5';
             uploadWrapper.style.pointerEvents = 'none';
-            input.required = false;
         } else {
             uploadWrapper.style.opacity = '1';
             uploadWrapper.style.pointerEvents = 'auto';
-            input.required = true;
         }
     }
 }
@@ -768,18 +847,15 @@ function calculateInstallation() {
         const price = isFidelidade ? 100 : 460;
         installPriceSpan.innerText = `R$ ${price.toFixed(2).replace('.', ',')}`;
         pagamentoWrapper.style.display = 'block';
-        pagamentoSelect.required = true;
     } else if (city) {
         const price = isFidelidade ? 0 : 360;
         installPriceSpan.innerText = isFidelidade ? 'GRÁTIS' : `R$ ${price.toFixed(2).replace('.', ',')}`;
         
         if (isFidelidade) {
             pagamentoWrapper.style.display = 'none';
-            pagamentoSelect.required = false;
             pagamentoSelect.value = 'gratis';
         } else {
             pagamentoWrapper.style.display = 'block';
-            pagamentoSelect.required = true;
         }
     }
 }
@@ -822,6 +898,9 @@ function updateVencimentoOptions(city) {
 document.getElementById('registrationForm').onsubmit = function(e) {
     e.preventDefault();
     
+    // Valida o último passo antes de submeter
+    if (!validateStep(currentStep)) return;
+
     const submitBtn = this.querySelector('button[type="submit"]');
     if (submitBtn) {
         submitBtn.disabled = true;

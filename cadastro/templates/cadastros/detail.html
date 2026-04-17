@@ -232,14 +232,28 @@
 
                     <!-- Card da Ficha -->
                     <div class="card-premium">
-                        <div class="p-4 bg-secondary text-white rounded-top d-flex align-items-center">
+                        <div class="p-4 bg-secondary text-white rounded-top d-flex justify-content-between align-items-center">
                             <h5 class="mb-0 d-flex align-items-center">
                                 <i class="bi bi-person-lines-fill me-2"></i> Ficha Completa do Cliente
                             </h5>
+                            <button class="btn btn-sm btn-light fw-bold" id="btnEditFicha" onclick="toggleEditFicha()">
+                                <i class="bi bi-pencil-square me-1"></i> EDITAR
+                            </button>
                         </div>
                         <div class="p-4">
-                            <div class="bg-light p-3 rounded border" id="fichaContent">
-                                <pre style="white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 13px; margin-bottom: 0;">{{ cadastro.ficha_formatada }}</pre>
+                            <div class="bg-light p-3 rounded border" id="fichaDisplay">
+                                <pre style="white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 13px; margin-bottom: 0;" id="fichaText">{{ cadastro.ficha_formatada }}</pre>
+                            </div>
+                            <div class="bg-light p-3 rounded border" id="fichaEdit" style="display:none;">
+                                <textarea class="form-control" id="fichaTextarea" rows="15" style="font-family: 'Courier New', Courier, monospace; font-size: 13px; background: #fdfdfd;"></textarea>
+                                <div class="mt-3 d-flex gap-2">
+                                    <button class="btn btn-success btn-sm px-4 fw-bold" onclick="saveFicha()">
+                                        <i class="bi bi-check-circle me-1"></i> SALVAR
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm px-4" onclick="toggleEditFicha()">
+                                        CANCELAR
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -251,8 +265,67 @@
 
 <script>
 function copyText(elementId) {
-    const text = document.getElementById(elementId).innerText;
+    const el = document.getElementById(elementId);
+    const text = el.innerText || el.value;
     copyToClipboard(text, "Copiado com sucesso!");
+}
+
+function toggleEditFicha() {
+    const display = document.getElementById('fichaDisplay');
+    const edit = document.getElementById('fichaEdit');
+    const btn = document.getElementById('btnEditFicha');
+    const textarea = document.getElementById('fichaTextarea');
+    const text = document.getElementById('fichaText').innerText;
+
+    if (edit.style.display === 'none') {
+        textarea.value = text;
+        display.style.display = 'none';
+        edit.style.display = 'block';
+        btn.innerHTML = '<i class="bi bi-x-circle me-1"></i> CANCELAR';
+        btn.classList.replace('btn-light', 'btn-danger');
+    } else {
+        display.style.display = 'block';
+        edit.style.display = 'none';
+        btn.innerHTML = '<i class="bi bi-pencil-square me-1"></i> EDITAR';
+        btn.classList.replace('btn-danger', 'btn-light');
+    }
+}
+
+function saveFicha() {
+    const newText = document.getElementById('fichaTextarea').value;
+    const btn = event.target;
+    const originalContent = btn.innerHTML;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>SALVANDO...';
+
+    // Aqui usamos uma rota de atualização que aceite o campo 'ficha_manual' ou similar
+    // Por enquanto, vamos simular o salvamento visual e notificar
+    fetch(`/cadastro/{{ cadastro.pk }}/update-ficha/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `ficha_texto=${encodeURIComponent(newText)}`
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'success') {
+            document.getElementById('fichaText').innerText = newText;
+            toggleEditFicha();
+            showNotify("Ficha atualizada com sucesso!", "success");
+        } else {
+            showNotify("Erro ao salvar: " + data.message, "danger");
+        }
+    })
+    .catch(e => {
+        showNotify("Erro de conexão", "danger");
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalContent;
+    });
 }
 
 function copyToClipboard(text, message) {

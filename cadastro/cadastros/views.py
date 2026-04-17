@@ -194,11 +194,18 @@ def dashboard(request):
 def update_status(request, pk):
     if request.method == 'POST':
         cadastro = get_object_or_404(Cadastro, pk=pk, consultor=request.user)
-        new_status = request.POST.get('status')
-        if new_status in dict(Cadastro.STATUS_CHOICES):
-            cadastro.status = new_status
-            cadastro.save()
-            return JsonResponse({'status': 'success'})
+        cadastro.status = request.POST.get('status')
+        cadastro.save()
+        return JsonResponse({'status': 'success'})
+    return JsonResponse({'status': 'error'}, status=400)
+
+@login_required
+def update_ficha(request, pk):
+    if request.method == 'POST':
+        cadastro = get_object_or_404(Cadastro, pk=pk, consultor=request.user)
+        cadastro.ficha_manual = request.POST.get('ficha_texto')
+        cadastro.save()
+        return JsonResponse({'status': 'success'})
     return JsonResponse({'status': 'error'}, status=400)
 
 @login_required

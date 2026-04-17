@@ -85,6 +85,9 @@ class Cadastro(models.Model):
     consultor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     data_cadastro = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pendente')
+    
+    # Campo para edição manual da ficha
+    ficha_manual = models.TextField(blank=True, null=True)
 
     history = HistoricalRecords()
 
@@ -192,6 +195,9 @@ class Cadastro(models.Model):
 
     @property
     def ficha_formatada(self):
+        if self.ficha_manual:
+            return self.ficha_manual
+            
         planos_nomes = {
             'essencial': '240 MEGA',
             'rapido': '400 MEGA',

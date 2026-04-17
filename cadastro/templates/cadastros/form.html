@@ -46,25 +46,25 @@
                     
                     <div class="form-group mb-3">
                         <label>CPF OU CNPJ *</label>
-                        <input type="text" id="documento" name="documento" class="form-control form-control-premium" required placeholder="000.000.000-00 ou 00.000.000/0000-00" oninput="handleDocumentInput()">
+                        <input type="text" id="documento" name="documento" class="form-control form-control-premium" placeholder="000.000.000-00 ou 00.000.000/0000-00" oninput="handleDocumentInput()">
                         <input type="hidden" id="tipoPessoa" name="tipoPessoa" value="pf">
                     </div>
 
                     <div class="form-group mb-3">
                         <label id="labelNome">NOME COMPLETO *</label>
-                        <input type="text" id="nome" name="nome_razao" class="form-control form-control-premium" required placeholder="Seu nome completo">
+                        <input type="text" id="nome" name="nome_razao" class="form-control form-control-premium" placeholder="Seu nome completo">
                     </div>
 
                     <div class="form-group mb-3 pj-only" style="display:none;">
                         <label>NOME FANTASIA *</label>
-                        <input type="text" id="nomeFantasia" name="nome_fantasia" class="form-control form-control-premium" placeholder="Nome da empresa">
+                        <input type="text" id="nomeFantasia" name="nome_fantasia" class="form-control form-control-premium" placeholder="Nome Fantasia da Empresa">
                     </div>
 
                     <div class="row pf-only">
                         <div class="col-md-6 mb-3">
                             <div class="form-group">
                                 <label>RG *</label>
-                                <input type="text" id="rg" name="rg" class="form-control form-control-premium" placeholder="Seu RG">
+                                <input type="text" id="rg" name="rg" class="form-control form-control-premium" placeholder="00.000.000-0">
                             </div>
                         </div>
                         <div class="col-md-6 mb-3">
@@ -76,8 +76,8 @@
                     </div>
 
                     <div class="form-group mb-3 pj-only" style="display:none;">
-                        <label>INSCRIÇÃO ESTADUAL</label>
-                        <input type="text" id="inscricaoEstadual" name="inscricao_estadual" class="form-control form-control-premium" placeholder="Se houver">
+                        <label>INSCRIÇÃO ESTADUAL (Opcional)</label>
+                        <input type="text" id="inscricaoEstadual" name="inscricao_estadual" class="form-control form-control-premium" placeholder="Isento ou número">
                     </div>
 
                     <div class="form-group mb-3 pj-only" style="display:none;">
@@ -92,13 +92,13 @@
                         <div class="col-md-6 mb-3">
                             <div class="form-group">
                                 <label>E-MAIL *</label>
-                                <input type="email" name="email" class="form-control form-control-premium" required placeholder="seu@email.com">
+                                <input type="email" name="email" class="form-control form-control-premium" placeholder="exemplo@email.com">
                             </div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <div class="form-group">
-                                <label>TELEFONE *</label>
-                                <input type="text" id="telefone" name="telefone" class="form-control form-control-premium" required placeholder="(00) 00000-0000">
+                                <label>TELEFONE (WHATSAPP) *</label>
+                                <input type="text" id="telefone" name="telefone" class="form-control form-control-premium" placeholder="(00) 00000-0000">
                             </div>
                         </div>
                     </div>
@@ -114,17 +114,16 @@
                 <div class="mb-4">
                     <h6 class="text-uppercase small fw-bold text-muted mb-3">2. Localização</h6>
                     
+                    <div class="form-group mb-3">
+                        <label>CEP *</label>
+                        <input type="text" id="cep" name="cep" class="form-control form-control-premium" placeholder="00000-000">
+                    </div>
+
                     <div class="row">
-                        <div class="col-md-5 mb-3">
-                            <div class="form-group">
-                                <label>CEP *</label>
-                                <input type="text" id="cep" name="cep" class="form-control form-control-premium" required placeholder="00000-000">
-                            </div>
-                        </div>
-                        <div class="col-md-7 mb-3">
+                        <div class="col-md-8 mb-3">
                             <div class="form-group">
                                 <label>CIDADE *</label>
-                                <select id="cidade" name="cidade" class="form-select form-control-premium" required onchange="handleCityChange()">
+                                <select id="cidade" name="cidade" class="form-select form-control-premium" onchange="handleCityChange()">
                                     <option value="">Selecione...</option>
                                     <option value="marica">Maricá - RJ</option>
                                     <option value="minas_gerais">Minas Gerais - MG</option>
@@ -138,16 +137,37 @@
                                 </select>
                             </div>
                         </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="form-group">
+                                <label>UF *</label>
+                                <input type="text" id="uf" name="uf" class="form-control form-control-premium" readonly>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="form-group mb-3">
                         <label>BAIRRO *</label>
-                        <input type="text" id="bairro" name="bairro" class="form-control form-control-premium" required placeholder="Seu bairro">
+                        <input type="text" id="bairro" name="bairro" class="form-control form-control-premium" placeholder="Ex: Centro">
                     </div>
 
                     <div class="form-group mb-3">
-                        <label>ENDEREÇO COMPLETO *</label>
-                        <input type="text" id="endereco" name="endereco" class="form-control form-control-premium" required placeholder="Rua, número, etc.">
+                        <label>RUA/LOGRADOURO *</label>
+                        <input type="text" id="rua" name="endereco" class="form-control form-control-premium" placeholder="Nome da rua">
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <div class="form-group">
+                                <label>NÚMERO *</label>
+                                <input type="text" name="numero" class="form-control form-control-premium" placeholder="Nº">
+                            </div>
+                        </div>
+                        <div class="col-md-8 mb-3">
+                            <div class="form-group">
+                                <label>COMPLEMENTO</label>
+                                <input type="text" name="complemento" class="form-control form-control-premium" placeholder="Apt, Bloco, etc.">
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Mapa e Localização -->
@@ -177,7 +197,7 @@
 
                     <div class="form-group mb-3">
                         <label>PONTO DE REFERÊNCIA *</label>
-                        <textarea name="referencia" class="form-control form-control-premium" rows="2" required placeholder="Algo que facilite encontrar o local"></textarea>
+                        <textarea name="referencia" class="form-control form-control-premium" rows="2" placeholder="Ex: Próximo ao mercado..."></textarea>
                     </div>
                 </div>
 
@@ -193,8 +213,8 @@
                     <h6 class="text-uppercase small fw-bold text-muted mb-3">3. Escolha seu Plano</h6>
                     
                     <div class="form-group mb-3">
-                        <label>PLANO DESEJADO *</label>
-                        <select id="plano" name="plano" class="form-select form-control-premium" required onchange="handlePlanChange()">
+                        <label>PLANO ESCOLHIDO *</label>
+                        <select id="plano" name="plano" class="form-select form-control-premium" onchange="handlePlanChange()">
                             <option value="">Selecione a cidade primeiro...</option>
                         </select>
                     </div>
@@ -233,9 +253,9 @@
                     </div>
 
                     <div class="form-group mb-3">
-                        <label>DIA DE VENCIMENTO *</label>
-                        <select id="vencimento" name="vencimento" class="form-select form-control-premium" required>
-                            <option value="">Selecione a cidade...</option>
+                        <label>VENCIMENTO *</label>
+                        <select id="vencimento" name="vencimento" class="form-select form-control-premium">
+                            <option value="">Selecione o plano primeiro...</option>
                         </select>
                         <input type="hidden" name="vencimento_id" id="vencimento_id_hidden">
                         <div id="vencimentoIdInfo" class="small text-muted mt-1"></div>
@@ -253,46 +273,38 @@
                 <div class="mb-4">
                     <h6 class="text-uppercase small fw-bold text-muted mb-3">4. Documentação Obrigatória</h6>
                     
-                    <div id="docs_comprovante_residencia" class="mb-3">
-                        <label class="small fw-bold mb-2">1. COMPROVANTE DE RESIDÊNCIA *</label>
-                        <div id="termo_option" style="display:none;" class="mb-2">
-                            <div class="form-check form-switch p-0 ms-4">
-                                <input class="form-check-input" type="checkbox" id="levar_termo" name="levar_termo" onchange="toggleComprovanteUpload()">
-                                <label class="form-check-label small" for="levar_termo">Prefiro levar o termo (disponível nesta região)</label>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="small fw-bold mb-2">COMPROVANTE DE RESIDÊNCIA *</label>
+                            <div class="file-upload-wrapper">
+                                <input type="file" id="comprovante_residencia" name="comprovante_residencia" accept="image/*,.pdf">
+                                <div class="file-upload-info">Clique para selecionar ou arraste aqui</div>
                             </div>
                         </div>
-                        <div id="comprovante_upload_wrapper" class="file-upload-wrapper">
-                            <input type="file" id="comprovante_residencia" name="comprovante_residencia" accept="image/*,.pdf">
-                            <div class="file-upload-info">Anexar comprovante de residência (legível e no nome do titular)</div>
+                        <div class="col-md-6 mb-3">
+                            <label class="small fw-bold mb-2">DOC. FRENTE *</label>
+                            <div class="file-upload-wrapper">
+                                <input type="file" name="foto_documento_frente" accept="image/*">
+                                <div class="file-upload-info">Clique para selecionar ou arraste aqui</div>
+                            </div>
                         </div>
                     </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="small fw-bold mb-2">2. FOTO DOC. (FRENTE) *</label>
+                            <label class="small fw-bold mb-2">DOC. VERSO *</label>
                             <div class="file-upload-wrapper">
-                                <input type="file" name="foto_documento_frente" accept="image/*" required>
-                                <div class="file-upload-info">RG ou CNH (Frente)</div>
+                                <input type="file" name="foto_documento_verso" accept="image/*">
+                                <div class="file-upload-info">Clique para selecionar ou arraste aqui</div>
                             </div>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="small fw-bold mb-2">3. FOTO DOC. (VERSO) *</label>
+                            <label class="small fw-bold mb-2">SELFIE COM DOCUMENTO *</label>
                             <div class="file-upload-wrapper">
-                                <input type="file" name="foto_documento_verso" accept="image/*" required>
-                                <div class="file-upload-info">RG ou CNH (Verso)</div>
+                                <input type="file" name="selfie_documento" accept="image/*">
+                                <div class="file-upload-info">Clique para selecionar ou arraste aqui</div>
                             </div>
                         </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="small fw-bold mb-2">4. SELFIE COM DOCUMENTO *</label>
-                        <div class="file-upload-wrapper">
-                            <input type="file" name="selfie_documento" accept="image/*" required>
-                            <div class="file-upload-info">Selfie segurando o documento (RG ou CNH)</div>
-                        </div>
-                        <p class="text-muted" style="font-size: 0.7rem; margin-top: 5px;">
-                            <i class="bi bi-info-circle me-1"></i> Garanta boa iluminação e que os dados fiquem visíveis.
-                        </p>
                     </div>
                 </div>
 
@@ -309,7 +321,7 @@
                     
                     <div class="form-group mb-3" id="pagamento_instalacao_wrapper">
                         <label>PAGAMENTO DA INSTALAÇÃO *</label>
-                        <select id="pagamento_instalacao" name="pagamento_instalacao" class="form-select form-control-premium" required>
+                        <select id="pagamento_instalacao" name="pagamento_instalacao" class="form-select form-control-premium">
                             <option value="">Selecione o método...</option>
                             <option value="pix">PIX (Mais rápido)</option>
                             <option value="dinheiro">Dinheiro</option>
@@ -319,16 +331,16 @@
                     </div>
 
                     <div class="row">
-                        <div class="col-md-7 mb-3">
+                        <div class="col-md-6 mb-3">
                             <div class="form-group">
                                 <label>DATA PARA INSTALAÇÃO *</label>
-                                <input type="date" id="data_instalacao" name="data_instalacao" class="form-control form-control-premium" required>
+                                <input type="date" id="data_instalacao" name="data_instalacao" class="form-control form-control-premium">
                             </div>
                         </div>
-                        <div class="col-md-5 mb-3">
+                        <div class="col-md-6 mb-3">
                             <div class="form-group">
                                 <label>PERÍODO *</label>
-                                <select name="periodo_instalacao" class="form-select form-control-premium" required>
+                                <select name="periodo_instalacao" class="form-select form-control-premium">
                                     <option value="manha">Manhã</option>
                                     <option value="tarde">Tarde</option>
                                 </select>
@@ -338,7 +350,7 @@
 
                     <div class="form-group mb-3">
                         <label>COMO NOS CONHECEU? *</label>
-                        <input type="text" name="origem" class="form-control form-control-premium" required placeholder="Ex: Instagram, Indicação, etc.">
+                        <input type="text" name="origem" class="form-control form-control-premium" placeholder="Ex: Instagram, Indicação, etc.">
                     </div>
                 </div>
 
@@ -357,8 +369,7 @@
                     </div>
                 </div>
 
-                <div class="d-flex justify-content-between align-items-center">
-                    <button type="button" class="btn-outline-fibramar" onclick="prevStep(5)">Corrigir</button>
+                <div class="d-flex justify-content-end align-items-center">
                     <button type="submit" class="btn-fibramar px-5">Enviar Cadastro</button>
                 </div>
             </div>
