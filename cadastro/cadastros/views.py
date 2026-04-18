@@ -17,22 +17,37 @@ from .integrations import IXCIntegration
 @login_required
 def send_to_ixc(request, pk):
     """
-    Aciona a integração para enviar os dados para o IXC.
+    Aciona a integração para enviar os dados para o IXC seguindo o fluxo:
+    1. Criar CRM Lead
+    2. Converter para Prospect (Cliente)
     """
     if request.method == 'POST':
         cadastro = get_object_or_404(Cadastro, pk=pk)
         
         # Instancia a integração
         ixc = IXCIntegration()
-        result = ixc.create_lead(cadastro)
         
-        if result['status'] == 'success':
-            # Se desejar, pode salvar o ID do IXC no modelo Cadastro para referência futura
-            # cadastro.ixc_id = result['data'].get('id')
-            # cadastro.save()
-            return JsonResponse({'status': 'success', 'message': 'Cadastro enviado para o IXC com sucesso!'})
+        # Passo 1: Criar Lead no CRM
+        lead_result = ixc.create_crm_lead(cadastro)
+        
+        if lead_result['status'] == 'success':
+            crm_lead_id = lead_result['data'].get('id')
+            
+            # Passo 2: Criar Prospect vinculado ao Lead
+            prospect_result = ixc.create_prospect(cadastro, crm_lead_id=crm_lead_id)
+            
+            if prospect_result['status'] == 'success':
+                return JsonResponse({
+                    'status': 'success', 
+                    'message': 'Cadastro enviado com sucesso! Lead CRM criado e convertido para Prospect.'
+                })
+            else:
+                return JsonResponse({
+                    'status': 'warning', 
+                    'message': f"Lead CRM criado (ID: {crm_lead_id}), mas houve erro ao criar o Prospect: {prospect_result['message']}"
+                })
         else:
-            return JsonResponse({'status': 'error', 'message': result['message']})
+            return JsonResponse({'status': 'error', 'message': lead_result['message']})
             
     return JsonResponse({'status': 'error'}, status=400)
 
