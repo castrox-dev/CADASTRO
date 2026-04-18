@@ -63,6 +63,7 @@ class Cadastro(models.Model):
     # Endereço
     cep = models.CharField(max_length=10)
     cidade = models.CharField(max_length=100)
+    uf = models.CharField(max_length=2, blank=True, null=True)
     bairro = models.CharField(max_length=100)
     endereco = models.CharField(max_length=255)
     referencia = models.TextField()

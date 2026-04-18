@@ -155,6 +155,7 @@ def client_form(request):
                 telefone=data.get('telefone'),
                 cep=data.get('cep'),
                 cidade=data.get('cidade'),
+                uf=data.get('uf'),
                 bairro=data.get('bairro'),
                 endereco=data.get('endereco'),
                 referencia=data.get('referencia'),
@@ -245,6 +246,7 @@ def edit_cadastro(request, pk):
             cadastro.telefone = data.get('telefone')
             cadastro.cep = data.get('cep')
             cadastro.cidade = data.get('cidade')
+            cadastro.uf = data.get('uf')
             cadastro.bairro = data.get('bairro')
             cadastro.endereco = data.get('endereco')
             cadastro.referencia = data.get('referencia')

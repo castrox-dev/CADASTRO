@@ -8,13 +8,13 @@ $(document).ready(function() {
     // Máscara dinâmica para CPF/CNPJ
     var options = {
         onKeyPress: function(val, e, field, options) {
-            var masks = ['000.000.000-00##', '00.000.000/0000-00'];
+            var masks = ['000.000.000-00', '00.000.000/0000-00'];
             var mask = (val.replace(/\D/g, '').length > 11) ? masks[1] : masks[0];
             $('#documento').mask(mask, options);
             handleDocumentInput(); // Mantém a lógica de troca PF/PJ
         }
     };
-    $('#documento').mask('000.000.000-00##', options);
+    $('#documento').mask('000.000.000-00', options);
 });
 
 function handleDocumentInput() {
@@ -256,8 +256,8 @@ function handleFiles(input, files, info, wrapper) {
 }
 
 // CEP Lookup logic
-document.getElementById('cep').addEventListener('blur', function() {
-    const cep = this.value.replace(/\D/g, '');
+function handleCEPLookup(cepInput) {
+    const cep = cepInput.replace(/\D/g, '');
     if (cep.length === 8) {
         fetch(`https://viacep.com.br/ws/${cep}/json/`)
             .then(response => response.json())
@@ -266,12 +266,26 @@ document.getElementById('cep').addEventListener('blur', function() {
                     document.getElementById('endereco').value = data.logradouro;
                     document.getElementById('bairro').value = data.bairro;
                     
+                    // Pre-select UF
+                    const ufSelect = document.getElementById('uf');
+                    if (ufSelect) {
+                        ufSelect.value = data.uf;
+                    }
+                    
                     // Pre-select city if it matches Maricá or if it's MG
                     const cidadeSelect = document.getElementById('cidade');
                     if (data.localidade.toLowerCase() === 'maricá') {
                         cidadeSelect.value = 'marica';
                     } else if (data.uf === 'MG') {
                         cidadeSelect.value = 'minas_gerais';
+                    } else if (data.uf === 'ES') {
+                        if (data.localidade.toLowerCase() === 'muqui') cidadeSelect.value = 'muqui';
+                        else if (data.localidade.toLowerCase() === 'piúma') cidadeSelect.value = 'piuma';
+                        else if (data.localidade.toLowerCase() === 'mimoso do sul') cidadeSelect.value = 'mimoso';
+                        else cidadeSelect.value = 'outra';
+                    } else if (data.uf === 'RJ') {
+                        if (data.localidade.toLowerCase() === 'cabo frio') cidadeSelect.value = 'cabo_frio';
+                        else cidadeSelect.value = 'outra';
                     } else {
                         cidadeSelect.value = 'outra';
                     }
@@ -284,6 +298,17 @@ document.getElementById('cep').addEventListener('blur', function() {
                 }
             })
             .catch(error => console.error('Erro ao buscar CEP:', error));
+    }
+}
+
+document.getElementById('cep').addEventListener('blur', function() {
+    handleCEPLookup(this.value);
+});
+
+document.getElementById('cep').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault(); // Evita submeter o form ao buscar o CEP
+        handleCEPLookup(this.value);
     }
 });
 
@@ -432,22 +457,6 @@ function handlePlanChange() {
     }
 }
 
-// RG Mask and Limit
-document.getElementById('rg').addEventListener('input', function(e) {
-    let value = e.target.value.replace(/\D/g, '');
-    if (value.length > 9) value = value.slice(0, 9); // Limite comum de 9 dígitos
-    
-    // Máscara simples para RG (00.000.000-0)
-    if (value.length > 8) {
-        value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{1})/, "$1.$2.$3-$4");
-    } else if (value.length > 5) {
-        value = value.replace(/(\d{2})(\d{3})(\d{3})/, "$1.$2.$3");
-    } else if (value.length > 2) {
-        value = value.replace(/(\d{2})(\d{3})/, "$1.$2");
-    }
-    e.target.value = value;
-});
-
 // Navigation logic
 let currentStep = 1;
 let isEditingMode = false;
@@ -497,20 +506,15 @@ function showStep(step) {
     const city = document.getElementById('cidade').value;
     const isSpecialCity = (city === 'marica' || city === 'minas_gerais');
     
-    // Toggle required status for Step 4 fields based on city
+    // Toggle visual indicators for Step 4 fields based on city
+    // (We no longer use .required = true to avoid browser focus errors on hidden inputs)
     const step4Inputs = document.getElementById('step4').querySelectorAll('input[type="file"]');
     step4Inputs.forEach(input => {
+        const wrapper = input.closest('.file-upload-wrapper');
         if (isSpecialCity) {
-            input.required = false;
-            input.classList.remove('required-field');
+            if (wrapper) wrapper.style.borderColor = '#ddd';
         } else {
-            // Re-enable required if not special city, except for comprovante if termo is checked
-            if (input.name === 'comprovante_residencia') {
-                const levarTermo = document.getElementById('levar_termo');
-                input.required = !(levarTermo && levarTermo.checked);
-            } else {
-                input.required = true;
-            }
+            // Visual check handled by validateStep
         }
     });
 
@@ -664,7 +668,7 @@ function validateStep(step) {
     // Define os campos obrigatórios por passo
     const requiredFields = {
         1: ['documento', 'nome_razao', 'email', 'telefone'],
-        2: ['cep', 'cidade', 'bairro', 'endereco', 'referencia'],
+        2: ['cep', 'cidade', 'uf', 'bairro', 'endereco', 'referencia'],
         3: ['plano', 'vencimento'],
         4: [], // Documentos variam
         5: ['data_instalacao', 'periodo_instalacao', 'origem']
@@ -754,6 +758,15 @@ function handleCityChange() {
     const termoOption = document.getElementById('termo_option');
     const pagamentoWrapper = document.getElementById('pagamento_instalacao_wrapper');
     const pagamentoSelect = document.getElementById('pagamento_instalacao');
+    const ufSelect = document.getElementById('uf');
+
+    // Auto-select UF based on city
+    if (ufSelect) {
+        if (['marica', 'cabo_frio', 'unamar'].includes(city)) ufSelect.value = 'RJ';
+        else if (['muqui', 'piuma', 'mimoso'].includes(city)) ufSelect.value = 'ES';
+        else if (city === 'minas_gerais') ufSelect.value = 'MG';
+        else if (city === 'sao_paulo') ufSelect.value = 'SP';
+    }
 
     // Update Plans list based on city
     updatePlanOptions(city);
@@ -948,27 +961,3 @@ document.getElementById('registrationForm').onsubmit = function(e) {
         }
     });
 };
-
-// Masking inputs (simple version)
-document.getElementById('cep').addEventListener('input', function(e) {
-    let value = e.target.value.replace(/\D/g, '');
-    if (value.length > 8) value = value.slice(0, 8);
-    if (value.length > 5) {
-        value = value.replace(/(\d{5})(\d{3})/, "$1-$2");
-    }
-    e.target.value = value;
-});
-
-document.getElementById('telefone').addEventListener('input', function(e) {
-    let value = e.target.value.replace(/\D/g, '');
-    if (value.length > 11) value = value.slice(0, 11);
-    
-    if (value.length > 10) {
-        value = value.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-    } else if (value.length > 6) {
-        value = value.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
-    } else if (value.length > 2) {
-        value = value.replace(/(\d{2})/, "($1) ");
-    }
-    e.target.value = value;
-});
