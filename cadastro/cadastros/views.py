@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.core.exceptions import ValidationError
 from .models import Cadastro
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -9,6 +9,7 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from datetime import timedelta
 import logging
+import json
 
 def is_admin(user):
     return user.is_superuser
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 @login_required
 def send_to_ixc(request, pk):
     """
-    Aciona a integração para enviar apenas o CRM Lead no IXC.
+    Aciona a integração para criar lead e, em seguida, prospect no IXC.
     """
     if request.method == 'POST':
         cadastro = get_object_or_404(Cadastro, pk=pk)
@@ -27,6 +28,26 @@ def send_to_ixc(request, pk):
         
         # Instancia a integração
         ixc = IXCIntegration()
+        if cadastro.ixc_lead_id:
+            logs.append(f"[DUPLICIDADE] ixc_lead_id local existente={cadastro.ixc_lead_id} (validando no IXC antes de bloquear)")
+
+        # Regra de duplicidade remota: documento já existente no IXC.
+        duplicate_check = ixc.check_duplicate_before_create(cadastro)
+        logs.extend(duplicate_check.get('logs', []))
+        if duplicate_check.get('status') == 'duplicate':
+            resource = duplicate_check.get('resource')
+            found_id = duplicate_check.get('found_id')
+            logger.warning("IXC duplicate cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+            return JsonResponse({
+                'status': 'warning',
+                'message': f"Duplicidade no IXC: documento já existe em {resource} (ID: {found_id or 'N/A'}).",
+                'duplicate': True,
+                'logs': logs
+            })
+        
+        # Se não houver duplicidade remota, não bloqueia por ID local antigo.
+        if cadastro.ixc_lead_id:
+            logs.append("[DUPLICIDADE] sem duplicidade remota; ignorando ixc_lead_id local antigo")
         
         # Passo 1: Criar Lead no CRM
         lead_result = ixc.create_crm_lead(cadastro)
@@ -39,11 +60,28 @@ def send_to_ixc(request, pk):
             cadastro.ixc_lead_enviado_em = timezone.now()
             cadastro.save(update_fields=['ixc_lead_id', 'ixc_lead_enviado_em'])
 
-            logs.append("[FIM] lead enviado e salvo no cadastro")
-            logger.info("IXC lead success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+            logs.append("[PROSPECT] estratégia=novo (criação do zero)")
+            prospect_result = ixc.create_prospect(cadastro, crm_lead_id=crm_lead_id)
+            logs.extend(prospect_result.get('logs', []))
+
+            if prospect_result.get('status') == 'success':
+                prospect_id = prospect_result.get('prospect_id')
+                logs.append(f"[FIM] lead enviado e prospect criado/convertido id={prospect_id or 'N/A'}")
+                logger.info("IXC lead+prospect success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+                msg_prospect = f"ID: {prospect_id}" if prospect_id else "ID não retornado pela API"
+                return JsonResponse({
+                    'status': 'success',
+                    'message': f"Lead criado (ID: {crm_lead_id}) e prospect processado com sucesso ({msg_prospect}).",
+                    'lead_id': crm_lead_id,
+                    'prospect_id': prospect_id,
+                    'logs': logs
+                })
+
+            logs.append("[FIM] lead criado, mas prospect falhou")
+            logger.warning("IXC partial success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
             return JsonResponse({
-                'status': 'success',
-                'message': f"Lead criado no IXC com sucesso (ID: {crm_lead_id}).",
+                'status': 'warning',
+                'message': f"Lead criado (ID: {crm_lead_id}), mas não foi possível criar o prospect automaticamente.",
                 'lead_id': crm_lead_id,
                 'logs': logs
             })
@@ -236,6 +274,25 @@ def cadastro_detail(request, pk):
         'cadastro': cadastro,
         'status_choices': Cadastro.STATUS_CHOICES
     })
+
+@login_required
+def export_cadastro_json(request, pk):
+    cadastro = get_object_or_404(Cadastro, pk=pk, consultor=request.user)
+    ixc = IXCIntegration()
+    payload = {
+        'cadastro_id': cadastro.pk,
+        'lead_resources': [ixc.lead_resource_override] if ixc.lead_resource_override else ixc.CRM_LEAD_RESOURCES,
+        'prospect_resources': ixc.CRM_PROSPECT_NEW_RESOURCES,
+        'lead_payload': ixc.build_crm_lead_payload(cadastro),
+        'prospect_payloads': ixc.build_prospect_payloads(cadastro, crm_lead_id=cadastro.ixc_lead_id),
+    }
+
+    response = HttpResponse(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        content_type='application/json; charset=utf-8'
+    )
+    response['Content-Disposition'] = f'attachment; filename="cadastro_{cadastro.pk}.json"'
+    return response
 
 @login_required
 def edit_cadastro(request, pk):

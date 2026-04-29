@@ -65,6 +65,10 @@
                             <a href="{% url 'edit_cadastro' cadastro.pk %}" class="btn-action-premium btn-action-edit">
                                 <i class="bi bi-pencil-square"></i> EDITAR NO SISTEMA
                             </a>
+
+                            <a href="{% url 'export_cadastro_json' cadastro.pk %}" class="btn-action-premium btn-action-ficha" target="_blank">
+                                <i class="bi bi-filetype-json"></i> GERAR JSON (TESTE)
+                            </a>
                             
                             <hr class="my-4 opacity-10">
 
