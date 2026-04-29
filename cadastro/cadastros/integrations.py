@@ -1,7 +1,9 @@
 import requests
 import base64
 import json
+import os
 from django.conf import settings
+from django.utils import timezone
 
 class IXCIntegration:
     """
@@ -55,7 +57,7 @@ class IXCIntegration:
         'WhatsApp': '1', # Solicitado pelo cliente
         'TikTok': '13', # Tráfego mídias
     }
-    CRM_LEAD_RESOURCES = ['crm_leads', 'crm_sp_leads', 'crm_lead']
+    CRM_LEAD_RESOURCES = ['crm_leads', 'crm_sp_leads', 'crm_lead', 'contato']
 
     def __init__(self):
         self.url = self._normalize_base_url(getattr(settings, 'IXC_API_URL', ''))
@@ -68,10 +70,6 @@ class IXCIntegration:
 
     @staticmethod
     def _normalize_base_url(url):
-        """
-        Garante que a URL base fique no formato esperado pela API.
-        Aceita entradas como https://xxx/adm.php e converte para https://xxx
-        """
         clean_url = (url or '').strip().rstrip('/')
         if clean_url.endswith('/adm.php'):
             clean_url = clean_url[:-8]
@@ -79,19 +77,28 @@ class IXCIntegration:
 
     @staticmethod
     def _build_authorization_header(token):
-        """
-        Suporta dois formatos de token:
-        - ID:TOKEN  -> Authorization Basic
-        - JWT       -> Authorization Bearer
-        """
         clean_token = (token or '').strip()
         if not clean_token:
             return ''
-        # JWT geralmente possui 3 partes separadas por ponto.
         if clean_token.count('.') == 2 and ':' not in clean_token:
             return f'Bearer {clean_token}'
         encoded = base64.b64encode(clean_token.encode('utf-8')).decode('ascii')
         return f'Basic {encoded}'
+
+    def _save_debug_json(self, cadastro_id, payload, etapa):
+        try:
+            debug_dir = os.path.join(settings.BASE_DIR, 'media', 'ixc_debug')
+            if not os.path.exists(debug_dir):
+                os.makedirs(debug_dir)
+            
+            filename = f"debug_id_{cadastro_id}_{etapa}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.json"
+            filepath = os.path.join(debug_dir, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, indent=4, ensure_ascii=False)
+            return filepath
+        except Exception:
+            return None
 
     def _post_ixc(self, endpoint, payload, etapa):
         logs = [
@@ -130,9 +137,6 @@ class IXCIntegration:
 
     @staticmethod
     def _extract_id(data):
-        """
-        Tenta extrair ID em diferentes formatos de resposta do IXC.
-        """
         if isinstance(data, dict):
             for key in ('id', 'id_lead', 'id_cliente', 'idcrm_leads'):
                 value = data.get(key)
@@ -161,32 +165,61 @@ class IXCIntegration:
             }
 
         id_plano = self.PLANOS_MAP.get(cadastro.plano, '')
-        id_origem = self.ORIGENS_MAP.get(cadastro.origem, '1') # Default 'Solicitado pelo cliente'
-        id_filial = self.FILIAIS_MAP.get(cadastro.cidade, '2') # Default Maricá
+        id_origem = self.ORIGENS_MAP.get(cadastro.origem, '1')
+        id_filial = self.FILIAIS_MAP.get(cadastro.cidade, '2')
+        id_cidade = self.CIDADES_MAP.get(cadastro.cidade, '')
 
-        # Payload para CRM Lead
+        # Payload com mapeamento reforçado de contatos e data brasileira
         payload = {
             'id_filial': id_filial,
             'contato': cadastro.nome_razao,
+            'nome': cadastro.nome_razao,
+            'razao': cadastro.nome_razao,
+            'data_cadastro': cadastro.data_cadastro.strftime('%d/%m/%Y %H:%M:%S') if cadastro.data_cadastro else timezone.now().strftime('%d/%m/%Y %H:%M:%S'),
             'cnpj_cpf': cadastro.documento,
+            
+            # Telefones - Mapeamento idêntico para todos os campos de contato
             'fone_residencial': cadastro.telefone,
             'fone_comercial': cadastro.telefone,
             'fone_movel': cadastro.telefone,
+            'telefone_celular': cadastro.telefone,
+            'celular': cadastro.telefone,
             'whatsapp': cadastro.telefone,
+            'fone_whatsapp': cadastro.telefone,
+            'celular_whatsapp': cadastro.telefone,
+            
             'email': cadastro.email,
-            'data_nascimento': cadastro.data_nascimento.strftime('%Y-%m-%d') if cadastro.data_nascimento else '',
+            
+            # Data de Nascimento - Formato Brasileiro DD/MM/YYYY
+            'data_nascimento': cadastro.data_nascimento.strftime('%d/%m/%Y') if cadastro.data_nascimento else '',
+            'nascimento': cadastro.data_nascimento.strftime('%d/%m/%Y') if cadastro.data_nascimento else '',
+            
             'descricao': f"Interesse no plano: {cadastro.plano_velocidade}. Origem: {cadastro.origem}",
             'id_origem': id_origem,
-            'id_prospeccao': id_plano # Vincula o plano de interesse no CRM
+            'id_prospeccao': id_plano,
+            'id_plano_venda': id_plano,
+            
+            # Endereço completo
+            'cep': cadastro.cep,
+            'endereco': cadastro.endereco,
+            'numero': getattr(cadastro, 'numero', 'S/N'),
+            'bairro': cadastro.bairro,
+            'cidade': id_cidade or cadastro.cidade,
+            'uf': cadastro.uf,
+            'referencia': cadastro.referencia,
         }
+
+        # Salva o JSON para auditoria
+        debug_path = self._save_debug_json(cadastro.pk, payload, 'CRM_LEAD')
 
         try:
             all_logs = []
+            if debug_path:
+                all_logs.append(f"[DEBUG] JSON gerado em: {debug_path}")
+            
             last_error = None
             resources_to_try = [self.lead_resource_override] if self.lead_resource_override else self.CRM_LEAD_RESOURCES
-            if self.lead_resource_override:
-                all_logs.append(f"[CRM_LEAD] override_recurso={self.lead_resource_override}")
-
+            
             for resource in resources_to_try:
                 endpoint = f"{self.url}/webservice/v1/{resource}"
                 result = self._post_ixc(endpoint, payload, 'CRM_LEAD')
@@ -197,14 +230,12 @@ class IXCIntegration:
                 if response_preview:
                     all_logs.append(f"[CRM_LEAD] resposta: {response_preview}")
 
-                # Alguns IXCs retornam HTTP 200 com {"type":"error","message":"..."}.
                 response_message = ''
                 response_type = ''
                 if isinstance(response_data, dict):
                     response_message = str(response_data.get('message', ''))
                     response_type = str(response_data.get('type', '')).lower()
 
-                # Fallback de recurso quando o endpoint não está habilitado no IXC.
                 message_text = f"{result.get('message', '')} {response_message}".lower()
                 if ('recurso' in message_text and 'não está disponível' in message_text) or (
                     response_type == 'error' and 'recurso' in response_message.lower()
@@ -227,50 +258,32 @@ class IXCIntegration:
                 lead_id = self._extract_id(response_data)
                 if lead_id in (None, '', 0, '0'):
                     result['status'] = 'error'
-                    result['message'] = (
-                        "IXC respondeu HTTP 200, mas não retornou ID do Lead. "
-                        "Verifique permissões do token e campos obrigatórios no IXC."
-                    )
+                    result['message'] = "IXC respondeu HTTP 200, mas não retornou ID do Lead."
                     all_logs.append("[CRM_LEAD] erro: id ausente na resposta")
                     result['logs'] = all_logs
                     return result
 
                 result['lead_id'] = lead_id
                 all_logs.append(f"[CRM_LEAD] recurso_ativo={resource}")
-                all_logs.append(f"[CRM_LEAD] id_extraido={lead_id}")
                 result['logs'] = all_logs
                 return result
 
-            # Nenhum dos recursos de lead está habilitado.
             return {
                 'status': 'error',
-                'message': (
-                    f"Recurso de lead '{self.lead_resource_override}' indisponível na API IXC deste usuário."
-                    if self.lead_resource_override else
-                    "Nenhum recurso de lead está disponível na API IXC deste usuário (crm_leads/crm_sp_leads/crm_lead)."
-                ),
+                'message': "Nenhum recurso de lead disponível.",
                 'logs': all_logs or (last_error.get('logs', []) if last_error else []),
             }
         except Exception as e:
-            return {'status': 'error', 'message': f"Falha ao montar payload CRM: {str(e)}", 'logs': [f"[CRM_LEAD] excecao: {str(e)}"]}
+            return {'status': 'error', 'message': str(e), 'logs': [f"[CRM_LEAD] excecao: {str(e)}"]}
 
     def create_prospect(self, cadastro, crm_lead_id=None):
-        """
-        Passo 2: Cria um Prospect (Cliente) no IXC.
-        Pode opcionalmente vincular ao CRM Lead criado no Passo 1.
-        """
         if not self.url or not self.token:
-            return {
-                'status': 'error',
-                'message': 'API do IXC não configurada.',
-                'logs': ['[PROSPECT] variaveis IXC_API_URL/IXC_API_TOKEN ausentes.']
-            }
+            return {'status': 'error', 'message': 'API do IXC não configurada.'}
 
-        id_filial = self.FILIAIS_MAP.get(cadastro.cidade, '2') # Default Maricá
+        id_filial = self.FILIAIS_MAP.get(cadastro.cidade, '2')
         id_canal = self.ORIGENS_MAP.get(cadastro.origem, '1')
         id_cidade = self.CIDADES_MAP.get(cadastro.cidade, '')
 
-        # Payload para Prospect (Cliente)
         payload = {
             'id_filial': id_filial,
             'razao': cadastro.nome_razao,
@@ -280,15 +293,12 @@ class IXCIntegration:
             'endereco': cadastro.endereco,
             'numero': getattr(cadastro, 'numero', 'S/N'),
             'bairro': cadastro.bairro,
-            'cidade': id_cidade or cadastro.cidade, # Envia o ID se mapeado, senão o texto
+            'cidade': id_cidade or cadastro.cidade,
             'cep': cadastro.cep,
             'telefone': cadastro.telefone,
-            'telefone_comercial': cadastro.telefone,
-            'telefone_celular': cadastro.telefone,
-            'whatsapp': cadastro.telefone,
             'email': cadastro.email,
             'tipo_pessoa': 'F' if cadastro.tipo_pessoa == 'pf' else 'J',
-            'tipo_cliente': 'P', # 'P' para Prospect no IXC
+            'tipo_cliente': 'P',
             'id_vendedor': '1', 
             'id_canal_venda': id_canal,
             'ativo': 'S',
@@ -296,15 +306,13 @@ class IXCIntegration:
             'id_lead': crm_lead_id
         }
 
+        self._save_debug_json(cadastro.pk, payload, 'PROSPECT')
+
         try:
             endpoint = f"{self.url}/webservice/v1/cliente"
             return self._post_ixc(endpoint, payload, 'PROSPECT')
         except Exception as e:
-            return {'status': 'error', 'message': f"Falha ao montar payload Prospect: {str(e)}", 'logs': [f"[PROSPECT] excecao: {str(e)}"]}
+            return {'status': 'error', 'message': str(e)}
 
     def create_os(self, cadastro, ixc_id):
-        """
-        Cria uma Ordem de Serviço no IXC para o cliente recém-criado.
-        """
-        # Exemplo de lógica para abrir OS de instalação
         pass
