@@ -175,9 +175,9 @@ class IXCIntegration:
         # Payload com mapeamento reforçado de contatos e data brasileira
         payload = {
             'id_filial': id_filial,
-            'contato': ixc_data['nome_razao'],
-            'nome': ixc_data['nome_razao'],
-            'razao': ixc_data['nome_razao'],
+            'contato': ixc_data['nome_razao'].upper(),
+            'nome': ixc_data['nome_razao'].upper(),
+            'razao': ixc_data['nome_razao'].upper(),
             'data_cadastro': cadastro.data_cadastro.strftime('%d/%m/%Y %H:%M:%S') if cadastro.data_cadastro else timezone.now().strftime('%d/%m/%Y %H:%M:%S'),
             'cnpj_cpf': cadastro.documento,
             
@@ -191,25 +191,26 @@ class IXCIntegration:
             'fone_whatsapp': cadastro.telefone,
             'celular_whatsapp': cadastro.telefone,
             
-            'email': cadastro.email,
+            'email': cadastro.email.lower(),
             
             # Data de Nascimento - Formato Brasileiro DD/MM/YYYY
             'data_nascimento': cadastro.data_nascimento.strftime('%d/%m/%Y') if cadastro.data_nascimento else '',
             'nascimento': cadastro.data_nascimento.strftime('%d/%m/%Y') if cadastro.data_nascimento else '',
             
-            'descricao': f"Interesse no plano: {cadastro.plano_velocidade}. Origem: {cadastro.origem}",
+            'descricao': f"Interesse no plano: {cadastro.plano_velocidade}. Origem: {cadastro.origem}".upper() if cadastro.plano_velocidade and cadastro.origem else '',
             'id_origem': id_origem,
             'id_prospeccao': id_plano,
             'id_plano_venda': id_plano,
             
             # Endereço completo - Sanitizado para evitar erros no IXC
-            'cep': cadastro.cep,
-            'endereco': ixc_data['endereco'],
-            'numero': ixc_data['numero'],
-            'bairro': ixc_data['bairro'],
-            'cidade': id_cidade or cadastro.cidade,
-            'uf': cadastro.uf,
-            'referencia': ixc_data['referencia'],
+            'cep': cadastro.cep.upper(),
+            'endereco': ixc_data['endereco'].upper(),
+            'numero': ixc_data['numero'].upper(),
+            'bairro': ixc_data['bairro'].upper(),
+            'complemento': ixc_data['complemento'].upper(),
+            'cidade': id_cidade or cadastro.cidade.upper(),
+            'uf': cadastro.uf.upper(),
+            'referencia': ixc_data['referencia'].upper(),
         }
 
         # Salva o JSON para auditoria
