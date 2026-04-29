@@ -176,6 +176,8 @@ def client_form(request):
                 uf=data.get('uf'),
                 bairro=data.get('bairro'),
                 endereco=data.get('endereco'),
+                numero=data.get('numero'),
+                complemento=data.get('complemento'),
                 referencia=data.get('referencia'),
                 google_maps_link=data.get('google_maps_link'),
                 plano=data.get('plano'),
@@ -267,6 +269,8 @@ def edit_cadastro(request, pk):
             cadastro.uf = data.get('uf')
             cadastro.bairro = data.get('bairro')
             cadastro.endereco = data.get('endereco')
+            cadastro.numero = data.get('numero')
+            cadastro.complemento = data.get('complemento')
             cadastro.referencia = data.get('referencia')
             cadastro.google_maps_link = data.get('google_maps_link')
             cadastro.plano = data.get('plano')

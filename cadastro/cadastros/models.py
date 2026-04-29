@@ -4,9 +4,21 @@ from django.core.exceptions import ValidationError
 from localflavor.br.validators import BRCPFValidator, BRCNPJValidator
 from simple_history.models import HistoricalRecords
 import os
+import unicodedata
 from PIL import Image
 from io import BytesIO
 from django.core.files.base import ContentFile
+
+def remove_special_chars(text):
+    """
+    Remove caracteres especiais e acentos de um texto.
+    Converte para ASCII, removendo diacríticos.
+    """
+    if not text:
+        return text
+    nfd_form = unicodedata.normalize('NFD', str(text))
+    clean_text = ''.join(char for char in nfd_form if unicodedata.category(char) != 'Mn')
+    return clean_text
 
 def get_file_path(instance, filename, field_name):
     ext = filename.split('.')[-1]
@@ -66,6 +78,8 @@ class Cadastro(models.Model):
     uf = models.CharField(max_length=2, blank=True, null=True)
     bairro = models.CharField(max_length=100)
     endereco = models.CharField(max_length=255)
+    numero = models.CharField(max_length=20, blank=True, null=True)  # Número do endereço
+    complemento = models.CharField(max_length=255, blank=True, null=True)  # Complemento (apto, bloco, etc)
     referencia = models.TextField()
     google_maps_link = models.URLField(max_length=500, blank=True, null=True)
     
@@ -196,6 +210,21 @@ class Cadastro(models.Model):
         
         return os_text
 
+    def get_ixc_data(self):
+        """
+        Retorna um dicionario com os dados sanitizados para envio ao IXC.
+        Remove caracteres especiais e acentos.
+        """
+        return {
+            'endereco': remove_special_chars(self.endereco) if self.endereco else '',
+            'numero': remove_special_chars(self.numero) if self.numero else 'S/N',
+            'complemento': remove_special_chars(self.complemento) if self.complemento else '',
+            'bairro': remove_special_chars(self.bairro) if self.bairro else '',
+            'cidade': self.cidade,
+            'nome_razao': remove_special_chars(self.nome_razao) if self.nome_razao else '',
+            'referencia': remove_special_chars(self.referencia) if self.referencia else '',
+        }
+
     @property
     def ficha_formatada(self):
         if self.ficha_manual:
@@ -229,6 +258,10 @@ class Cadastro(models.Model):
         ficha += f"Cidade: {self.cidade}\n"
         ficha += f"Bairro: {self.bairro}\n"
         ficha += f"Endereço completo: {self.endereco}\n"
+        if self.numero:
+            ficha += f"Número: {self.numero}\n"
+        if self.complemento:
+            ficha += f"Complemento: {self.complemento}\n"
         if self.google_maps_link:
             ficha += f"Localização Google Maps: {self.google_maps_link}\n"
         ficha += f"Referência visual: {self.referencia}\n"

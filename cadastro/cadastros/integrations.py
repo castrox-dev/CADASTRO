@@ -169,12 +169,15 @@ class IXCIntegration:
         id_filial = self.FILIAIS_MAP.get(cadastro.cidade, '2')
         id_cidade = self.CIDADES_MAP.get(cadastro.cidade, '')
 
+        # Obtém dados sanitizados para o IXC
+        ixc_data = cadastro.get_ixc_data()
+        
         # Payload com mapeamento reforçado de contatos e data brasileira
         payload = {
             'id_filial': id_filial,
-            'contato': cadastro.nome_razao,
-            'nome': cadastro.nome_razao,
-            'razao': cadastro.nome_razao,
+            'contato': ixc_data['nome_razao'],
+            'nome': ixc_data['nome_razao'],
+            'razao': ixc_data['nome_razao'],
             'data_cadastro': cadastro.data_cadastro.strftime('%d/%m/%Y %H:%M:%S') if cadastro.data_cadastro else timezone.now().strftime('%d/%m/%Y %H:%M:%S'),
             'cnpj_cpf': cadastro.documento,
             
@@ -199,14 +202,14 @@ class IXCIntegration:
             'id_prospeccao': id_plano,
             'id_plano_venda': id_plano,
             
-            # Endereço completo
+            # Endereço completo - Sanitizado para evitar erros no IXC
             'cep': cadastro.cep,
-            'endereco': cadastro.endereco,
-            'numero': getattr(cadastro, 'numero', 'S/N'),
-            'bairro': cadastro.bairro,
+            'endereco': ixc_data['endereco'],
+            'numero': ixc_data['numero'],
+            'bairro': ixc_data['bairro'],
             'cidade': id_cidade or cadastro.cidade,
             'uf': cadastro.uf,
-            'referencia': cadastro.referencia,
+            'referencia': ixc_data['referencia'],
         }
 
         # Salva o JSON para auditoria
@@ -283,16 +286,19 @@ class IXCIntegration:
         id_filial = self.FILIAIS_MAP.get(cadastro.cidade, '2')
         id_canal = self.ORIGENS_MAP.get(cadastro.origem, '1')
         id_cidade = self.CIDADES_MAP.get(cadastro.cidade, '')
+        
+        # Obtém dados sanitizados para o IXC
+        ixc_data = cadastro.get_ixc_data()
 
         payload = {
             'id_filial': id_filial,
-            'razao': cadastro.nome_razao,
-            'fantasia': cadastro.nome_fantasia or cadastro.nome_razao,
+            'razao': ixc_data['nome_razao'],
+            'fantasia': ixc_data['nome_razao'],
             'cnpj_cpf': cadastro.documento,
             'ie_rg': cadastro.rg or cadastro.inscricao_estadual,
-            'endereco': cadastro.endereco,
-            'numero': getattr(cadastro, 'numero', 'S/N'),
-            'bairro': cadastro.bairro,
+            'endereco': ixc_data['endereco'],
+            'numero': ixc_data['numero'],
+            'bairro': ixc_data['bairro'],
             'cidade': id_cidade or cadastro.cidade,
             'cep': cadastro.cep,
             'telefone': cadastro.telefone,
