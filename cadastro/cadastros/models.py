@@ -86,6 +86,8 @@ class Cadastro(models.Model):
     consultor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     data_cadastro = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pendente')
+    ixc_lead_id = models.CharField(max_length=50, blank=True, null=True)
+    ixc_lead_enviado_em = models.DateTimeField(blank=True, null=True)
     
     # Campo para edição manual da ficha
     ficha_manual = models.TextField(blank=True, null=True)

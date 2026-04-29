@@ -1,4 +1,6 @@
 import requests
+import base64
+import json
 from django.conf import settings
 
 class IXCIntegration:
@@ -53,21 +55,110 @@ class IXCIntegration:
         'WhatsApp': '1', # Solicitado pelo cliente
         'TikTok': '13', # Tráfego mídias
     }
+    CRM_LEAD_RESOURCES = ['crm_leads', 'crm_sp_leads', 'crm_lead']
 
     def __init__(self):
-        self.url = getattr(settings, 'IXC_API_URL', '')
+        self.url = self._normalize_base_url(getattr(settings, 'IXC_API_URL', ''))
         self.token = getattr(settings, 'IXC_API_TOKEN', '')
+        self.lead_resource_override = (getattr(settings, 'IXC_LEAD_RESOURCE', '') or '').strip()
         self.headers = {
             'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self.token}'
+            'Authorization': self._build_authorization_header(self.token)
         }
+
+    @staticmethod
+    def _normalize_base_url(url):
+        """
+        Garante que a URL base fique no formato esperado pela API.
+        Aceita entradas como https://xxx/adm.php e converte para https://xxx
+        """
+        clean_url = (url or '').strip().rstrip('/')
+        if clean_url.endswith('/adm.php'):
+            clean_url = clean_url[:-8]
+        return clean_url
+
+    @staticmethod
+    def _build_authorization_header(token):
+        """
+        Suporta dois formatos de token:
+        - ID:TOKEN  -> Authorization Basic
+        - JWT       -> Authorization Bearer
+        """
+        clean_token = (token or '').strip()
+        if not clean_token:
+            return ''
+        # JWT geralmente possui 3 partes separadas por ponto.
+        if clean_token.count('.') == 2 and ':' not in clean_token:
+            return f'Bearer {clean_token}'
+        encoded = base64.b64encode(clean_token.encode('utf-8')).decode('ascii')
+        return f'Basic {encoded}'
+
+    def _post_ixc(self, endpoint, payload, etapa):
+        logs = [
+            f"[{etapa}] endpoint: {endpoint}",
+            f"[{etapa}] auth: {'ok' if bool(self.token) else 'ausente'}",
+        ]
+        try:
+            response = requests.post(endpoint, json=payload, headers=self.headers, verify=False, timeout=30)
+            logs.append(f"[{etapa}] status_http: {response.status_code}")
+
+            if response.status_code in [200, 201]:
+                return {
+                    'status': 'success',
+                    'data': response.json(),
+                    'logs': logs,
+                    'http_status': response.status_code,
+                }
+
+            error_preview = (response.text or '').strip()[:500]
+            logs.append(f"[{etapa}] erro: {error_preview}")
+            return {
+                'status': 'error',
+                'message': error_preview or f'Falha HTTP {response.status_code}',
+                'logs': logs,
+                'http_status': response.status_code,
+                'endpoint': endpoint,
+            }
+        except requests.RequestException as e:
+            logs.append(f"[{etapa}] excecao: {str(e)}")
+            return {
+                'status': 'error',
+                'message': f"Falha na conexão: {str(e)}",
+                'logs': logs,
+                'endpoint': endpoint,
+            }
+
+    @staticmethod
+    def _extract_id(data):
+        """
+        Tenta extrair ID em diferentes formatos de resposta do IXC.
+        """
+        if isinstance(data, dict):
+            for key in ('id', 'id_lead', 'id_cliente', 'idcrm_leads'):
+                value = data.get(key)
+                if value not in (None, '', 0, '0'):
+                    return value
+            for value in data.values():
+                found = IXCIntegration._extract_id(value)
+                if found not in (None, '', 0, '0'):
+                    return found
+        elif isinstance(data, list):
+            for item in data:
+                found = IXCIntegration._extract_id(item)
+                if found not in (None, '', 0, '0'):
+                    return found
+        return None
 
     def create_crm_lead(self, cadastro):
         """
         Passo 1: Cria um Lead no CRM do IXC.
         """
         if not self.url or not self.token:
-            return {'status': 'error', 'message': 'API do IXC não configurada.'}
+            return {
+                'status': 'error',
+                'message': 'API do IXC não configurada.',
+                'logs': ['[CRM_LEAD] variaveis IXC_API_URL/IXC_API_TOKEN ausentes.']
+            }
 
         id_plano = self.PLANOS_MAP.get(cadastro.plano, '')
         id_origem = self.ORIGENS_MAP.get(cadastro.origem, '1') # Default 'Solicitado pelo cliente'
@@ -90,15 +181,78 @@ class IXCIntegration:
         }
 
         try:
-            endpoint = f"{self.url}/webservice/v1/crm_leads"
-            response = requests.post(endpoint, json=payload, headers=self.headers, verify=False)
-            
-            if response.status_code in [200, 201]:
-                return {'status': 'success', 'data': response.json()}
-            else:
-                return {'status': 'error', 'message': f"Erro ao criar CRM Lead: {response.text}"}
+            all_logs = []
+            last_error = None
+            resources_to_try = [self.lead_resource_override] if self.lead_resource_override else self.CRM_LEAD_RESOURCES
+            if self.lead_resource_override:
+                all_logs.append(f"[CRM_LEAD] override_recurso={self.lead_resource_override}")
+
+            for resource in resources_to_try:
+                endpoint = f"{self.url}/webservice/v1/{resource}"
+                result = self._post_ixc(endpoint, payload, 'CRM_LEAD')
+                all_logs.extend(result.get('logs', []))
+
+                response_data = result.get('data') if result.get('status') == 'success' else None
+                response_preview = json.dumps(response_data, ensure_ascii=False)[:600] if response_data is not None else ''
+                if response_preview:
+                    all_logs.append(f"[CRM_LEAD] resposta: {response_preview}")
+
+                # Alguns IXCs retornam HTTP 200 com {"type":"error","message":"..."}.
+                response_message = ''
+                response_type = ''
+                if isinstance(response_data, dict):
+                    response_message = str(response_data.get('message', ''))
+                    response_type = str(response_data.get('type', '')).lower()
+
+                # Fallback de recurso quando o endpoint não está habilitado no IXC.
+                message_text = f"{result.get('message', '')} {response_message}".lower()
+                if ('recurso' in message_text and 'não está disponível' in message_text) or (
+                    response_type == 'error' and 'recurso' in response_message.lower()
+                ):
+                    all_logs.append(f"[CRM_LEAD] recurso indisponível, tentando fallback: {resource}")
+                    last_error = result
+                    continue
+
+                if result.get('status') != 'success':
+                    result['logs'] = all_logs
+                    return result
+
+                if response_type == 'error':
+                    result['status'] = 'error'
+                    result['message'] = response_message or 'IXC retornou erro ao criar lead.'
+                    all_logs.append(f"[CRM_LEAD] erro_api: {result['message']}")
+                    result['logs'] = all_logs
+                    return result
+
+                lead_id = self._extract_id(response_data)
+                if lead_id in (None, '', 0, '0'):
+                    result['status'] = 'error'
+                    result['message'] = (
+                        "IXC respondeu HTTP 200, mas não retornou ID do Lead. "
+                        "Verifique permissões do token e campos obrigatórios no IXC."
+                    )
+                    all_logs.append("[CRM_LEAD] erro: id ausente na resposta")
+                    result['logs'] = all_logs
+                    return result
+
+                result['lead_id'] = lead_id
+                all_logs.append(f"[CRM_LEAD] recurso_ativo={resource}")
+                all_logs.append(f"[CRM_LEAD] id_extraido={lead_id}")
+                result['logs'] = all_logs
+                return result
+
+            # Nenhum dos recursos de lead está habilitado.
+            return {
+                'status': 'error',
+                'message': (
+                    f"Recurso de lead '{self.lead_resource_override}' indisponível na API IXC deste usuário."
+                    if self.lead_resource_override else
+                    "Nenhum recurso de lead está disponível na API IXC deste usuário (crm_leads/crm_sp_leads/crm_lead)."
+                ),
+                'logs': all_logs or (last_error.get('logs', []) if last_error else []),
+            }
         except Exception as e:
-            return {'status': 'error', 'message': f"Falha na conexão CRM: {str(e)}"}
+            return {'status': 'error', 'message': f"Falha ao montar payload CRM: {str(e)}", 'logs': [f"[CRM_LEAD] excecao: {str(e)}"]}
 
     def create_prospect(self, cadastro, crm_lead_id=None):
         """
@@ -106,7 +260,11 @@ class IXCIntegration:
         Pode opcionalmente vincular ao CRM Lead criado no Passo 1.
         """
         if not self.url or not self.token:
-            return {'status': 'error', 'message': 'API do IXC não configurada.'}
+            return {
+                'status': 'error',
+                'message': 'API do IXC não configurada.',
+                'logs': ['[PROSPECT] variaveis IXC_API_URL/IXC_API_TOKEN ausentes.']
+            }
 
         id_filial = self.FILIAIS_MAP.get(cadastro.cidade, '2') # Default Maricá
         id_canal = self.ORIGENS_MAP.get(cadastro.origem, '1')
@@ -140,14 +298,9 @@ class IXCIntegration:
 
         try:
             endpoint = f"{self.url}/webservice/v1/cliente"
-            response = requests.post(endpoint, json=payload, headers=self.headers, verify=False)
-            
-            if response.status_code in [200, 201]:
-                return {'status': 'success', 'data': response.json()}
-            else:
-                return {'status': 'error', 'message': f"Erro ao criar Prospect: {response.text}"}
+            return self._post_ixc(endpoint, payload, 'PROSPECT')
         except Exception as e:
-            return {'status': 'error', 'message': f"Falha na conexão Prospect: {str(e)}"}
+            return {'status': 'error', 'message': f"Falha ao montar payload Prospect: {str(e)}", 'logs': [f"[PROSPECT] excecao: {str(e)}"]}
 
     def create_os(self, cadastro, ixc_id):
         """

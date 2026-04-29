@@ -8,46 +8,49 @@ from django.utils.dateparse import parse_date
 from django.db.models import Count, Q
 from django.utils import timezone
 from datetime import timedelta
+import logging
 
 def is_admin(user):
     return user.is_superuser
 
 from .integrations import IXCIntegration
+logger = logging.getLogger(__name__)
 
 @login_required
 def send_to_ixc(request, pk):
     """
-    Aciona a integração para enviar os dados para o IXC seguindo o fluxo:
-    1. Criar CRM Lead
-    2. Converter para Prospect (Cliente)
+    Aciona a integração para enviar apenas o CRM Lead no IXC.
     """
     if request.method == 'POST':
         cadastro = get_object_or_404(Cadastro, pk=pk)
+        logs = [f"[INICIO] envio cadastro_id={cadastro.pk}"]
         
         # Instancia a integração
         ixc = IXCIntegration()
         
         # Passo 1: Criar Lead no CRM
         lead_result = ixc.create_crm_lead(cadastro)
+        logs.extend(lead_result.get('logs', []))
         
         if lead_result['status'] == 'success':
-            crm_lead_id = lead_result['data'].get('id')
-            
-            # Passo 2: Criar Prospect vinculado ao Lead
-            prospect_result = ixc.create_prospect(cadastro, crm_lead_id=crm_lead_id)
-            
-            if prospect_result['status'] == 'success':
-                return JsonResponse({
-                    'status': 'success', 
-                    'message': 'Cadastro enviado com sucesso! Lead CRM criado e convertido para Prospect.'
-                })
-            else:
-                return JsonResponse({
-                    'status': 'warning', 
-                    'message': f"Lead CRM criado (ID: {crm_lead_id}), mas houve erro ao criar o Prospect: {prospect_result['message']}"
-                })
+            crm_lead_id = lead_result.get('lead_id')
+            logs.append(f"[CRM_LEAD] id={crm_lead_id}")
+            cadastro.ixc_lead_id = str(crm_lead_id) if crm_lead_id else None
+            cadastro.ixc_lead_enviado_em = timezone.now()
+            cadastro.save(update_fields=['ixc_lead_id', 'ixc_lead_enviado_em'])
+
+            logs.append("[FIM] lead enviado e salvo no cadastro")
+            logger.info("IXC lead success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+            return JsonResponse({
+                'status': 'success',
+                'message': f"Lead criado no IXC com sucesso (ID: {crm_lead_id}).",
+                'lead_id': crm_lead_id,
+                'logs': logs
+            })
         else:
-            return JsonResponse({'status': 'error', 'message': lead_result['message']})
+            logs.append("[FIM] falha no lead")
+            logger.error("IXC error cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+            return JsonResponse({'status': 'error', 'message': lead_result['message'], 'logs': logs})
             
     return JsonResponse({'status': 'error'}, status=400)
 

@@ -195,6 +195,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # IXC API Config
 IXC_API_URL = config('IXC_API_URL', default='')
 IXC_API_TOKEN = config('IXC_API_TOKEN', default='')
+IXC_LEAD_RESOURCE = config('IXC_LEAD_RESOURCE', default='')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

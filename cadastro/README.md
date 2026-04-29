@@ -1,111 +1,122 @@
-# Sistema de Gestão de Cadastros Fibramar 🚀
+# Sistema de Gestao de Cadastros Fibramar
 
-Sistema profissional desenvolvido em Django para provedores de internet (ISPs), focado na captação de clientes por consultores e gestão administrativa completa.
+Sistema Django para captacao de clientes, acompanhamento de cadastros e integracao com IXC.
 
-## ✨ Funcionalidades Principais
+## Passo a passo para rodar local (Windows)
 
-- **Painel do Consultor**:
-  - Dashboard intuitivo com métricas de cadastros.
-  - Link exclusivo de captação por consultor.
-  - Gestão de status de instalação (Pendente, Aguardando, Realizado, Cancelado).
-  - Geração automática de **Ordem de Serviço (OS)** formatada para copiar e colar.
-  - Consulta rápida de CPF/CNPJ diretamente na Receita Federal.
+### 1) Entrar na pasta do projeto
 
-- **Painel Administrativo (Full Access)**:
-  - Visão geral de todos os consultores e cadastros.
-  - Gestão de equipe: Criar, editar, excluir e resetar senhas de consultores sem sair do painel.
-  - Relatórios avançados com gráficos interativos (Chart.js) de crescimento e status.
+```powershell
+cd C:\Users\FIBRAMAR\Desktop\CADASTRO\cadastro
+```
 
-- **Formulário de Captação Inteligente**:
-  - Multi-etapas com validação em tempo real.
-  - **Mapa Interativo**: O cliente pode marcar o local exato da casa arrastando o pin (Leaflet.js).
-  - Upload de documentos diretamente para a nuvem (**Cloudinary**).
+### 2) Criar e ativar ambiente virtual
 
-- **Integração com ERP (IXCSoft)**:
-  - Sincronização automática de leads e cadastros com o IXC.
-  - Verificação de viabilidade e criação de Ordens de Serviço (OS) diretamente no ERP.
-  - Evita o retrabalho de redigitação de dados.
+Se ainda nao existir:
 
-- **Interface Moderna**:
-  - Totalmente responsiva (Bootstrap 5).
-  - **Modo Escuro (Dark Mode)** com persistência.
-  - Sistema de notificações e modais customizados.
+```powershell
+python -m venv venv
+```
 
----
+Ativar:
 
-## 🛠️ Requisitos para Venda e Produção
+```powershell
+.\venv\Scripts\Activate.ps1
+```
 
-Para colocar este sistema no ar para um cliente final, você precisará configurar os seguintes serviços:
+### 3) Instalar dependencias
 
-### 1. Hospedagem (Cloud)
-Recomendado usar serviços como **Heroku**, **Railway**, **Render** ou uma **VPS (DigitalOcean/Linode)**.
-- O sistema usa SQLite por padrão, mas para produção recomenda-se **PostgreSQL**.
+```powershell
+pip install -r requirements.txt
+```
 
-### 2. Integração IXCSoft (API)
-Para que o sistema envie os dados automaticamente, o cliente deve fornecer:
-- `IXC_API_URL` (URL do sistema IXC do provedor)
-- `IXC_API_TOKEN` (Token de acesso gerado no IXC)
+### 4) Configurar arquivo `.env`
 
-### 3. Armazenamento de Arquivos (Cloudinary)
-O sistema já está configurado para o Cloudinary. Você precisará criar uma conta (gratuita ou paga) para o cliente e obter:
-- `CLOUD_NAME`
-- `API_KEY`
-- `API_SECRET`
-*Essas chaves devem ser colocadas no `settings.py`.*
+Crie/edite o arquivo `.env` na raiz do projeto (`cadastro/.env`) com as variaveis necessarias.
 
-### 4. Variáveis de Ambiente
-Para segurança, nunca venda o sistema com as chaves "hardcoded". Utilize um arquivo `.env` para:
-- `DEBUG=False`
-- `SECRET_KEY` (Chave única do Django)
-- `DATABASE_URL`
-- `IXC_API_URL`
-- `IXC_API_TOKEN`
-- Credenciais do Cloudinary.
+Exemplo:
 
----
+```env
+DATABASE_URL=postgresql://seu_usuario:sua_senha@seu_host/seu_banco?sslmode=require
+SECRET_KEY=sua_chave_django
+DEBUG=True
+ALLOWED_HOSTS=*
 
-## 🚀 Como Instalar (Guia Rápido)
+CLOUDINARY_CLOUD_NAME=seu_cloud_name
+CLOUDINARY_API_KEY=sua_api_key
+CLOUDINARY_API_SECRET=sua_api_secret
 
-1. **Clonar o repositório**:
-   ```bash
-   git clone <url-do-repositório>
-   cd cadastro
-   ```
+IXC_API_URL=https://seuixc.com.br/adm.php
+IXC_API_TOKEN=ID:TOKEN
+IXC_LEAD_RESOURCE=
+```
 
-2. **Criar ambiente virtual**:
-   ```bash
-   python -m venv venv
-   source venv/bin/scripts/activate  # Windows: venv\Scripts\activate
-   ```
+Observacoes:
+- `IXC_API_URL` pode ser informada com `.../adm.php`; o sistema normaliza automaticamente.
+- `IXC_API_TOKEN` deve estar no formato `id:token`.
+- `IXC_LEAD_RESOURCE` e opcional. Se preencher (ex.: `crm_leads`), o sistema usa apenas esse recurso; se vazio, tenta fallback automatico (`crm_leads`, `crm_sp_leads`, `crm_lead`).
 
-3. **Instalar dependências**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 5) Aplicar migracoes
 
-4. **Configurar o Banco**:
-   ```bash
-   python manage.py migrate
-   ```
+```powershell
+python manage.py migrate
+```
 
-5. **Criar Superusuário**:
-   ```bash
-   python manage.py createsuperuser
-   ```
+### 6) (Opcional) Criar usuario admin
 
-6. **Rodar o servidor**:
-   ```bash
-   python manage.py runserver
-   ```
+```powershell
+python manage.py createsuperuser
+```
 
----
+### 7) Rodar o servidor
 
-## 📦 Dependências Principais
-- Django 5.x
-- Cloudinary & Django-Cloudinary-Storage (Upload de arquivos)
-- Crispy Forms & Bootstrap 5 (UI/UX)
-- Leaflet.js (Mapas)
-- Chart.js (Gráficos)
+```powershell
+python manage.py runserver
+```
 
----
-**Desenvolvido com foco em alta performance e facilidade de uso para equipes de vendas.**
+Acesse no navegador:
+
+- Sistema: `http://127.0.0.1:8000`
+- Admin Django: `http://127.0.0.1:8000/admin`
+
+## Como testar rapidamente
+
+1. Faça login com usuario consultor ou admin.
+2. Crie/abra um cadastro.
+3. Na tela de detalhe, clique em **ENVIAR PARA IXC**.
+4. Verifique o modal de logs de integracao:
+   - Se sucesso, deve mostrar `id` do lead.
+   - Se erro, o log mostra endpoint, status HTTP e mensagem da API IXC.
+
+## Comandos uteis
+
+Checar configuracao Django:
+
+```powershell
+python manage.py check
+```
+
+Gerar novas migracoes (quando alterar models):
+
+```powershell
+python manage.py makemigrations
+python manage.py migrate
+```
+
+## Estrutura principal
+
+- `core/`: configuracoes do projeto Django.
+- `cadastros/`: app principal (models, views, urls, integracao IXC).
+- `templates/`: telas do sistema.
+- `static/`: arquivos estaticos.
+
+## Integracao IXC
+
+O fluxo atual esta em etapas. No momento:
+
+- Envia **apenas Lead**.
+- Salva no banco:
+  - `ixc_lead_id`
+  - `ixc_lead_enviado_em`
+
+Se quiser detalhes tecnicos da integracao, veja `INTEGRACAO_IXC.md`.
