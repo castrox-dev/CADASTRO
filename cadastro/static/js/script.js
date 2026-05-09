@@ -116,6 +116,25 @@ function validarCPF(cpf) {
     return true;
 }
 
+/** Retorna true se a pessoa tiver 18 anos completos ou mais (data ISO yyyy-mm-dd). */
+function validarIdadeMinima18(dataISO) {
+    if (!dataISO || String(dataISO).trim() === '') return false;
+    const parts = String(dataISO).split('-');
+    if (parts.length !== 3) return false;
+    const y = parseInt(parts[0], 10);
+    const mo = parseInt(parts[1], 10) - 1;
+    const da = parseInt(parts[2], 10);
+    const birth = new Date(y, mo, da);
+    if (Number.isNaN(birth.getTime())) return false;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+        age--;
+    }
+    return age >= 18;
+}
+
 function validarCNPJ(cnpj) {
     cnpj = cnpj.replace(/[^\d]+/g, '');
     if (cnpj == '' || cnpj.length != 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
@@ -173,6 +192,17 @@ document.addEventListener('DOMContentLoaded', function() {
         tomorrow.setDate(tomorrow.getDate() + 1);
         const minDate = tomorrow.toISOString().split('T')[0];
         dateInput.setAttribute('min', minDate);
+    }
+
+    // Data de nascimento: só permite quem já completou 18 anos (max = hoje − 18 anos)
+    const dataNasc = document.getElementById('dataNascimento');
+    if (dataNasc) {
+        const t = new Date();
+        const maxBirth = new Date(t.getFullYear() - 18, t.getMonth(), t.getDate());
+        const y = maxBirth.getFullYear();
+        const m = String(maxBirth.getMonth() + 1).padStart(2, '0');
+        const d = String(maxBirth.getDate()).padStart(2, '0');
+        dataNasc.setAttribute('max', `${y}-${m}-${d}`);
     }
 
     const fileInputs = document.querySelectorAll('input[type="file"]');
@@ -312,7 +342,74 @@ document.getElementById('cep').addEventListener('keydown', function(e) {
     }
 });
 
-// Map Preview logic
+// ---------------------------------------------------------------------------
+// Mapa: apenas Leaflet + OpenStreetMap (geocoding via Nominatim)
+// O campo hidden continua id=google_maps_link por compatibilidade com o modelo;
+// o valor salvo é permalink do OpenStreetMap (lat/lon).
+// ---------------------------------------------------------------------------
+let lMap = null;
+let lMarker = null;
+
+function osmLocationLink(lat, lng, zoom) {
+    zoom = zoom || 18;
+    const la = Number(lat).toFixed(6);
+    const lo = Number(lng).toFixed(6);
+    return `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=${zoom}/${la}/${lo}`;
+}
+
+function syncOsmLinkFromMarker() {
+    if (!lMarker) return;
+    const pos = lMarker.getLatLng();
+    const inp = document.getElementById('google_maps_link');
+    if (inp) inp.value = osmLocationLink(pos.lat, pos.lng);
+}
+
+function showMapWrapper(visible) {
+    const wrap = document.getElementById('mapLeafletWrapper');
+    if (wrap) wrap.style.display = visible ? 'block' : 'none';
+}
+
+function geocodeNominatim(fullAddress) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
+    return fetch(url, { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.5' } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data && data.length > 0) {
+                return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+            }
+            return null;
+        });
+}
+
+function initOrUpdateLeafletMap(lat, lng) {
+    if (typeof L === 'undefined') {
+        showNotify('Biblioteca do mapa não carregou. Recarregue a página.', 'danger');
+        return;
+    }
+    lat = lat != null ? Number(lat) : -22.915;
+    lng = lng != null ? Number(lng) : -42.82;
+    const el = document.getElementById('interactiveMap');
+    if (!el) return;
+
+    if (!lMap) {
+        lMap = L.map('interactiveMap').setView([lat, lng], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(lMap);
+        lMarker = L.marker([lat, lng], { draggable: true }).addTo(lMap);
+        lMarker.on('dragend', syncOsmLinkFromMarker);
+    } else {
+        lMap.setView([lat, lng], 16);
+        lMarker.setLatLng([lat, lng]);
+    }
+    syncOsmLinkFromMarker();
+    setTimeout(function () {
+        if (lMap) lMap.invalidateSize();
+    }, 120);
+}
+
+/** Botão «Localizar pelo endereço»: geocodifica e mostra o mesmo mapa Leaflet. */
 function updateMapPreview() {
     const cep = document.getElementById('cep').value;
     const endereco = document.getElementById('endereco').value;
@@ -325,25 +422,65 @@ function updateMapPreview() {
         return;
     }
 
+    showMapWrapper(true);
     const fullAddress = `${endereco}, ${bairro}, ${cidade}, Brazil`;
-    const encodedAddress = encodeURIComponent(fullAddress);
-    
-    // URL para o iframe (Embed)
-    const mapUrl = `https://maps.google.com/maps?q=${encodedAddress}&t=&z=15&ie=UTF8&iwloc=&output=embed`;
-    
-    // URL para o link direto (que será salvo no banco)
-    const directLink = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
-    
-    document.getElementById('mapIframe').src = mapUrl;
-    document.getElementById('mapPreviewContainer').style.display = 'block';
-    
-    // Hide manual map if it's open
-    const manualContainer = document.getElementById('manualMapContainer');
-    if (manualContainer) manualContainer.style.display = 'none';
 
-    document.getElementById('google_maps_link').value = directLink;
-    
-    showNotify('Localização marcada no mapa!', 'success');
+    geocodeNominatim(fullAddress)
+        .then(function (coords) {
+            if (coords) {
+                initOrUpdateLeafletMap(coords.lat, coords.lon);
+                setTimeout(function () {
+                    if (lMap) lMap.invalidateSize();
+                }, 280);
+                showNotify('Localização marcada no mapa!', 'success');
+            } else {
+                showNotify('Não foi possível localizar este endereço. Tente «Usar minha localização» ou revise o endereço.', 'warning');
+            }
+        })
+        .catch(function () {
+            showNotify('Erro ao consultar o geocodificador. Tente novamente.', 'danger');
+        });
+}
+
+/**
+ * Usa a geolocalização do navegador (GPS/Wi‑Fi). Solicita permissão ao usuário.
+ * Útil quando o CEP/endereço não geocodifica bem; o marcador continua arrastável.
+ */
+function useCurrentLocation() {
+    if (!navigator.geolocation) {
+        showNotify('Este navegador não suporta geolocalização. Use «Localizar pelo endereço».', 'warning');
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        function (pos) {
+            var lat = pos.coords.latitude;
+            var lng = pos.coords.longitude;
+            showMapWrapper(true);
+            initOrUpdateLeafletMap(lat, lng);
+            if (lMap) {
+                lMap.setView([lat, lng], 18);
+            }
+            setTimeout(function () {
+                if (lMap) {
+                    lMap.invalidateSize();
+                }
+            }, 280);
+            showNotify('Localização obtida. Arraste o marcador azul se precisar ajustar o ponto exato.', 'success');
+        },
+        function (err) {
+            var msg = 'Não foi possível obter sua localização.';
+            if (err.code === 1) {
+                msg = 'Permissão de localização negada. Permita o acesso nas configurações do site ou use «Localizar pelo endereço».';
+            } else if (err.code === 2) {
+                msg = 'Posição indisponível. Verifique se o GPS está ativo ou use «Localizar pelo endereço».';
+            } else if (err.code === 3) {
+                msg = 'Tempo esgotado ao obter a localização. Tente novamente ou use o endereço.';
+            }
+            showNotify(msg, 'warning');
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 }
+    );
 }
 
 // Plan Change logic
@@ -561,7 +698,7 @@ function populateSummary() {
         nome_fantasia: 'Nome Fantasia', rg: 'RG', 
         inscricao_estadual: 'Inscrição Estadual', data_nascimento: 'Data de Nascimento',
         email: 'E-mail', telefone: 'Telefone', cep: 'CEP', cidade: 'Cidade',
-        bairro: 'Bairro', endereco: 'Endereço', google_maps_link: 'Localização Google Maps',
+        bairro: 'Bairro', endereco: 'Endereço', google_maps_link: 'Link da localização (mapa)',
         referencia: 'Referência',
         plano: 'Plano', fidelidade: 'Fidelidade', vencimento: 'Dia de Vencimento',
         levar_termo: 'Levar Termo?',
@@ -600,7 +737,7 @@ function populateSummary() {
 
             // Especial para links de mapa
             if (field === 'google_maps_link') {
-                value = `<a href="${value}" target="_blank" class="text-primary text-decoration-none fw-bold">📍 Abrir no Google Maps</a>`;
+                value = `<a href="${value}" target="_blank" rel="noopener noreferrer" class="text-primary text-decoration-none fw-bold">📍 Abrir no mapa (OpenStreetMap)</a>`;
             }
 
             // Formatação amigável
@@ -713,6 +850,14 @@ function validateStep(step) {
             isFieldValid = input.files && input.files.length > 0;
         } else {
             isFieldValid = input.value && input.value.trim() !== '';
+        }
+
+        // Maioridade no cadastro (PF)
+        if (fieldName === 'data_nascimento' && isFieldValid && type === 'pf') {
+            if (!validarIdadeMinima18(input.value)) {
+                isFieldValid = false;
+                showNotify('É necessário ter pelo menos 18 anos para realizar o cadastro.', 'warning');
+            }
         }
 
         // Validação extra para data de instalação

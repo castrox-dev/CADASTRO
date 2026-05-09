@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 from localflavor.br.validators import BRCPFValidator, BRCNPJValidator
 from simple_history.models import HistoricalRecords
 import os
@@ -119,6 +120,18 @@ class Cadastro(models.Model):
         else:
             BRCNPJValidator()(self.documento)
 
+        # Maioridade (18+) — apenas pessoa física com data informada
+        if self.tipo_pessoa == 'pf' and self.data_nascimento:
+            today = timezone.localdate()
+            born = self.data_nascimento
+            age = today.year - born.year - (
+                (today.month, today.day) < (born.month, born.day)
+            )
+            if age < 18:
+                raise ValidationError(
+                    'É necessário ter pelo menos 18 anos para realizar o cadastro.'
+                )
+
         # Verificação de Duplicidade
         existing = Cadastro.objects.filter(documento=self.documento).exclude(pk=self.pk)
         if existing.exists():
@@ -165,6 +178,21 @@ class Cadastro(models.Model):
         return planos_nomes.get(self.plano, self.plano)
 
     @property
+    def nome_consultor_display(self):
+        """Nome para OS/ficha: nome completo do usuário; senão primeiro nome; senão login."""
+        if not self.consultor_id:
+            return 'N/A'
+        user = self.consultor
+        nome = (user.get_full_name() or '').strip()
+        if nome:
+            return nome
+        primeiro = (user.first_name or '').strip()
+        if primeiro:
+            return primeiro
+        login = (user.username or '').strip()
+        return login if login else 'N/A'
+
+    @property
     def os_formatada(self):
         instalacao_valor = "100,00" if self.fidelidade else "460,00" if self.cidade == 'marica' else "A combinar"
         
@@ -202,7 +230,7 @@ class Cadastro(models.Model):
         os_text = f"INSTALAÇÃO SERÁ PAGA NO VALOR DE R$ {instalacao_valor}\n\n"
         os_text += f"PLANO DE {plano_label} / R$ {plano_valor} {router_info}\n\n"
         os_text += f"DATA DE VENCIMENTO: {self.vencimento}\n\n"
-        os_text += f"CONSULTORA(O): {self.consultor.get_full_name() if self.consultor else 'N/A'}\n\n"
+        os_text += f"CONSULTOR(A): {self.nome_consultor_display}\n\n"
         os_text += f"CONTATO FEITO COM A CLIENTE A MESMA AGUARDA INSTALAÇÃO PARA O DIA {self.data_instalacao.strftime('%d/%m/%Y')} {self.get_periodo_instalacao_display()}\n\n"
         if self.google_maps_link:
             os_text += f"LOCALIZAÇÃO: {self.google_maps_link}\n\n"
@@ -263,7 +291,7 @@ class Cadastro(models.Model):
         if self.complemento:
             ficha += f"Complemento: {self.complemento}\n"
         if self.google_maps_link:
-            ficha += f"Localização Google Maps: {self.google_maps_link}\n"
+            ficha += f"Localização (mapa): {self.google_maps_link}\n"
         ficha += f"Referência visual: {self.referencia}\n"
         ficha += f"Plano desejado: {plano_display}\n"
         
@@ -279,6 +307,7 @@ class Cadastro(models.Model):
         ficha += f"Modo de pagamento da instalação: {self.pagamento_instalacao}\n"
         ficha += f"Data e período para a instalação: {self.data_instalacao.strftime('%d/%m/%Y')} - {self.get_periodo_instalacao_display()}\n"
         ficha += f"Por onde conheceu a empresa? {self.origem}\n"
+        ficha += f"Consultor(a): {self.nome_consultor_display}\n"
         
         return ficha
 

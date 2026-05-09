@@ -1,44 +1,61 @@
-// Document Auto-detection logic
+// Document Auto-detection logic and Masks
+$(document).ready(function() {
+    // Inicializar máscaras jQuery Mask
+    $('#cep').mask('00000-000');
+    $('#telefone').mask('(00) 00000-0000');
+    $('#rg').mask('00.000.000-0');
+    
+    // Máscara dinâmica para CPF/CNPJ
+    var options = {
+        onKeyPress: function(val, e, field, options) {
+            var masks = ['000.000.000-00', '00.000.000/0000-00'];
+            var mask = (val.replace(/\D/g, '').length > 11) ? masks[1] : masks[0];
+            $('#documento').mask(mask, options);
+            handleDocumentInput(); // Mantém a lógica de troca PF/PJ
+        }
+    };
+    $('#documento').mask('000.000.000-00', options);
+});
+
 function handleDocumentInput() {
     const input = document.getElementById('documento');
-    let value = input.value.replace(/\D/g, '');
-    
-    // Apply masks based on length
-    if (value.length <= 11) {
-        // CPF Mask
-        if (value.length > 9) {
-            value = value.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-        } else if (value.length > 6) {
-            value = value.replace(/(\d{3})(\d{3})(\d{3})/, "$1.$2.$3");
-        } else if (value.length > 3) {
-            value = value.replace(/(\d{3})(\d{3})/, "$1.$2");
-        }
-    } else {
-        // CNPJ Mask
-        if (value.length > 14) value = value.slice(0, 14);
-        if (value.length > 12) {
-            value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
-        } else if (value.length > 8) {
-            value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})/, "$1.$2.$3/$4");
-        } else if (value.length > 5) {
-            value = value.replace(/(\d{2})(\d{3})(\d{3})/, "$1.$2.$3");
-        } else if (value.length > 2) {
-            value = value.replace(/(\d{2})(\d{3})/, "$1.$2");
-        }
-    }
-    input.value = value;
-
-    // Detection logic
+    const value = input.value;
     const cleanValue = value.replace(/\D/g, '');
+    
     const typeHidden = document.getElementById('tipoPessoa');
     const pfOnly = document.querySelectorAll('.pf-only');
     const pjOnly = document.querySelectorAll('.pj-only');
     const labelNome = document.getElementById('labelNome');
     const inputNome = document.getElementById('nome');
+    
+    // IDs corretos do form.html
     const nomeFantasia = document.getElementById('nomeFantasia');
     const contratoSocial = document.getElementById('contratoSocial');
     const rg = document.getElementById('rg');
     const dataNascimento = document.getElementById('dataNascimento');
+
+    // Feedback visual de validação
+    if (cleanValue.length === 11) {
+        if (validarCPF(cleanValue)) {
+            input.style.borderColor = '#28a745';
+            showInputFeedback(input, true, 'CPF Válido');
+        } else {
+            input.style.borderColor = '#dc3545';
+            showInputFeedback(input, false, 'CPF Inválido');
+        }
+    } else if (cleanValue.length === 14) {
+        if (validarCNPJ(cleanValue)) {
+            input.style.borderColor = '#28a745';
+            showInputFeedback(input, true, 'CNPJ Válido');
+            buscarDadosCNPJ(cleanValue);
+        } else {
+            input.style.borderColor = '#dc3545';
+            showInputFeedback(input, false, 'CNPJ Inválido');
+        }
+    } else {
+        input.style.borderColor = '#ddd';
+        removeInputFeedback(input);
+    }
 
     if (cleanValue.length > 11) {
         // Switch to PJ
@@ -47,12 +64,12 @@ function handleDocumentInput() {
         pjOnly.forEach(el => {
             el.style.display = el.classList.contains('row') ? 'flex' : 'block';
         });
-        labelNome.innerText = 'Razão Social *';
+        labelNome.innerText = 'RAZÃO SOCIAL *';
         inputNome.placeholder = 'Digite a Razão Social';
-        nomeFantasia.required = true;
-        contratoSocial.required = true;
-        rg.required = false;
-        dataNascimento.required = false;
+        if (nomeFantasia) nomeFantasia.required = true;
+        if (contratoSocial) contratoSocial.required = true;
+        if (rg) rg.required = false;
+        if (dataNascimento) dataNascimento.required = false;
     } else {
         // Default to PF
         typeHidden.value = 'pf';
@@ -60,38 +77,217 @@ function handleDocumentInput() {
             el.style.display = el.classList.contains('row') ? 'flex' : 'block';
         });
         pjOnly.forEach(el => el.style.display = 'none');
-        labelNome.innerText = 'Nome Completo *';
+        labelNome.innerText = 'NOME COMPLETO *';
         inputNome.placeholder = 'Digite seu nome completo';
-        nomeFantasia.required = false;
-        contratoSocial.required = false;
-        rg.required = true;
-        dataNascimento.required = true;
+        if (nomeFantasia) nomeFantasia.required = false;
+        if (contratoSocial) contratoSocial.required = false;
+        if (rg) rg.required = true;
+        if (dataNascimento) dataNascimento.required = true;
     }
 }
 
-// File Upload Listener
-document.addEventListener('DOMContentLoaded', function() {
-    const fileInput = document.getElementById('contratoSocial');
-    const fileWrapper = document.querySelector('.file-upload-wrapper');
-    const fileInfo = document.querySelector('.file-upload-info');
+// Funções de Validação e Feedback
+function showInputFeedback(input, isSuccess, message) {
+    removeInputFeedback(input);
+    const feedback = document.createElement('div');
+    feedback.className = `small mt-1 ${isSuccess ? 'text-success' : 'text-danger'} feedback-msg`;
+    feedback.innerHTML = `<i class="bi bi-${isSuccess ? 'check-circle' : 'exclamation-circle'} me-1"></i>${message}`;
+    input.parentNode.appendChild(feedback);
+}
 
-    if (fileInput) {
-        fileInput.addEventListener('change', function(e) {
-            if (this.files && this.files.length > 0) {
-                const fileName = this.files[0].name;
-                fileInfo.innerText = `Arquivo selecionado: ${fileName}`;
-                fileWrapper.classList.add('file-selected');
-            } else {
-                fileInfo.innerText = 'Clique para selecionar o arquivo';
-                fileWrapper.classList.remove('file-selected');
-            }
-        });
+function removeInputFeedback(input) {
+    const existing = input.parentNode.querySelector('.feedback-msg');
+    if (existing) existing.remove();
+}
+
+function validarCPF(cpf) {
+    cpf = cpf.replace(/[^\d]+/g, '');
+    if (cpf == '' || cpf.length != 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+    let add = 0;
+    for (let i = 0; i < 9; i++) add += parseInt(cpf.charAt(i)) * (10 - i);
+    let rev = 11 - (add % 11);
+    if (rev == 10 || rev == 11) rev = 0;
+    if (rev != parseInt(cpf.charAt(9))) return false;
+    add = 0;
+    for (let i = 0; i < 10; i++) add += parseInt(cpf.charAt(i)) * (11 - i);
+    rev = 11 - (add % 11);
+    if (rev == 10 || rev == 11) rev = 0;
+    if (rev != parseInt(cpf.charAt(10))) return false;
+    return true;
+}
+
+/** Retorna true se a pessoa tiver 18 anos completos ou mais (data ISO yyyy-mm-dd). */
+function validarIdadeMinima18(dataISO) {
+    if (!dataISO || String(dataISO).trim() === '') return false;
+    const parts = String(dataISO).split('-');
+    if (parts.length !== 3) return false;
+    const y = parseInt(parts[0], 10);
+    const mo = parseInt(parts[1], 10) - 1;
+    const da = parseInt(parts[2], 10);
+    const birth = new Date(y, mo, da);
+    if (Number.isNaN(birth.getTime())) return false;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+        age--;
     }
+    return age >= 18;
+}
+
+function validarCNPJ(cnpj) {
+    cnpj = cnpj.replace(/[^\d]+/g, '');
+    if (cnpj == '' || cnpj.length != 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+    let tamanho = cnpj.length - 2;
+    let numeros = cnpj.substring(0, tamanho);
+    let digitos = cnpj.substring(tamanho);
+    let soma = 0;
+    let pos = tamanho - 7;
+    for (let i = tamanho; i >= 1; i--) {
+        soma += numeros.charAt(tamanho - i) * pos--;
+        if (pos < 2) pos = 9;
+    }
+    let resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
+    if (resultado != digitos.charAt(0)) return false;
+    tamanho = tamanho + 1;
+    numeros = cnpj.substring(0, tamanho);
+    soma = 0;
+    pos = tamanho - 7;
+    for (let i = tamanho; i >= 1; i--) {
+        soma += numeros.charAt(tamanho - i) * pos--;
+        if (pos < 2) pos = 9;
+    }
+    resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
+    if (resultado != digitos.charAt(1)) return false;
+    return true;
+}
+
+function buscarDadosCNPJ(cnpj) {
+    showNotify('Buscando dados da empresa...', 'info');
+    fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.razao_social) {
+                document.getElementById('nome').value = data.razao_social;
+                const nomeFantasia = document.getElementById('nomeFantasia');
+                if (nomeFantasia) nomeFantasia.value = data.nome_fantasia || data.razao_social;
+                
+                // Auto-preencher endereço se disponível
+                if (data.cep) {
+                    document.getElementById('cep').value = data.cep;
+                    $('#cep').trigger('blur'); // Aciona a busca de CEP já existente
+                }
+                showNotify('Dados da empresa carregados!', 'success');
+            }
+        })
+        .catch(() => showNotify('Não foi possível carregar os dados do CNPJ automaticamente.', 'warning'));
+}
+
+// File Upload Listener e Drag-and-Drop
+document.addEventListener('DOMContentLoaded', function() {
+    // Set minimum date for installation (tomorrow)
+    const dateInput = document.getElementById('data_instalacao');
+    if (dateInput) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const minDate = tomorrow.toISOString().split('T')[0];
+        dateInput.setAttribute('min', minDate);
+    }
+
+    // Data de nascimento: só permite quem já completou 18 anos (max = hoje − 18 anos)
+    const dataNasc = document.getElementById('dataNascimento');
+    if (dataNasc) {
+        const t = new Date();
+        const maxBirth = new Date(t.getFullYear() - 18, t.getMonth(), t.getDate());
+        const y = maxBirth.getFullYear();
+        const m = String(maxBirth.getMonth() + 1).padStart(2, '0');
+        const d = String(maxBirth.getDate()).padStart(2, '0');
+        dataNasc.setAttribute('max', `${y}-${m}-${d}`);
+    }
+
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    
+    fileInputs.forEach(input => {
+        const wrapper = input.closest('.file-upload-wrapper');
+        const info = wrapper ? wrapper.querySelector('.file-upload-info') : null;
+
+        // Adicionar suporte a Drag and Drop
+        if (wrapper) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                wrapper.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                wrapper.addEventListener(eventName, () => wrapper.classList.add('drag-over'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                wrapper.addEventListener(eventName, () => wrapper.classList.remove('drag-over'), false);
+            });
+
+            wrapper.addEventListener('drop', handleDrop, false);
+
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                input.files = files;
+                handleFiles(input, files, info, wrapper);
+            }
+        }
+
+        if (input) {
+            input.addEventListener('change', function(e) {
+                handleFiles(this, this.files, info, wrapper);
+            });
+        }
+    });
 });
 
+function handleFiles(input, files, info, wrapper) {
+    if (files && files.length > 0) {
+        const file = files[0];
+        const fileName = file.name;
+        if (info) info.innerText = `Arquivo selecionado: ${fileName}`;
+        if (wrapper) {
+            wrapper.classList.add('file-selected');
+            
+            // Preview da imagem
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    let preview = wrapper.querySelector('.file-preview');
+                    if (!preview) {
+                        preview = document.createElement('img');
+                        preview.className = 'file-preview';
+                        wrapper.appendChild(preview);
+                    }
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                }
+                reader.readAsDataURL(file);
+            } else {
+                const preview = wrapper.querySelector('.file-preview');
+                if (preview) preview.style.display = 'none';
+            }
+        }
+    } else {
+        if (info) info.innerText = 'Clique para selecionar o arquivo';
+        if (wrapper) {
+            wrapper.classList.remove('file-selected');
+            const preview = wrapper.querySelector('.file-preview');
+            if (preview) preview.style.display = 'none';
+        }
+    }
+}
+
 // CEP Lookup logic
-document.getElementById('cep').addEventListener('blur', function() {
-    const cep = this.value.replace(/\D/g, '');
+function handleCEPLookup(cepInput) {
+    const cep = cepInput.replace(/\D/g, '');
     if (cep.length === 8) {
         fetch(`https://viacep.com.br/ws/${cep}/json/`)
             .then(response => response.json())
@@ -100,60 +296,295 @@ document.getElementById('cep').addEventListener('blur', function() {
                     document.getElementById('endereco').value = data.logradouro;
                     document.getElementById('bairro').value = data.bairro;
                     
+                    // Pre-select UF
+                    const ufSelect = document.getElementById('uf');
+                    if (ufSelect) {
+                        ufSelect.value = data.uf;
+                    }
+                    
                     // Pre-select city if it matches Maricá or if it's MG
                     const cidadeSelect = document.getElementById('cidade');
                     if (data.localidade.toLowerCase() === 'maricá') {
                         cidadeSelect.value = 'marica';
                     } else if (data.uf === 'MG') {
                         cidadeSelect.value = 'minas_gerais';
+                    } else if (data.uf === 'ES') {
+                        if (data.localidade.toLowerCase() === 'muqui') cidadeSelect.value = 'muqui';
+                        else if (data.localidade.toLowerCase() === 'piúma') cidadeSelect.value = 'piuma';
+                        else if (data.localidade.toLowerCase() === 'mimoso do sul') cidadeSelect.value = 'mimoso';
+                        else cidadeSelect.value = 'outra';
+                    } else if (data.uf === 'RJ') {
+                        if (data.localidade.toLowerCase() === 'cabo frio') cidadeSelect.value = 'cabo_frio';
+                        else cidadeSelect.value = 'outra';
                     } else {
                         cidadeSelect.value = 'outra';
                     }
                     handleCityChange();
+                    
+                    // Se o logradouro foi preenchido, tenta localizar no mapa automaticamente
+                    if (data.logradouro) {
+                        setTimeout(updateMapPreview, 500);
+                    }
                 }
             })
             .catch(error => console.error('Erro ao buscar CEP:', error));
     }
+}
+
+document.getElementById('cep').addEventListener('blur', function() {
+    handleCEPLookup(this.value);
 });
+
+document.getElementById('cep').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault(); // Evita submeter o form ao buscar o CEP
+        handleCEPLookup(this.value);
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Mapa: apenas Leaflet + OpenStreetMap (geocoding via Nominatim)
+// O campo hidden continua id=google_maps_link por compatibilidade com o modelo;
+// o valor salvo é permalink do OpenStreetMap (lat/lon).
+// ---------------------------------------------------------------------------
+let lMap = null;
+let lMarker = null;
+
+function osmLocationLink(lat, lng, zoom) {
+    zoom = zoom || 18;
+    const la = Number(lat).toFixed(6);
+    const lo = Number(lng).toFixed(6);
+    return `https://www.openstreetmap.org/?mlat=${la}&mlon=${lo}#map=${zoom}/${la}/${lo}`;
+}
+
+function syncOsmLinkFromMarker() {
+    if (!lMarker) return;
+    const pos = lMarker.getLatLng();
+    const inp = document.getElementById('google_maps_link');
+    if (inp) inp.value = osmLocationLink(pos.lat, pos.lng);
+}
+
+function showMapWrapper(visible) {
+    const wrap = document.getElementById('mapLeafletWrapper');
+    if (wrap) wrap.style.display = visible ? 'block' : 'none';
+}
+
+function geocodeNominatim(fullAddress) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`;
+    return fetch(url, { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.5' } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data && data.length > 0) {
+                return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+            }
+            return null;
+        });
+}
+
+function initOrUpdateLeafletMap(lat, lng) {
+    if (typeof L === 'undefined') {
+        showNotify('Biblioteca do mapa não carregou. Recarregue a página.', 'danger');
+        return;
+    }
+    lat = lat != null ? Number(lat) : -22.915;
+    lng = lng != null ? Number(lng) : -42.82;
+    const el = document.getElementById('interactiveMap');
+    if (!el) return;
+
+    if (!lMap) {
+        lMap = L.map('interactiveMap').setView([lat, lng], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(lMap);
+        lMarker = L.marker([lat, lng], { draggable: true }).addTo(lMap);
+        lMarker.on('dragend', syncOsmLinkFromMarker);
+    } else {
+        lMap.setView([lat, lng], 16);
+        lMarker.setLatLng([lat, lng]);
+    }
+    syncOsmLinkFromMarker();
+    setTimeout(function () {
+        if (lMap) lMap.invalidateSize();
+    }, 120);
+}
+
+/** Botão «Localizar pelo endereço»: geocodifica e mostra o mesmo mapa Leaflet. */
+function updateMapPreview() {
+    const cep = document.getElementById('cep').value;
+    const endereco = document.getElementById('endereco').value;
+    const bairro = document.getElementById('bairro').value;
+    const cidadeSelect = document.getElementById('cidade');
+    const cidade = cidadeSelect.options[cidadeSelect.selectedIndex].text;
+
+    if (!endereco || !cep) {
+        showNotify('Preencha o CEP e o Endereço para localizar no mapa.', 'warning');
+        return;
+    }
+
+    showMapWrapper(true);
+    const fullAddress = `${endereco}, ${bairro}, ${cidade}, Brazil`;
+
+    geocodeNominatim(fullAddress)
+        .then(function (coords) {
+            if (coords) {
+                initOrUpdateLeafletMap(coords.lat, coords.lon);
+                setTimeout(function () {
+                    if (lMap) lMap.invalidateSize();
+                }, 280);
+                showNotify('Localização marcada no mapa!', 'success');
+            } else {
+                showNotify('Não foi possível localizar este endereço. Tente «Usar minha localização» ou revise o endereço.', 'warning');
+            }
+        })
+        .catch(function () {
+            showNotify('Erro ao consultar o geocodificador. Tente novamente.', 'danger');
+        });
+}
+
+/**
+ * Usa a geolocalização do navegador (GPS/Wi‑Fi). Solicita permissão ao usuário.
+ * Útil quando o CEP/endereço não geocodifica bem; o marcador continua arrastável.
+ */
+function useCurrentLocation() {
+    if (!navigator.geolocation) {
+        showNotify('Este navegador não suporta geolocalização. Use «Localizar pelo endereço».', 'warning');
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        function (pos) {
+            var lat = pos.coords.latitude;
+            var lng = pos.coords.longitude;
+            showMapWrapper(true);
+            initOrUpdateLeafletMap(lat, lng);
+            if (lMap) {
+                lMap.setView([lat, lng], 18);
+            }
+            setTimeout(function () {
+                if (lMap) {
+                    lMap.invalidateSize();
+                }
+            }, 280);
+            showNotify('Localização obtida. Arraste o marcador azul se precisar ajustar o ponto exato.', 'success');
+        },
+        function (err) {
+            var msg = 'Não foi possível obter sua localização.';
+            if (err.code === 1) {
+                msg = 'Permissão de localização negada. Permita o acesso nas configurações do site ou use «Localizar pelo endereço».';
+            } else if (err.code === 2) {
+                msg = 'Posição indisponível. Verifique se o GPS está ativo ou use «Localizar pelo endereço».';
+            } else if (err.code === 3) {
+                msg = 'Tempo esgotado ao obter a localização. Tente novamente ou use o endereço.';
+            }
+            showNotify(msg, 'warning');
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 }
+    );
+}
 
 // Plan Change logic
 const planDetails = {
-    essencial: {
-        desc: "R$ 59,99/mês (até o vencimento)<br>R$ 79,99/mês (após vencimento)<br>Instalação em até 48h<br>Permanência 12 meses",
-        opcional: "Deseja alugar roteador Wi-Fi por R$ 10,00/mês?"
+    // Muqui e Piúma
+    muqui_piuma: {
+        essencial: {
+            name: "Plano Essencial – 100 MEGA",
+            desc: "R$ 59,99/mês (até o vencimento)<br>R$ 79,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Sem roteador incluso",
+            opcional: "Deseja alugar roteador Wi-Fi por R$ 10,00/mês?"
+        },
+        rapido: {
+            name: "Plano Rápido – 300 MEGA",
+            desc: "R$ 89,99/mês (até o vencimento)<br>R$ 109,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi 5Ghz incluso"
+        },
+        turbo: {
+            name: "Plano Turbo – 500 MEGA",
+            desc: "R$ 99,99/mês (até o vencimento)<br>R$ 119,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi 5Ghz incluso"
+        },
+        "1giga": {
+            name: "Plano 1 GIGA Fibramar",
+            desc: "R$ 149,99/mês (até o vencimento)<br>R$ 169,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Wi-Fi 6 incluso",
+            opcional: "Deseja Repetidor Mesh por apenas R$ 29,99/mês?"
+        }
     },
-    rapido: {
-        desc: "R$ 79,99/mês* (até o vencimento)<br>R$ 99,99/mês* (após vencimento)<br>Super Wi-Fi 5Ghz incluso<br>Permanência 12 meses",
-        opcional: null
+    // Mimoso
+    mimoso: {
+        essencial: {
+            name: "Plano Essencial – 240 MEGA",
+            desc: "R$ 59,99/mês (até o vencimento)<br>R$ 79,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Sem roteador incluso",
+            opcional: "Deseja alugar roteador Wi-Fi por R$ 10,00/mês?"
+        },
+        plano_300: {
+            name: "Plano 300 Mega",
+            desc: "R$ 69,99/mês<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi incluso"
+        },
+        rapido: {
+            name: "Plano Rápido – 400 MEGA",
+            desc: "R$ 79,99/mês (até o vencimento)<br>R$ 99,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi 5Ghz incluso"
+        },
+        turbo: {
+            name: "Plano Turbo – 500 MEGA",
+            desc: "R$ 99,99/mês (até o vencimento)<br>R$ 119,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi 5Ghz incluso"
+        },
+        ultra: {
+            name: "Plano Ultra – 600 MEGA",
+            desc: "R$ 119,99/mês (até o vencimento)<br>R$ 139,99/mês (após vencimento)<br>Watch TV, Paramount+, Qualifica, Mediquo e McAfee inclusos"
+        },
+        plano_700: {
+            name: "Plano 700 Mega",
+            desc: "R$ 89,99/mês<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi + Qualifica App incluso"
+        },
+        "1giga": {
+            name: "Plano 1 GIGA Fibramar",
+            desc: "R$ 149,99/mês (até o vencimento)<br>R$ 169,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Wi-Fi 6 incluso",
+            opcional: "Deseja Repetidor Mesh por apenas R$ 29,99/mês?"
+        }
     },
-    turbo: {
-        desc: "R$ 99,99/mês* (até o vencimento)<br>R$ 119,99/mês* (após vencimento)<br>Ideal para gamers e streamers<br>Super Wi-Fi 5Ghz incluso<br>Permanência 12 meses",
-        opcional: null
-    },
-    ultra: {
-        desc: "R$ 119,99/mês* (até o vencimento)<br>R$ 139,99/mês* (após vencimento)<br>Watch TV, Paramount, Qualifica, Mediquo e McAfee inclusos<br>Permanência 12 meses",
-        opcional: null
-    },
-    "1giga": {
-        desc: "R$ 149,99 (até o vencimento)<br>R$ 169,99 (valor normal)<br>Wi-Fi 6 incluso 🚀<br>Contrato 12 meses",
-        opcional: "Deseja Repetidor Mesh por apenas R$ 29,99 mensais?"
+    // Padrão (Maricá e outros)
+    default: {
+        essencial: {
+            name: "Plano Essencial – 240 MEGA",
+            desc: "R$ 59,99/mês (até o vencimento)<br>R$ 79,99/mês (após vencimento)<br>Contrato 12 meses",
+            opcional: "Deseja alugar roteador Wi-Fi por R$ 10,00/mês?"
+        },
+        rapido: {
+            name: "Plano Rápido - 400 Mega",
+            desc: "R$ 79,99/mês* (até o vencimento)<br>R$ 99,99/mês* (após vencimento)<br>Super Wi-Fi 5Ghz incluso"
+        },
+        turbo: {
+            name: "Plano Turbo - 500 Mega",
+            desc: "R$ 99,99/mês* (até o vencimento)<br>R$ 119,99/mês* (após vencimento)<br>Super Wi-Fi 5Ghz incluso"
+        },
+        ultra: {
+            name: "Plano Ultra + Benefícios - 600 Mega",
+            desc: "R$ 119,99/mês* (até o vencimento)<br>R$ 139,99/mês* (após vencimento)<br>Watch TV, Paramount, Qualifica, Mediquo e McAfee inclusos"
+        },
+        "1giga": {
+            name: "Plano Novo – 1 GIGA",
+            desc: "R$ 149,99 (até o vencimento)<br>R$ 169,99 (valor normal)<br>Wi-Fi 6 incluso 🚀",
+            opcional: "Deseja Repetidor Mesh por apenas R$ 29,99 mensais?"
+        }
     }
 };
 
 function handlePlanChange() {
+    const city = document.getElementById('cidade').value;
     const plan = document.getElementById('plano').value;
     const detailsBox = document.getElementById('planDetails');
     const descDiv = document.getElementById('planDescription');
     const opcionalGroup = document.getElementById('opcionaisGroup');
     const opcionalLabel = document.getElementById('opcionalLabel');
 
-    if (plan && planDetails[plan]) {
+    let cityPlans = planDetails.default;
+    if (city === 'muqui' || city === 'piuma') cityPlans = planDetails.muqui_piuma;
+    else if (city === 'mimoso') cityPlans = planDetails.mimoso;
+
+    if (plan && cityPlans[plan]) {
         detailsBox.style.display = 'block';
-        descDiv.innerHTML = `<strong>Detalhes do Plano:</strong><br>${planDetails[plan].desc}`;
+        descDiv.innerHTML = `<strong>Detalhes do Plano:</strong><br>${cityPlans[plan].desc}`;
         
-        if (planDetails[plan].opcional) {
+        if (cityPlans[plan].opcional) {
             opcionalGroup.style.display = 'block';
-            opcionalLabel.innerText = planDetails[plan].opcional;
+            opcionalLabel.innerText = cityPlans[plan].opcional;
         } else {
             opcionalGroup.style.display = 'none';
         }
@@ -163,45 +594,88 @@ function handlePlanChange() {
     }
 }
 
-// RG Mask and Limit
-document.getElementById('rg').addEventListener('input', function(e) {
-    let value = e.target.value.replace(/\D/g, '');
-    if (value.length > 9) value = value.slice(0, 9); // Limite comum de 9 dígitos
-    
-    // Máscara simples para RG (00.000.000-0)
-    if (value.length > 8) {
-        value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{1})/, "$1.$2.$3-$4");
-    } else if (value.length > 5) {
-        value = value.replace(/(\d{2})(\d{3})(\d{3})/, "$1.$2.$3");
-    } else if (value.length > 2) {
-        value = value.replace(/(\d{2})(\d{3})/, "$1.$2");
-    }
-    e.target.value = value;
-});
-
 // Navigation logic
 let currentStep = 1;
+let isEditingMode = false;
+
+function nextStep(step) {
+    const city = document.getElementById('cidade').value;
+    
+    if (!validateStep(currentStep)) return;
+
+    // Se estiver em modo de edição, pula direto para a revisão
+    if (isEditingMode) {
+        isEditingMode = false; // Reset flag
+        showStep(6);
+        return;
+    }
+
+    // Skip Step 4 (Documents) for Maricá and Minas Gerais
+    if (step === 4 && (city === 'marica' || city === 'minas_gerais')) {
+        showStep(5);
+        return;
+    }
+
+    showStep(step);
+}
+
+function prevStep(step) {
+    const city = document.getElementById('cidade').value;
+    
+    // Se estiver voltando durante uma edição, cancela o modo edição
+    isEditingMode = false;
+
+    // Skip Step 4 (Documents) when going back from 5 for Maricá and Minas Gerais
+    if (step === 4 && (city === 'marica' || city === 'minas_gerais')) {
+        showStep(3);
+        return;
+    }
+
+    showStep(step);
+}
+
+function startEditing(step) {
+    isEditingMode = true;
+    showStep(step);
+}
 
 function showStep(step) {
+    const city = document.getElementById('cidade').value;
+    const isSpecialCity = (city === 'marica' || city === 'minas_gerais');
+    
+    // Toggle visual indicators for Step 4 fields based on city
+    // (We no longer use .required = true to avoid browser focus errors on hidden inputs)
+    const step4Inputs = document.getElementById('step4').querySelectorAll('input[type="file"]');
+    step4Inputs.forEach(input => {
+        const wrapper = input.closest('.file-upload-wrapper');
+        if (isSpecialCity) {
+            if (wrapper) wrapper.style.borderColor = '#ddd';
+        } else {
+            // Visual check handled by validateStep
+        }
+    });
+
     document.querySelectorAll('.form-step').forEach(s => s.classList.remove('active'));
     document.getElementById(`step${step}`).classList.add('active');
     
     // Update progress bar
-    const progress = document.getElementById('progress');
-    progress.style.width = `${(step / 5) * 100}%`;
+    const totalSteps = 6;
+    let progressWidth = (step / totalSteps) * 100;
     
-    if (step === 5) {
+    // Visual adjustment for skipped step in progress bar
+    if (isSpecialCity && step >= 5) {
+        progressWidth = ((step) / totalSteps) * 100;
+    }
+
+    const progress = document.getElementById('progress');
+    if (progress) progress.style.width = `${progressWidth}%`;
+    
+    if (step === 6) {
         populateSummary();
     }
     
     currentStep = step;
     window.scrollTo(0, 0);
-}
-
-function nextStep(step) {
-    if (validateStep(currentStep)) {
-        showStep(step);
-    }
 }
 
 function populateSummary() {
@@ -212,181 +686,361 @@ function populateSummary() {
     let html = '';
     
     const sections = {
-        'Dados Cadastrais': { fields: ['documento', 'tipoPessoa', 'nome', 'nomeFantasia', 'rg', 'inscricaoEstadual', 'contratoSocial', 'dataNascimento', 'email', 'telefone'], step: 1 },
-        'Endereço': { fields: ['cep', 'cidade', 'bairro', 'endereco', 'referencia'], step: 2 },
-        'Plano e Vencimento': { fields: ['plano', 'fidelidade', 'vencimento', 'opcional'], step: 3 },
-        'Instalação': { fields: ['pagamento', 'dataInstalacao', 'periodoInstalacao', 'origem'], step: 4 }
+        'DADOS CADASTRAIS': { fields: ['documento', 'tipoPessoa', 'nome_razao', 'nome_fantasia', 'rg', 'inscricao_estadual', 'data_nascimento', 'email', 'telefone'], step: 1 },
+        'ENDEREÇO': { fields: ['cep', 'cidade', 'bairro', 'endereco', 'google_maps_link', 'referencia'], step: 2 },
+        'PLANO E VENCIMENTO': { fields: ['plano', 'fidelidade', 'vencimento'], step: 3 },
+        'DOCUMENTOS': { fields: ['levar_termo', 'comprovante_residencia', 'foto_documento_frente', 'foto_documento_verso', 'selfie_documento'], step: 4 },
+        'INSTALAÇÃO': { fields: ['pagamento_instalacao', 'data_instalacao', 'periodo_instalacao', 'origem'], step: 5 }
     };
 
     const labels = {
-        documento: 'CPF/CNPJ', tipoPessoa: 'Tipo de Pessoa', nome: 'Nome/Razão Social', 
-        nomeFantasia: 'Nome Fantasia', rg: 'RG', 
-        inscricaoEstadual: 'Inscrição Estadual', contratoSocial: 'Contrato Social',
-        dataNascimento: 'Data de Nascimento',
+        documento: 'CPF/CNPJ', tipoPessoa: 'Tipo de Pessoa', nome_razao: 'Nome/Razão Social', 
+        nome_fantasia: 'Nome Fantasia', rg: 'RG', 
+        inscricao_estadual: 'Inscrição Estadual', data_nascimento: 'Data de Nascimento',
         email: 'E-mail', telefone: 'Telefone', cep: 'CEP', cidade: 'Cidade',
-        bairro: 'Bairro', endereco: 'Endereço', referencia: 'Referência',
+        bairro: 'Bairro', endereco: 'Endereço', google_maps_link: 'Link da localização (mapa)',
+        referencia: 'Referência',
         plano: 'Plano', fidelidade: 'Fidelidade', vencimento: 'Dia de Vencimento',
-        opcional: 'Opcional do Plano', pagamento: 'Modo de Pagamento',
-        dataInstalacao: 'Data Instalação', periodoInstalacao: 'Período', origem: 'Origem'
+        levar_termo: 'Levar Termo?',
+        comprovante_residencia: 'Comprovante de Residência',
+        foto_documento_frente: 'Foto Doc. (Frente)',
+        foto_documento_verso: 'Foto Doc. (Verso)',
+        selfie_documento: 'Selfie com Documento',
+        pagamento_instalacao: 'Modo de Pagamento',
+        data_instalacao: 'Data Instalação', periodo_instalacao: 'Período', origem: 'Origem'
     };
 
+    const city = formData.get('cidade');
+    const isSpecialCity = (city === 'marica' || city === 'minas_gerais');
+
     for (const [section, config] of Object.entries(sections)) {
+        // Skip DOCUMENTOS section header for special cities
+        if (section === 'DOCUMENTOS' && isSpecialCity) continue;
+
         html += `
             <div class="summary-section-header">
                 <span>${section}</span>
-                <button type="button" class="btn-edit" onclick="showStep(${config.step})">Editar</button>
+                <button type="button" class="btn-edit" onclick="startEditing(${config.step})">Editar</button>
             </div>
         `;
         config.fields.forEach(field => {
             let value = formData.get(field);
             
-            // Tratamento especial para arquivos no resumo
-            if (field === 'contratoSocial') {
-                const fileInput = document.getElementById('contratoSocial');
-                value = (fileInput.files && fileInput.files.length > 0) ? `📎 ${fileInput.files[0].name}` : null;
+            // Especial para arquivos
+            const fileFields = ['comprovante_residencia', 'foto_documento_frente', 'foto_documento_verso', 'selfie_documento'];
+            if (fileFields.includes(field)) {
+                const fileInput = document.getElementsByName(field)[0];
+                value = (fileInput && fileInput.files && fileInput.files.length > 0) ? `📎 ${fileInput.files[0].name}` : null;
             }
 
-            if (!value) return;
+            if (!value && field !== 'levar_termo') return;
+
+            // Especial para links de mapa
+            if (field === 'google_maps_link') {
+                value = `<a href="${value}" target="_blank" rel="noopener noreferrer" class="text-primary text-decoration-none fw-bold">📍 Abrir no mapa (OpenStreetMap)</a>`;
+            }
 
             // Formatação amigável
-            if (field === 'tipoPessoa') {
-                value = value === 'pf' ? 'Pessoa Física' : 'Pessoa Jurídica';
-            }
+            if (field === 'tipoPessoa') value = value === 'pf' ? 'Pessoa Física' : 'Pessoa Jurídica';
+            if (field === 'levar_termo') value = value ? 'Sim' : 'Não (Vou anexar comprovante)';
+            
             if (field === 'cidade') {
-                const cityMap = { marica: 'Maricá', minas_gerais: 'Minas Gerais', outra: 'Outra' };
+                const cityMap = { 
+                    marica: 'Maricá - RJ', muqui: 'Muqui - ES', piuma: 'Piúma - ES', 
+                    mimoso: 'Mimoso do Sul - ES', cabo_frio: 'Cabo Frio - RJ', 
+                    unamar: 'Unamar - RJ', sao_paulo: 'São Paulo - SP', outra: 'Outra' 
+                };
                 value = cityMap[value] || value;
             }
             if (field === 'plano') {
-                const planMap = { 
-                    essencial: 'Plano Essencial – 240 MEGA', 
-                    rapido: 'Plano Rápido - 400 Mega',
-                    turbo: 'Plano Turbo - 500 Mega',
-                    ultra: 'Plano Ultra - 600 Mega',
-                    '1giga': 'Plano Novo – 1 GIGA'
-                };
-                value = planMap[value] || value;
+                let cityPlans = planDetails.default;
+                if (city === 'muqui' || city === 'piuma') cityPlans = planDetails.muqui_piuma;
+                else if (city === 'mimoso') cityPlans = planDetails.mimoso;
+                value = cityPlans[value] ? cityPlans[value].name : value;
             }
-            if (field === 'fidelidade' || field === 'opcional') {
-                value = value === 'sim' ? 'Sim' : 'Não';
-            }
-            if (field === 'periodoInstalacao') {
-                value = value === 'manha' ? 'Manhã' : 'Tarde';
+            if (field === 'fidelidade') value = value === 'sim' ? 'Sim (12 meses)' : 'Não';
+            if (field === 'periodo_instalacao') value = value === 'manha' ? 'Manhã' : 'Tarde';
+            if (field === 'data_instalacao') {
+                const parts = value.split('-');
+                if (parts.length === 3) value = `${parts[2]}/${parts[1]}/${parts[0]}`;
             }
 
             html += `
                 <div class="summary-item">
-                    <span class="summary-label">${labels[field]}:</span>
+                    <span class="summary-label">${labels[field] || field}:</span>
                     <span class="summary-value">${value}</span>
                 </div>
             `;
         });
     }
 
-    // Adiciona informação de instalação se for Maricá
-    if (formData.get('cidade') === 'marica') {
-        const isFidelidade = formData.get('fidelidade') === 'sim';
-        const price = isFidelidade ? 'R$ 100,00' : 'R$ 460,00';
-        html += `
-            <div class="summary-section-header">Resumo Financeiro</div>
-            <div class="summary-item">
-                <span class="summary-label">Valor da Instalação:</span>
-                <span class="summary-value">${price}</span>
-            </div>
-        `;
+    // Financeiro
+    const isFidelidade = formData.get('fidelidade') === 'sim';
+    let price = '';
+    
+    if (city === 'marica') {
+        price = isFidelidade ? 'R$ 100,00' : 'R$ 460,00';
+    } else {
+        price = isFidelidade ? 'GRÁTIS' : 'R$ 360,00';
     }
+
+    html += `
+        <div class="summary-section-header">RESUMO FINANCEIRO</div>
+        <div class="summary-item">
+            <span class="summary-label">Valor da Instalação:</span>
+            <span class="summary-value fw-bold text-success">${price}</span>
+        </div>
+    `;
 
     summary.innerHTML = html;
 }
 
-function prevStep(step) {
-    showStep(step);
-}
+
 
 function validateStep(step) {
-    const inputs = document.getElementById(`step${step}`).querySelectorAll('input[required], select[required], textarea[required]');
+    const city = document.getElementById('cidade').value;
+    const type = document.getElementById('tipoPessoa').value;
+    const levarTermo = document.getElementById('levar_termo') ? document.getElementById('levar_termo').checked : false;
+    
+    // Define os campos obrigatórios por passo
+    const requiredFields = {
+        1: ['documento', 'nome_razao', 'email', 'telefone'],
+        2: ['cep', 'cidade', 'uf', 'bairro', 'endereco', 'referencia'],
+        3: ['plano', 'vencimento'],
+        4: [], // Documentos variam
+        5: ['data_instalacao', 'periodo_instalacao', 'origem']
+    };
+
+    // Ajustes específicos do Passo 1 (PF/PJ)
+    if (step === 1) {
+        if (type === 'pf') {
+            requiredFields[1].push('rg', 'data_nascimento');
+        } else {
+            requiredFields[1].push('nome_fantasia');
+        }
+    }
+
+    // Ajustes específicos do Passo 4 (Documentos)
+    if (step === 4) {
+        const isSpecialCity = (city === 'marica' || city === 'minas_gerais');
+        if (!isSpecialCity) {
+            if (!levarTermo) requiredFields[4].push('comprovante_residencia');
+            requiredFields[4].push('foto_documento_frente', 'foto_documento_verso', 'selfie_documento');
+        }
+    }
+
+    // Ajuste específico do Passo 5 (Pagamento)
+    if (step === 5) {
+        const fidInput = document.querySelector('input[name="fidelidade"]:checked');
+        const isFidelidade = fidInput ? fidInput.value === 'sim' : true;
+        if (city === 'marica' || !isFidelidade) {
+            requiredFields[5].push('pagamento_instalacao');
+        }
+    }
+
     let valid = true;
-    inputs.forEach(input => {
-        if (!input.value) {
-            input.style.borderColor = 'red';
+    const fieldsToValidate = requiredFields[step] || [];
+    
+    fieldsToValidate.forEach(fieldName => {
+        const input = document.getElementsByName(fieldName)[0] || document.getElementById(fieldName);
+        if (!input) return;
+
+        let isFieldValid = true;
+        if (input.type === 'file') {
+            isFieldValid = input.files && input.files.length > 0;
+        } else {
+            isFieldValid = input.value && input.value.trim() !== '';
+        }
+
+        // Maioridade no cadastro (PF)
+        if (fieldName === 'data_nascimento' && isFieldValid && type === 'pf') {
+            if (!validarIdadeMinima18(input.value)) {
+                isFieldValid = false;
+                showNotify('É necessário ter pelo menos 18 anos para realizar o cadastro.', 'warning');
+            }
+        }
+
+        // Validação extra para data de instalação
+        if (fieldName === 'data_instalacao' && isFieldValid) {
+            const selectedDate = new Date(input.value + 'T00:00:00');
+            const tomorrow = new Date();
+            tomorrow.setHours(0,0,0,0);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            if (selectedDate < tomorrow) {
+                isFieldValid = false;
+                showNotify('A data de instalação deve ser a partir de amanhã.', 'warning');
+            }
+        }
+
+        if (!isFieldValid) {
+            if (input.type === 'file') {
+                const wrapper = input.closest('.file-upload-wrapper');
+                if (wrapper) wrapper.style.borderColor = 'red';
+            } else {
+                input.style.borderColor = 'red';
+            }
             valid = false;
         } else {
-            input.style.borderColor = '#ddd';
+            if (input.type === 'file') {
+                const wrapper = input.closest('.file-upload-wrapper');
+                if (wrapper) wrapper.style.borderColor = '#ddd';
+            } else {
+                input.style.borderColor = '#ddd';
+            }
         }
     });
 
-    if (!valid) {
-        showNotify('Por favor, preencha todos os campos obrigatórios.', 'warning');
+    if (!valid && !document.querySelector('.toast.show')) {
+        showNotify('Por favor, preencha todos os campos obrigatórios (*).', 'warning');
     }
     return valid;
 }
 
-// Logic for Maricá and MG
+// Logic for Cities
 function handleCityChange() {
     const city = document.getElementById('cidade').value;
-    const fidelidadeGroup = document.getElementById('fidelidadeGroup');
     const installationInfo = document.getElementById('installationInfo');
-    const vencimentoSelect = document.getElementById('vencimento');
+    const termoOption = document.getElementById('termo_option');
+    const pagamentoWrapper = document.getElementById('pagamento_instalacao_wrapper');
+    const pagamentoSelect = document.getElementById('pagamento_instalacao');
+    const ufSelect = document.getElementById('uf');
 
-    // Show/Hide installation info based on city
+    // Auto-select UF based on city
+    if (ufSelect) {
+        if (['marica', 'cabo_frio', 'unamar'].includes(city)) ufSelect.value = 'RJ';
+        else if (['muqui', 'piuma', 'mimoso'].includes(city)) ufSelect.value = 'ES';
+        else if (city === 'minas_gerais') ufSelect.value = 'MG';
+        else if (city === 'sao_paulo') ufSelect.value = 'SP';
+    }
+
+    // Update Plans list based on city
+    updatePlanOptions(city);
+
+    // Show/Hide installation info
+    installationInfo.style.display = 'block';
+    calculateInstallation();
+
+    // Lógica para o campo de pagamento da instalação
+    const fidInput = document.querySelector('input[name="fidelidade"]:checked');
+    const isFidelidade = fidInput ? fidInput.value === 'sim' : true;
+
     if (city === 'marica') {
-        installationInfo.style.display = 'block';
-        calculateInstallation();
-    } else {
-        installationInfo.style.display = 'none';
+        pagamentoWrapper.style.display = 'block';
+        if (isFidelidade) {
+            pagamentoSelect.value = 'pix'; // Default para Maricá com fidelidade
+        }
+    } else if (city) {
+        if (isFidelidade) {
+            pagamentoWrapper.style.display = 'none';
+            pagamentoSelect.value = 'gratis';
+        } else {
+            pagamentoWrapper.style.display = 'block';
+        }
+    }
+
+    // Show/Hide Termo option (Unamar, Cabo Frio, SP)
+    const canLevarTermo = ['cabo_frio', 'unamar', 'sao_paulo'].includes(city);
+    if (termoOption) {
+        termoOption.style.display = canLevarTermo ? 'block' : 'none';
+    }
+    if (!canLevarTermo) {
+        const levarTermoInput = document.getElementById('levar_termo');
+        if (levarTermoInput) levarTermoInput.checked = false;
+        toggleComprovanteUpload();
     }
 
     // Update Vencimento options
     updateVencimentoOptions(city);
 }
 
+function updatePlanOptions(city) {
+    const planoSelect = document.getElementById('plano');
+    if (!planoSelect) return;
+    const currentVal = planoSelect.value;
+    planoSelect.innerHTML = '<option value="">Selecione um plano...</option>';
+
+    let cityPlans = planDetails.default;
+    if (city === 'muqui' || city === 'piuma') cityPlans = planDetails.muqui_piuma;
+    else if (city === 'mimoso') cityPlans = planDetails.mimoso;
+
+    for (const [key, plan] of Object.entries(cityPlans)) {
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = plan.name;
+        planoSelect.appendChild(opt);
+    }
+    
+    if (cityPlans[currentVal]) planoSelect.value = currentVal;
+    handlePlanChange();
+}
+
+function toggleComprovanteUpload() {
+    const levarTermoInput = document.getElementById('levar_termo');
+    const isLevarTermo = levarTermoInput ? levarTermoInput.checked : false;
+    const uploadWrapper = document.getElementById('comprovante_upload_wrapper');
+    const input = document.getElementById('comprovante_residencia');
+    
+    if (uploadWrapper && input) {
+        if (isLevarTermo) {
+            uploadWrapper.style.opacity = '0.5';
+            uploadWrapper.style.pointerEvents = 'none';
+        } else {
+            uploadWrapper.style.opacity = '1';
+            uploadWrapper.style.pointerEvents = 'auto';
+        }
+    }
+}
+
 function calculateInstallation() {
     const city = document.getElementById('cidade').value;
-    const isFidelidade = document.querySelector('input[name="fidelidade"]:checked').value === 'sim';
+    const fidInput = document.querySelector('input[name="fidelidade"]:checked');
+    if (!fidInput) return;
+    
+    const isFidelidade = fidInput.value === 'sim';
     const installPriceSpan = document.getElementById('installPrice');
+    const pagamentoWrapper = document.getElementById('pagamento_instalacao_wrapper');
+    const pagamentoSelect = document.getElementById('pagamento_instalacao');
 
     if (city === 'marica') {
         const price = isFidelidade ? 100 : 460;
         installPriceSpan.innerText = `R$ ${price.toFixed(2).replace('.', ',')}`;
+        pagamentoWrapper.style.display = 'block';
+    } else if (city) {
+        const price = isFidelidade ? 0 : 360;
+        installPriceSpan.innerText = isFidelidade ? 'GRÁTIS' : `R$ ${price.toFixed(2).replace('.', ',')}`;
+        
+        if (isFidelidade) {
+            pagamentoWrapper.style.display = 'none';
+            pagamentoSelect.value = 'gratis';
+        } else {
+            pagamentoWrapper.style.display = 'block';
+        }
     }
 }
 
 function updateVencimentoOptions(city) {
     const vencimentoSelect = document.getElementById('vencimento');
     const vencimentoIdInfo = document.getElementById('vencimentoIdInfo');
+    if (!vencimentoSelect) return;
     vencimentoSelect.innerHTML = '<option value="">Selecione o vencimento</option>';
-    vencimentoIdInfo.innerText = '';
+    if (vencimentoIdInfo) vencimentoIdInfo.innerText = '';
 
     const today = new Date().getDate();
     let options = [];
 
+    // Maricá e Minas Gerais (Antiga lógica)
     if (city === 'marica' || city === 'minas_gerais') {
-        // Specific logic for Maricá and MG
         if (today >= 2 && today <= 10) {
-            options = [
-                { day: '03', id: '107' },
-                { day: '06', id: '91' },
-                { day: '09', id: '106' }
-            ];
+            options = [{ day: '03', id: '107' }, { day: '06', id: '91' }, { day: '09', id: '106' }];
         } else if (today >= 11 && today <= 20) {
-            options = [
-                { day: '13', id: '105' },
-                { day: '18', id: '93' }
-            ];
-        } else { // 21 to 1
-            options = [
-                { day: '22', id: '160' },
-                { day: '26', id: '161' },
-                { day: '01', id: '159' }
-            ];
+            options = [{ day: '13', id: '105' }, { day: '18', id: '93' }];
+        } else {
+            options = [{ day: '22', id: '160' }, { day: '26', id: '161' }, { day: '01', id: '159' }];
         }
     } else {
-        // Default options for other cities
-        options = [
-            { day: '05', id: 'DEFAULT' },
-            { day: '10', id: 'DEFAULT' },
-            { day: '15', id: 'DEFAULT' },
-            { day: '20', id: 'DEFAULT' }
-        ];
+        // Novas Regiões (1, 3, 6, 7, 9, 13, 18)
+        const days = ['01', '03', '06', '07', '09', '13', '18'];
+        options = days.map(d => ({ day: d, id: 'IXC' }));
     }
 
     options.forEach(opt => {
@@ -396,69 +1050,59 @@ function updateVencimentoOptions(city) {
         el.textContent = `Dia ${opt.day}`;
         vencimentoSelect.appendChild(el);
     });
-
-    vencimentoSelect.onchange = function() {
-        const selected = vencimentoSelect.options[vencimentoSelect.selectedIndex];
-        if (selected.dataset.id && selected.dataset.id !== 'DEFAULT') {
-            vencimentoIdInfo.innerText = `ID Interno: ${selected.dataset.id}`;
-        } else {
-            vencimentoIdInfo.innerText = '';
-        }
-    };
 }
 
 // Form submission
 document.getElementById('registrationForm').onsubmit = function(e) {
     e.preventDefault();
     
-    const formData = new FormData(this);
-    
-    // Get the CSRF token from the cookie
-    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    // Valida o último passo antes de submeter
+    if (!validateStep(currentStep)) return;
 
-    fetch('', {
+    const submitBtn = this.querySelector('button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
+    }
+
+    const formData = new FormData(this);
+    const csrftokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
+    const csrftoken = csrftokenEl ? csrftokenEl.value : '';
+
+    // Usa a URL atual para o post
+    const postUrl = window.location.href;
+
+    fetch(postUrl, {
         method: 'POST',
         headers: {
             'X-CSRFToken': csrftoken,
+            'X-Requested-With': 'XMLHttpRequest'
         },
         body: formData
     })
-    .then(response => {
-        if (response.ok) {
+    .then(async response => {
+        const data = await response.json();
+        if (response.ok && data.status === 'success') {
             document.getElementById('registrationForm').style.display = 'none';
-            document.querySelector('.form-header').style.display = 'none';
+            const header = document.querySelector('.form-header');
+            if (header) header.style.display = 'none';
             document.getElementById('successMessage').style.display = 'block';
             window.scrollTo(0, 0);
         } else {
-            showNotify('Erro ao enviar o cadastro. Por favor, tente novamente.', 'danger');
+            const errorMsg = data.message || 'Erro ao enviar o cadastro.';
+            showNotify(errorMsg, 'danger');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Enviar Cadastro';
+            }
         }
     })
     .catch(error => {
-        console.error('Erro:', error);
-        showNotify('Erro ao enviar o cadastro. Por favor, tente novamente.', 'danger');
+        console.error('Erro na submissão:', error);
+        showNotify('Erro de conexão. Verifique se o servidor está rodando ou sua internet.', 'danger');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Enviar Cadastro';
+        }
     });
 };
-
-// Masking inputs (simple version)
-document.getElementById('cep').addEventListener('input', function(e) {
-    let value = e.target.value.replace(/\D/g, '');
-    if (value.length > 8) value = value.slice(0, 8);
-    if (value.length > 5) {
-        value = value.replace(/(\d{5})(\d{3})/, "$1-$2");
-    }
-    e.target.value = value;
-});
-
-document.getElementById('telefone').addEventListener('input', function(e) {
-    let value = e.target.value.replace(/\D/g, '');
-    if (value.length > 11) value = value.slice(0, 11);
-    
-    if (value.length > 10) {
-        value = value.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-    } else if (value.length > 6) {
-        value = value.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
-    } else if (value.length > 2) {
-        value = value.replace(/(\d{2})/, "($1) ");
-    }
-    e.target.value = value;
-});

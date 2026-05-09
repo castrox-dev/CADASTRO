@@ -46,7 +46,7 @@
                             <button class="btn-action-premium btn-action-os" onclick="copyText('osContent')">
                                 <i class="bi bi-file-earmark-text"></i> COPIAR ORDEM DE SERVIÇO
                             </button>
-                            <button class="btn-action-premium btn-action-ficha" onclick="copyText('fichaContent')">
+                            <button class="btn-action-premium btn-action-ficha" onclick="copyText('fichaText')">
                                 <i class="bi bi-clipboard-check"></i> COPIAR FICHA COMPLETA
                             </button>
                             
@@ -205,8 +205,8 @@
                                         </div>
                                         <h6 class="fw-bold">Endereço de Instalação</h6>
                                         <p class="text-muted mb-4">{{ cadastro.endereco }}, {{ cadastro.bairro }} - {{ cadastro.cidade }}</p>
-                                        <a href="{{ cadastro.google_maps_link }}" target="_blank" class="btn btn-success px-4 py-2 d-inline-flex align-items-center">
-                                            <i class="bi bi-google me-2"></i> ABRIR NO GOOGLE MAPS
+                                        <a href="{{ cadastro.google_maps_link }}" target="_blank" rel="noopener noreferrer" class="btn btn-success px-4 py-2 d-inline-flex align-items-center">
+                                            <i class="bi bi-geo-alt-fill me-2"></i> ABRIR LOCALIZAÇÃO NO MAPA
                                         </a>
                                     </div>
                                     {% else %}
@@ -220,43 +220,61 @@
                         </div>
                     </div>
 
-                    <!-- Card da OS -->
-                    <div class="card-premium mb-4">
-                        <div class="p-4 bg-primary text-white rounded-top d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0 d-flex align-items-center">
-                                <i class="bi bi-file-text me-2"></i> Padrão de Ordem de Serviço (OS)
-                            </h5>
-                        </div>
-                        <div class="p-4">
-                            <div class="bg-light p-3 rounded border" id="osContent">
-                                <pre style="white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 13px; margin-bottom: 0;">{{ cadastro.os_formatada }}</pre>
+                    <div class="accordion detail-text-accordion" id="detailTextAccordion">
+                        <!-- OS (colapsável) -->
+                        <div class="card-premium mb-4 p-0 overflow-hidden">
+                            <div class="accordion-item bg-transparent">
+                                <h2 class="accordion-header m-0" id="headingOS">
+                                    <button class="accordion-button collapsed bg-primary text-white py-3 px-4 rounded-0" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOS" aria-expanded="false" aria-controls="collapseOS">
+                                        <span class="d-flex align-items-center gap-2">
+                                            <i class="bi bi-file-text"></i>
+                                            Padrão de Ordem de Serviço (OS)
+                                        </span>
+                                    </button>
+                                </h2>
+                                <div id="collapseOS" class="accordion-collapse collapse" aria-labelledby="headingOS">
+                                    <div class="accordion-body p-4 pt-3 border-0">
+                                        <div class="bg-light p-3 rounded border" id="osContent">
+                                            <pre style="white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 13px; margin-bottom: 0;">{{ cadastro.os_formatada }}</pre>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Card da Ficha -->
-                    <div class="card-premium">
-                        <div class="p-4 bg-secondary text-white rounded-top d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0 d-flex align-items-center">
-                                <i class="bi bi-person-lines-fill me-2"></i> Ficha Completa do Cliente
-                            </h5>
-                            <button class="btn btn-sm btn-light fw-bold" id="btnEditFicha" onclick="toggleEditFicha()">
-                                <i class="bi bi-pencil-square me-1"></i> EDITAR
-                            </button>
-                        </div>
-                        <div class="p-4">
-                            <div class="bg-light p-3 rounded border" id="fichaDisplay">
-                                <pre style="white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 13px; margin-bottom: 0;" id="fichaText">{{ cadastro.ficha_formatada }}</pre>
-                            </div>
-                            <div class="bg-light p-3 rounded border" id="fichaEdit" style="display:none;">
-                                <textarea class="form-control" id="fichaTextarea" rows="15" style="font-family: 'Courier New', Courier, monospace; font-size: 13px; background: #fdfdfd;"></textarea>
-                                <div class="mt-3 d-flex gap-2">
-                                    <button class="btn btn-success btn-sm px-4 fw-bold" onclick="saveFicha()">
-                                        <i class="bi bi-check-circle me-1"></i> SALVAR
+                        <!-- Ficha completa (colapsável) -->
+                        <div class="card-premium p-0 overflow-hidden">
+                            <div class="accordion-item bg-transparent">
+                                <h2 class="accordion-header m-0" id="headingFicha">
+                                    <button class="accordion-button collapsed bg-secondary text-white py-3 px-4 rounded-0 border-0" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFicha" aria-expanded="false" aria-controls="collapseFicha">
+                                        <span class="d-flex align-items-center gap-2">
+                                            <i class="bi bi-person-lines-fill"></i>
+                                            Ficha Completa do Cliente
+                                        </span>
                                     </button>
-                                    <button class="btn btn-outline-secondary btn-sm px-4" onclick="toggleEditFicha()">
-                                        CANCELAR
-                                    </button>
+                                </h2>
+                                <div id="collapseFicha" class="accordion-collapse collapse" aria-labelledby="headingFicha">
+                                    <div class="accordion-body p-4 pt-3 border-0">
+                                        <div class="bg-light p-3 rounded border" id="fichaDisplay">
+                                            <pre style="white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 13px; margin-bottom: 0;" id="fichaText">{{ cadastro.ficha_formatada }}</pre>
+                                        </div>
+                                        <div class="ficha-edit-panel p-3 mt-3 d-none" id="fichaEdit">
+                                            <textarea class="form-control form-control-premium ficha-textarea" id="fichaTextarea" rows="15" spellcheck="false"></textarea>
+                                            <div class="mt-3 d-flex gap-2 flex-wrap">
+                                                <button type="button" class="btn btn-success btn-sm px-4 fw-bold" onclick="saveFicha()">
+                                                    <i class="bi bi-check-circle me-1"></i> SALVAR
+                                                </button>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm px-4" onclick="toggleEditFicha()">
+                                                    CANCELAR
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex justify-content-end mt-4 pt-3 border-top border-secondary border-opacity-25" id="fichaEditActions">
+                                            <button type="button" class="btn btn-sm btn-light fw-bold px-4 py-2" id="btnEditFicha" onclick="toggleEditFicha();">
+                                                <i class="bi bi-pencil-square me-1"></i> EDITAR
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -275,23 +293,29 @@ function copyText(elementId) {
 }
 
 function toggleEditFicha() {
+    const collapseFicha = document.getElementById('collapseFicha');
+    if (collapseFicha && !collapseFicha.classList.contains('show')) {
+        bootstrap.Collapse.getOrCreateInstance(collapseFicha, { toggle: false }).show();
+    }
+
     const display = document.getElementById('fichaDisplay');
     const edit = document.getElementById('fichaEdit');
-    const btn = document.getElementById('btnEditFicha');
+    const actionsRow = document.getElementById('fichaEditActions');
     const textarea = document.getElementById('fichaTextarea');
     const text = document.getElementById('fichaText').innerText;
 
-    if (edit.style.display === 'none') {
+    const isEditing = edit && !edit.classList.contains('d-none');
+
+    if (!isEditing) {
         textarea.value = text;
-        display.style.display = 'none';
-        edit.style.display = 'block';
-        btn.innerHTML = '<i class="bi bi-x-circle me-1"></i> CANCELAR';
-        btn.classList.replace('btn-light', 'btn-danger');
+        display.classList.add('d-none');
+        edit.classList.remove('d-none');
+        if (actionsRow) actionsRow.classList.add('d-none');
+        textarea.focus();
     } else {
-        display.style.display = 'block';
-        edit.style.display = 'none';
-        btn.innerHTML = '<i class="bi bi-pencil-square me-1"></i> EDITAR';
-        btn.classList.replace('btn-danger', 'btn-light');
+        display.classList.remove('d-none');
+        edit.classList.add('d-none');
+        if (actionsRow) actionsRow.classList.remove('d-none');
     }
 }
 

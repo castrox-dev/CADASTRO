@@ -179,12 +179,15 @@ def manage_consultor(request, pk=None):
     return JsonResponse({'status': 'error'}, status=400)
 
 def client_form(request):
-    consultor_id = request.GET.get('consultor')
+    # Preferir consultor vindo do POST (campo oculto); senão ?consultor= na URL (link único)
     consultor = None
-    if consultor_id:
+    raw_consultor_id = request.POST.get('consultor_id') if request.method == 'POST' else None
+    if not raw_consultor_id:
+        raw_consultor_id = request.GET.get('consultor')
+    if raw_consultor_id:
         try:
-            consultor = User.objects.get(id=consultor_id)
-        except User.DoesNotExist:
+            consultor = User.objects.get(pk=int(raw_consultor_id))
+        except (User.DoesNotExist, ValueError, TypeError):
             pass
 
     if request.method == 'POST':
