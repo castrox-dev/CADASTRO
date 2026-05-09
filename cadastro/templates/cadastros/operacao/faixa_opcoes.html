@@ -1,0 +1,57 @@
+{% extends "cadastros/base_admin.html" %}
+
+{% block admin_page_title %}{{ page_title }}{% endblock %}
+
+{% block admin_content %}
+<div class="dashboard-wrapper">
+    <div class="container-fluid py-4">
+        {% include "cadastros/operacao/_messages.html" %}
+
+        <nav aria-label="breadcrumb" class="mb-3">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'operacao_cidades_list' %}">Cidades</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'operacao_cidade_vencimentos' cidade.pk %}">{{ cidade.nome_exibicao }}</a></li>
+                <li class="breadcrumb-item active">Faixa {{ faixa.dia_inicio }}–{{ faixa.dia_fim }}</li>
+            </ol>
+        </nav>
+
+        <h4 class="fw-bold mb-2">{{ page_title }}</h4>
+        <p class="text-muted small mb-4">Cada linha é uma opção no select «Dia de vencimento». O campo IXC é enviado ao ERP junto com o cadastro.</p>
+
+        <form method="post" class="card-premium p-4">
+            {% csrf_token %}
+            {{ formset.management_form }}
+
+            {% if formset.non_form_errors %}
+            <div class="alert alert-danger">{{ formset.non_form_errors }}</div>
+            {% endif %}
+
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Dia (texto)</th>
+                            <th>ID IXC</th>
+                            <th>Ordem</th>
+                            <th>Excluir?</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for form in formset %}
+                        <tr>
+                            <td>{{ form.id }}{{ form.dia_str }}</td>
+                            <td>{{ form.ixc_id }}</td>
+                            <td style="max-width:100px">{{ form.ordem }}</td>
+                            <td>{% if form.DELETE %}{{ form.DELETE }}{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <button type="submit" class="btn btn-fibramar">Salvar opções</button>
+            <a href="{% url 'operacao_cidade_vencimentos' cidade.pk %}" class="btn btn-light ms-2">Voltar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

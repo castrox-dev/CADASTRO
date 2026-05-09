@@ -89,7 +89,8 @@ class Cadastro(models.Model):
     fidelidade = models.BooleanField(default=True)
     vencimento = models.CharField(max_length=2)
     vencimento_id = models.CharField(max_length=10, blank=True, null=True)
-    opcional = models.BooleanField(default=False)
+    aluguel_roteador_wifi = models.BooleanField(default=False)
+    aluguel_repetidor_mesh = models.BooleanField(default=False)
     
     # Instalação
     pagamento_instalacao = models.CharField(max_length=50)
@@ -171,6 +172,7 @@ class Cadastro(models.Model):
             'rapido': '400 MEGA',
             'turbo': '500 MEGA',
             'ultra': '600 MEGA',
+            'prime': '700 MEGA',
             '1giga': '1 GIGA',
             'plano_300': '300 MEGA',
             'plano_700': '700 MEGA'
@@ -202,6 +204,7 @@ class Cadastro(models.Model):
             'rapido': '400 MEGA',
             'turbo': '500 MEGA',
             'ultra': '600 MEGA',
+            'prime': '700 MEGA',
             '1giga': '1 GIGA',
             'plano_300': '300 MEGA',
             'plano_700': '700 MEGA'
@@ -213,19 +216,24 @@ class Cadastro(models.Model):
             'rapido': '79,99',
             'turbo': '99,99',
             'ultra': '119,99',
+            'prime': '99,99',
             '1giga': '149,99',
             'plano_300': '69,99',
             'plano_700': '89,99'
         }
         plano_valor = precos.get(self.plano, "0,00")
         
-        # Lógica do Roteador (especialmente para 240 MEGA)
-        if self.plano == 'essencial':
-            router_info = "COM ROTEADOR EM ALUGUEL" if self.opcional else "COM ROTEADOR DO CLIENTE"
-        elif self.plano == '1giga' and self.opcional:
-            router_info = "COM ROTEADOR EM COMODATO + MESH"
+        extras = []
+        if self.aluguel_repetidor_mesh:
+            extras.append('REPETIDOR MESH EM ALUGUEL')
+        if self.aluguel_roteador_wifi:
+            extras.append('ROTEADOR WI-FI EM ALUGUEL')
+        if extras:
+            router_info = 'COM ' + ' E '.join(extras)
+        elif self.plano == 'essencial':
+            router_info = 'COM ROTEADOR DO CLIENTE'
         else:
-            router_info = "COM ROTEADOR EM COMODATO"
+            router_info = 'COM ROTEADOR EM COMODATO'
             
         os_text = f"INSTALAÇÃO SERÁ PAGA NO VALOR DE R$ {instalacao_valor}\n\n"
         os_text += f"PLANO DE {plano_label} / R$ {plano_valor} {router_info}\n\n"
@@ -263,6 +271,7 @@ class Cadastro(models.Model):
             'rapido': '400 MEGA',
             'turbo': '500 MEGA',
             'ultra': '600 MEGA',
+            'prime': '700 MEGA',
             '1giga': '1 GIGA',
             'plano_300': '300 MEGA',
             'plano_700': '700 MEGA'
@@ -295,22 +304,44 @@ class Cadastro(models.Model):
         ficha += f"Referência visual: {self.referencia}\n"
         ficha += f"Plano desejado: {plano_display}\n"
         
-        # Detalhes específicos do plano
         if self.plano == 'essencial':
-            ficha += f"Roteador: {'Alugado (R$ 10,00/mês)' if self.opcional else 'Do Cliente'}\n"
-        elif self.plano == '1giga' and self.opcional:
-            ficha += f"Roteador: Comodato + Repetidor Mesh\n"
+            ficha += f"Roteador Wi-Fi em aluguel (R$ 10/mês): {'Sim' if self.aluguel_roteador_wifi else 'Não'}\n"
+            ficha += f"Repetidor Mesh em aluguel (R$ 29,99/mês): {'Sim' if self.aluguel_repetidor_mesh else 'Não'}\n"
         else:
-            ficha += f"Roteador: Comodato\n"
+            if self.aluguel_repetidor_mesh:
+                ficha += 'Repetidor Mesh em aluguel: Sim\n'
+            else:
+                ficha += 'Roteador: Comodato\n'
             
         ficha += f"Gostaria da fidelidade de 12 meses? {'Sim' if self.fidelidade else 'Não'}\n"
         ficha += f"Modo de pagamento da instalação: {self.pagamento_instalacao}\n"
         ficha += f"Data e período para a instalação: {self.data_instalacao.strftime('%d/%m/%Y')} - {self.get_periodo_instalacao_display()}\n"
         ficha += f"Por onde conheceu a empresa? {self.origem}\n"
         ficha += f"Consultor(a): {self.nome_consultor_display}\n"
-        
-        return ficha
+
+        return _append_modelo_ficha_global(ficha)
 
     class Meta:
         verbose_name = "Cadastro"
         verbose_name_plural = "Cadastros"
+
+
+from .operacao_models import (  # noqa: E402
+    AppConfigOperacao,
+    CidadeOperacao,
+    FaixaVencimento,
+    OpcaoVencimento,
+    PlanoDefinicao,
+    PlanoGrupo,
+    VagaInstalacao,
+)
+
+
+def _append_modelo_ficha_global(ficha_text):
+    try:
+        extra = AppConfigOperacao.load().modelo_observacoes_ficha
+        if extra and str(extra).strip():
+            return ficha_text + '\n' + str(extra).strip() + '\n'
+    except Exception:
+        pass
+    return ficha_text

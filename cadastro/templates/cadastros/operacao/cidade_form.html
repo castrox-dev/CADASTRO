@@ -1,0 +1,87 @@
+{% extends "cadastros/base_admin.html" %}
+
+{% block admin_page_title %}{{ page_title }}{% endblock %}
+
+{% block admin_content %}
+<div class="dashboard-wrapper">
+    <div class="container py-4" style="max-width: 720px;">
+        {% include "cadastros/operacao/_messages.html" %}
+
+        <h4 class="fw-bold mb-4">{{ page_title }}</h4>
+
+        <form method="post" class="card-premium p-4">
+            {% csrf_token %}
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-semibold">Slug (URL/campo)</label>
+                    {{ form.slug }}
+                    {{ form.slug.errors }}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label fw-semibold">Nome na lista</label>
+                    {{ form.nome_exibicao }}
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label fw-semibold">UF padrão</label>
+                    {{ form.uf_padrao }}
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label fw-semibold">Ordem</label>
+                    {{ form.ordem }}
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label fw-semibold">Grupo de planos</label>
+                    {{ form.grupo_planos }}
+                </div>
+            </div>
+
+            <div class="operacao-form-section border rounded p-3 mb-3">
+                <div class="small fw-bold text-uppercase text-muted mb-2">Comportamento da ficha</div>
+                <div class="form-check mb-2">{{ form.ativo }} <label class="form-check-label" for="id_ativo">Ativa na lista</label></div>
+                <div class="form-check mb-2">{{ form.skip_etapa_documentacao }} <label class="form-check-label" for="id_skip_etapa_documentacao">Pular passo de documentos</label></div>
+                <div class="form-check mb-2">{{ form.permite_opcao_termo }} <label class="form-check-label" for="id_permite_opcao_termo">Permitir “levar termo”</label></div>
+                <div class="form-check mb-2">{{ form.sempre_exibir_pagamento_instalacao }} <label class="form-check-label" for="id_sempre_exibir_pagamento_instalacao">Sempre pedir pagamento da instalação</label></div>
+                <div class="mb-2">
+                    <label class="form-label small">Exigir fotos (vazio = usar padrão global)</label>
+                    {{ form.exigir_fotos_documentacao }}
+                </div>
+            </div>
+
+            <div class="border rounded p-3 mb-3">
+                <div class="small fw-bold text-uppercase text-muted mb-2">Taxas de instalação (exibição)</div>
+                <div class="form-check mb-2">{{ form.instalacao_com_fidelidade_gratis }} <label class="form-check-label" for="id_instalacao_com_fidelidade_gratis">Com fidelidade = grátis (senão usa valor abaixo)</label></div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Valor com fidelidade (R$)</label>
+                        {{ form.instalacao_valor_com_fidel_reais }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Valor sem fidelidade (R$)</label>
+                        {{ form.instalacao_valor_sem_fidel_reais }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="border rounded p-3 mb-4">
+                <div class="small fw-bold text-uppercase text-muted mb-2">IXC (opcional)</div>
+                <div class="mb-3">
+                    <label class="form-label">ID filial IXC</label>
+                    {{ form.ixc_filial_id }}
+                </div>
+                <div class="mb-0">
+                    <label class="form-label">ID cidade IXC</label>
+                    {{ form.ixc_cidade_id }}
+                </div>
+                <div class="form-text">Deixe em branco para usar o mapa fixo do sistema.</div>
+            </div>
+
+            <button type="submit" class="btn btn-fibramar">Salvar</button>
+            <a href="{% url 'operacao_cidades_list' %}" class="btn btn-light ms-2">Cancelar</a>
+            {% if cidade %}
+            <a href="{% url 'operacao_cidade_vencimentos' cidade.pk %}" class="btn btn-outline-secondary ms-2">Vencimentos</a>
+            {% endif %}
+        </form>
+    </div>
+</div>
+{% endblock %}

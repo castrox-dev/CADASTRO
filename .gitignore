@@ -1,0 +1,31 @@
+# Ambiente
+.env
+.env.local
+.env.*.local
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Django
+*.sqlite3
+db.sqlite3
+media/
+staticfiles/
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Build / test
+*.egg-info/
+.coverage
+htmlcov/
+dist/

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="admin-app-shell">
+    <aside class="admin-sidebar" id="adminSidebar" aria-label="Menu administrativo">
+        {% include "cadastros/includes/admin_sidebar.html" %}
+    </aside>
+    <div class="admin-sidebar-backdrop d-lg-none" id="adminSidebarBackdrop" tabindex="-1"></div>
+    <div class="admin-main">
+        <header class="admin-topbar d-lg-none align-items-center gap-2">
+            <button type="button" class="btn btn-link text-white p-1 rounded admin-menu-toggle" id="adminMenuToggle" aria-label="Abrir menu">
+                <i class="bi bi-list fs-3"></i>
+            </button>
+            <span class="fw-bold text-white text-truncate small flex-grow-1">{% block admin_page_title %}Painel{% endblock %}</span>
+        </header>
+        <div class="admin-main-inner">
+            {% block admin_content %}{% endblock %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+(function () {
+    var sidebar = document.getElementById('adminSidebar');
+    var backdrop = document.getElementById('adminSidebarBackdrop');
+    var toggle = document.getElementById('adminMenuToggle');
+    function closeSidebar() {
+        if (sidebar) sidebar.classList.remove('show');
+        if (backdrop) backdrop.classList.remove('show');
+        document.body.classList.remove('admin-sidebar-open');
+    }
+    function openSidebar() {
+        if (sidebar) sidebar.classList.add('show');
+        if (backdrop) backdrop.classList.add('show');
+        document.body.classList.add('admin-sidebar-open');
+    }
+    if (toggle) {
+        toggle.addEventListener('click', function () {
+            if (sidebar && sidebar.classList.contains('show')) closeSidebar();
+            else openSidebar();
+        });
+    }
+    if (backdrop) backdrop.addEventListener('click', closeSidebar);
+    window.addEventListener('resize', function () {
+        if (window.innerWidth >= 992) closeSidebar();
+    });
+    document.querySelectorAll('.admin-sidebar a').forEach(function (a) {
+        a.addEventListener('click', function () {
+            if (window.innerWidth < 992) closeSidebar();
+        });
+    });
+})();
+</script>
+{% endblock %}

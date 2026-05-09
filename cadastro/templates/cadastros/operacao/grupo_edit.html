@@ -1,0 +1,63 @@
+{% extends "cadastros/base_admin.html" %}
+
+{% block admin_page_title %}{{ page_title }}{% endblock %}
+
+{% block admin_content %}
+<div class="dashboard-wrapper">
+    <div class="container-fluid py-4">
+        {% include "cadastros/operacao/_messages.html" %}
+
+        <nav aria-label="breadcrumb" class="mb-3">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'operacao_grupos_list' %}">Grupos</a></li>
+                <li class="breadcrumb-item active">{{ grupo.slug }}</li>
+            </ol>
+        </nav>
+
+        <h4 class="fw-bold mb-4">{{ page_title }}</h4>
+
+        <form method="post" class="card-premium p-4 mb-4">
+            {% csrf_token %}
+            <div class="row mb-4">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Slug</label>
+                    {{ form.slug }}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Nome</label>
+                    {{ form.nome }}
+                </div>
+            </div>
+
+            <h6 class="fw-bold mb-3">Planos neste grupo</h6>
+            {{ formset.management_form }}
+            {% if formset.non_form_errors %}
+            <div class="alert alert-danger">{{ formset.non_form_errors }}</div>
+            {% endif %}
+
+            {% for f in formset %}
+            <div class="operacao-form-section border rounded p-3 mb-3">
+                {% if f.non_field_errors %}<div class="alert alert-danger small">{{ f.non_field_errors }}</div>{% endif %}
+                <div class="row g-2">
+                    <div class="col-lg-2">{{ f.id }}<label class="form-label small">Código</label>{{ f.codigo }}</div>
+                    <div class="col-lg-4"><label class="form-label small">Título</label>{{ f.titulo }}</div>
+                    <div class="col-lg-2"><label class="form-label small">Ordem</label>{{ f.ordem }}</div>
+                    <div class="col-lg-2"><label class="form-label small">IXC plano</label>{{ f.ixc_plano_venda_id }}</div>
+                    <div class="col-lg-2 pt-lg-4">{% if f.DELETE %}{{ f.DELETE }} <label class="small">Apagar</label>{% endif %}</div>
+                    <div class="col-12">
+                        <label class="form-label small" for="{{ f.descricao_html.id_for_label }}">{{ f.descricao_html.label }}</label>
+                        {{ f.descricao_html }}
+                        {% if f.descricao_html.help_text %}<div class="form-text small">{{ f.descricao_html.help_text }}</div>{% endif %}
+                        {% if f.descricao_html.errors %}<div class="text-danger small">{{ f.descricao_html.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-12"><label class="form-label small">Texto opcional (mesh/roteador)</label>{{ f.texto_opcional }}</div>
+                </div>
+            </div>
+            {% endfor %}
+
+            <button type="submit" class="btn btn-fibramar">Salvar tudo</button>
+            <a href="{% url 'operacao_grupos_list' %}" class="btn btn-light ms-2">Voltar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

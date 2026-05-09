@@ -126,6 +126,7 @@
                                 <option value="piuma" {% if cadastro.cidade == 'piuma' %}selected{% endif %}>Piúma - ES</option>
                                 <option value="mimoso" {% if cadastro.cidade == 'mimoso' %}selected{% endif %}>Mimoso do Sul - ES</option>
                                 <option value="cabo_frio" {% if cadastro.cidade == 'cabo_frio' %}selected{% endif %}>Cabo Frio - RJ</option>
+                                <option value="saquarema" {% if cadastro.cidade == 'saquarema' %}selected{% endif %}>Saquarema - RJ</option>
                                 <option value="unamar" {% if cadastro.cidade == 'unamar' %}selected{% endif %}>Unamar - RJ</option>
                                 <option value="sao_paulo" {% if cadastro.cidade == 'sao_paulo' %}selected{% endif %}>São Paulo - SP</option>
                                 <option value="outra" {% if cadastro.cidade == 'outra' %}selected{% endif %}>Outra Cidade</option>
@@ -224,6 +225,9 @@
                         <label class="btn btn-outline-fibramar py-2" for="fid_nao">Não</label>
                     </div>
                 </div>
+
+                <input type="hidden" name="aluguel_roteador_wifi" value="{% if cadastro.aluguel_roteador_wifi %}1{% else %}0{% endif %}">
+                <input type="hidden" name="aluguel_repetidor_mesh" value="{% if cadastro.aluguel_repetidor_mesh %}1{% else %}0{% endif %}">
             </div>
 
             <!-- Documentação -->

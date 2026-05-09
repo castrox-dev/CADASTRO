@@ -102,11 +102,13 @@
 
 html {
     scroll-behavior: smooth;
+    overflow-x: clip;
 }
 
 body {
     margin: 0;
     padding: 0;
+    overflow-x: clip;
     font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-size: 14px;
     line-height: 1.55;
@@ -121,6 +123,11 @@ body {
     text-rendering: optimizeLegibility;
     transition: background-color var(--t-med) var(--ease),
                 color var(--t-med) var(--ease);
+}
+
+img, svg, video, canvas {
+    max-width: 100%;
+    height: auto;
 }
 
 /* Scrollbar customizada (WebKit + Firefox) */
@@ -161,6 +168,167 @@ body {
 
 @media (max-width: 768px) {
     .dashboard-wrapper { padding: 16px; }
+}
+
+/* --------------------------------------------------------------------------
+   Painel admin — shell + menu lateral
+   -------------------------------------------------------------------------- */
+.admin-app-shell {
+    display: flex;
+    min-height: 100vh;
+    background: var(--body-bg);
+}
+
+.admin-sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: linear-gradient(180deg, #1f1f44 0%, #14142e 100%);
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1040;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.26s ease;
+}
+
+[data-theme="dark"] .admin-sidebar {
+    background: linear-gradient(180deg, #0d0d1c 0%, #07070f 100%);
+    border-right-color: var(--border-color);
+}
+
+.admin-sidebar-inner {
+    min-height: 0;
+}
+
+.admin-main {
+    flex: 1;
+    min-width: 0;
+    margin-left: 260px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.admin-topbar {
+    display: flex;
+    padding: 10px 14px;
+    background: linear-gradient(180deg, #1f1f44 0%, #14142e 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+}
+
+[data-theme="dark"] .admin-topbar {
+    background: linear-gradient(180deg, #0d0d1c 0%, #07070f 100%);
+    border-bottom-color: var(--border-color);
+}
+
+.admin-menu-toggle {
+    text-decoration: none;
+}
+
+.admin-main-inner {
+    flex: 1;
+    padding: 0;
+    min-width: 0;
+}
+
+@media (max-width: 991.98px) {
+    .admin-main-inner {
+        padding-left: max(0px, env(safe-area-inset-left));
+        padding-right: max(0px, env(safe-area-inset-right));
+    }
+}
+
+.admin-sidebar-nav .admin-nav-section {
+    letter-spacing: 0.04em;
+    font-size: 0.65rem;
+}
+
+.admin-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    margin: 2px 4px;
+    border-radius: var(--radius-sm);
+    color: rgba(255, 255, 255, 0.88);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.admin-nav-link i {
+    font-size: 1.05rem;
+    opacity: 0.92;
+    flex-shrink: 0;
+}
+
+.admin-nav-link:hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: #fff;
+}
+
+.admin-nav-link.active {
+    background: rgba(255, 107, 0, 0.18);
+    color: var(--secondary-color);
+    box-shadow: inset 3px 0 0 var(--secondary-color);
+}
+
+.admin-sidebar-theme {
+    border-radius: var(--radius-md) !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 42px;
+    padding: 10px 12px !important;
+    justify-content: flex-start;
+}
+.admin-sidebar-theme #themeIcon {
+    transition: transform var(--t-fast) var(--ease);
+}
+.admin-sidebar-theme:hover #themeIcon {
+    transform: rotate(20deg);
+}
+
+.admin-sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.48);
+    z-index: 1035;
+}
+
+.admin-sidebar-backdrop.show {
+    display: block;
+}
+
+body.admin-sidebar-open {
+    overflow: hidden;
+}
+
+@media (max-width: 991.98px) {
+    .admin-sidebar {
+        transform: translateX(-100%);
+        box-shadow: 8px 0 28px rgba(0, 0, 0, 0.35);
+    }
+
+    .admin-sidebar.show {
+        transform: translateX(0);
+    }
+
+    .admin-main {
+        margin-left: 0;
+    }
+}
+
+@media (min-width: 992px) {
+    .admin-sidebar-backdrop {
+        display: none !important;
+    }
 }
 
 /* --------------------------------------------------------------------------
@@ -224,6 +392,119 @@ p { margin: 0; }
     border-color: var(--border-color);
 }
 [data-theme="dark"] .card-premium .border-bottom { border-color: var(--border-color) !important; }
+
+/* Detalhes do plano — ficha pública (evita alert-info claro no tema escuro) */
+.plan-details-card {
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: var(--card-bg-elevated);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+.plan-details-card__head {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--secondary-color);
+    background: rgba(255, 107, 0, 0.07);
+    border-bottom: 1px solid var(--border-color);
+}
+.plan-details-card__head i {
+    font-size: 0.95rem;
+    opacity: 0.92;
+    flex-shrink: 0;
+}
+.plan-details-card__body {
+    padding: 0.6rem 0.75rem 0.7rem;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: var(--text-main);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.plan-details-card__body strong {
+    font-weight: 600;
+    color: var(--text-main);
+}
+[data-theme="dark"] .plan-details-card__head {
+    background: rgba(255, 107, 0, 0.11);
+}
+
+@media (min-width: 576px) {
+    .plan-details-card__body {
+        font-size: 0.82rem;
+        padding: 0.65rem 0.9rem 0.75rem;
+    }
+}
+
+.plan-install-summary {
+    border-radius: var(--radius-md);
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+}
+.plan-install-summary__label {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-main);
+}
+.plan-install-summary__price {
+    color: var(--secondary-color);
+}
+
+/* Ficha pública — largura fluida e navegação por passos */
+.fibramar-ficha-page {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.fibramar-ficha-card {
+    max-width: min(650px, 100%);
+}
+
+.form-step-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.25rem;
+}
+
+.form-step-actions.justify-content-end {
+    justify-content: flex-end;
+}
+
+@media (max-width: 575.98px) {
+    .form-step-actions:not(.justify-content-end) {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .form-step-actions .btn {
+        width: 100%;
+        min-height: 44px;
+    }
+}
+
+.fibramar-review-box {
+    background: var(--card-bg);
+    color: var(--text-main);
+    border-color: var(--border-color) !important;
+}
+
+[data-theme="dark"] .card-premium .border-bottom.bg-light {
+    background-color: var(--card-bg-elevated) !important;
+    color: var(--text-main);
+}
 
 /* --------------------------------------------------------------------------
    6. NAVBAR
@@ -306,6 +587,11 @@ p { margin: 0; }
 .theme-toggle:hover {
     background: rgba(255, 255, 255, 0.14);
     transform: rotate(20deg);
+}
+/* Sidebar: não rotacionar o botão inteiro (.theme-toggle:hover vence por ordem sem esta regra extra) */
+.theme-toggle.admin-sidebar-theme:hover,
+.theme-toggle.admin-sidebar-theme:focus-visible {
+    transform: none;
 }
 
 /* --------------------------------------------------------------------------
@@ -557,6 +843,23 @@ button:focus-visible,
 [data-theme="dark"] input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     filter: invert(1) brightness(1.6);
     cursor: pointer;
+}
+
+/* Blocos do formulário /admin-dash/operacao/ — evitar bg-light-subtle (fundo claro + texto claro no dark) */
+.operacao-form-section {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: var(--border-color) !important;
+}
+[data-theme="dark"] .operacao-form-section {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--border-color) !important;
+}
+[data-theme="dark"] .operacao-form-section .form-label,
+[data-theme="dark"] .operacao-form-section .form-check-label {
+    color: var(--text-main);
+}
+[data-theme="dark"] .operacao-form-section .text-muted {
+    color: var(--text-muted) !important;
 }
 
 /* --------------------------------------------------------------------------
@@ -1104,5 +1407,29 @@ textarea#fichaTextarea.ficha-textarea:focus {
     }
     .summary-value {
         width: 100%;
+    }
+
+    .plan-details-card__body {
+        font-size: 0.76rem;
+    }
+
+    .plan-details-card__head {
+        flex-wrap: wrap;
+        gap: 6px;
+        line-height: 1.35;
+    }
+
+    .plan-install-summary .d-flex {
+        flex-direction: column;
+        align-items: flex-start !important;
+    }
+
+    .plan-install-summary__price {
+        align-self: flex-end;
+    }
+
+    .fibramar-ficha-page {
+        padding-left: max(0.75rem, env(safe-area-inset-left));
+        padding-right: max(0.75rem, env(safe-area-inset-right));
     }
 }

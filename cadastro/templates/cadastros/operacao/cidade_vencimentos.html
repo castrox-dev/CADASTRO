@@ -1,0 +1,83 @@
+{% extends "cadastros/base_admin.html" %}
+
+{% block admin_page_title %}{{ page_title }}{% endblock %}
+
+{% block admin_content %}
+<div class="dashboard-wrapper">
+    <div class="container-fluid py-4">
+        {% include "cadastros/operacao/_messages.html" %}
+
+        <nav aria-label="breadcrumb" class="mb-3">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{% url 'operacao_cidades_list' %}">Cidades</a></li>
+                <li class="breadcrumb-item active">{{ cidade.nome_exibicao }}</li>
+            </ol>
+        </nav>
+
+        <h4 class="fw-bold mb-4">{{ page_title }}</h4>
+        <p class="text-muted small mb-4">
+            O sistema avalia o <strong>dia do mês de hoje</strong> e usa a primeira faixa cuja <code>dia_início–dia_fim</code> contenha esse dia.
+            Para o dia 1, cadastre uma faixa só com o dia 1 (ex.: 1–1) depois das faixas 2–10, 11–20 e 21–31.
+        </p>
+
+        <div class="card-premium mb-4">
+            <div class="p-3 border-bottom fw-bold">Nova faixa</div>
+            <div class="p-4">
+                <form method="post" class="row g-3 align-items-end">
+                    {% csrf_token %}
+                    <div class="col-md-3">
+                        <label class="form-label small">Dia inicial (1–31)</label>
+                        {{ form.dia_inicio }}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">Dia final</label>
+                        {{ form.dia_fim }}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">Ordem</label>
+                        {{ form.ordem }}
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-fibramar w-100">Adicionar faixa</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card-premium overflow-hidden">
+            <div class="table-responsive">
+                <table class="table mb-0 align-middle">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="px-4">Ordem</th>
+                            <th>Dias do mês</th>
+                            <th>Opções</th>
+                            <th class="px-4 text-end">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for f in faixas %}
+                        <tr>
+                            <td class="px-4">{{ f.ordem }}</td>
+                            <td class="fw-semibold">{{ f.dia_inicio }} – {{ f.dia_fim }}</td>
+                            <td><span class="badge bg-light text-dark border">{{ f.opcoes.count }} dia(s)</span></td>
+                            <td class="px-4 text-end">
+                                <a href="{% url 'operacao_faixa_opcoes' f.pk %}" class="btn btn-sm btn-fibramar">Editar dias IXC</a>
+                                <form action="{% url 'operacao_faixa_delete' f.pk %}" method="post" class="d-inline" onsubmit="return confirm('Remover esta faixa e todas as opções?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Excluir faixa</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4" class="text-center py-4 text-muted">Nenhuma faixa. Adicione acima.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <a href="{% url 'operacao_cidades_list' %}" class="btn btn-light mt-4">Voltar às cidades</a>
+    </div>
+</div>
+{% endblock %}

@@ -1,9 +1,27 @@
 from django.urls import path
 from . import views
+from . import views_operacao
 
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('admin-dash/', views.admin_dashboard, name='admin_dashboard'),
+    path('admin-dash/operacao/', views.admin_operacao_hub, name='admin_operacao_hub'),
+    path('admin-dash/operacao/config/', views_operacao.operacao_config, name='operacao_config'),
+    path('admin-dash/operacao/cidades/', views_operacao.operacao_cidades_list, name='operacao_cidades_list'),
+    path('admin-dash/operacao/cidades/nova/', views_operacao.operacao_cidade_create, name='operacao_cidade_create'),
+    path('admin-dash/operacao/cidades/<int:pk>/excluir/', views_operacao.operacao_cidade_delete, name='operacao_cidade_delete'),
+    path('admin-dash/operacao/cidades/<int:pk>/vencimentos/', views_operacao.operacao_cidade_vencimentos, name='operacao_cidade_vencimentos'),
+    path('admin-dash/operacao/cidades/<int:pk>/', views_operacao.operacao_cidade_edit, name='operacao_cidade_edit'),
+    path('admin-dash/operacao/faixas/<int:pk>/excluir/', views_operacao.operacao_faixa_delete, name='operacao_faixa_delete'),
+    path('admin-dash/operacao/faixas/<int:faixa_pk>/opcoes/', views_operacao.operacao_faixa_opcoes, name='operacao_faixa_opcoes'),
+    path('admin-dash/operacao/grupos/', views_operacao.operacao_grupos_list, name='operacao_grupos_list'),
+    path('admin-dash/operacao/grupos/novo/', views_operacao.operacao_grupo_create, name='operacao_grupo_create'),
+    path('admin-dash/operacao/grupos/<int:pk>/excluir/', views_operacao.operacao_grupo_delete, name='operacao_grupo_delete'),
+    path('admin-dash/operacao/grupos/<int:pk>/', views_operacao.operacao_grupo_edit, name='operacao_grupo_edit'),
+    path('admin-dash/operacao/vagas/', views_operacao.operacao_vagas_list, name='operacao_vagas_list'),
+    path('admin-dash/operacao/vagas/nova/', views_operacao.operacao_vaga_create, name='operacao_vaga_create'),
+    path('admin-dash/operacao/vagas/<int:pk>/excluir/', views_operacao.operacao_vaga_delete, name='operacao_vaga_delete'),
+    path('admin-dash/operacao/vagas/<int:pk>/', views_operacao.operacao_vaga_edit, name='operacao_vaga_edit'),
     path('admin-dash/manage/', views.manage_consultor, name='manage_consultor'),
     path('admin-dash/manage/<int:pk>/', views.manage_consultor, name='manage_consultor_pk'),
     path('reports/', views.reports_page, name='reports'),
@@ -16,4 +34,5 @@ urlpatterns = [
     path('cadastro/<int:pk>/delete/', views.delete_cadastro, name='delete_cadastro'),
     path('cadastro/<int:pk>/send-ixc/', views.send_to_ixc, name='send_to_ixc'),
     path('scripts/', views.standard_scripts, name='standard_scripts'),
+    path('api/form-config/', views.api_form_config, name='api_form_config'),
 ]

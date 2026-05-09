@@ -14,6 +14,7 @@ from pathlib import Path
 import os
 from decouple import config
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,25 +23,45 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-$#*kr*^$v@(e-w%h+#wtr+(ta_pg=xotef02eeufxhug_5kdm@')
+# Em produção defina explicitamente DEBUG=False no .env (localmente o padrão é True).
+DEBUG = config('DEBUG', default=True, cast=bool)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=False, cast=bool)
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = config('SECRET_KEY', default='').strip()
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'django-insecure-dev-only-altere-em-producao'
+    else:
+        raise ImproperlyConfigured(
+            'SECRET_KEY é obrigatória quando DEBUG=False. Defina no arquivo .env.'
+        )
 
 # Função para limpar ALLOWED_HOSTS caso o usuário cole a URL completa
 def parse_allowed_hosts(v):
-    hosts = [s.strip() for s in v.split(',')]
+    if v is None or not str(v).strip():
+        return []
+    hosts = [s.strip() for s in str(v).split(',')]
     clean_hosts = []
     for host in hosts:
+        if not host:
+            continue
         # Remove https:// ou http://
         host = host.replace('https://', '').replace('http://', '')
         # Remove barras finais
-        host = host.split('/')[0]
-        clean_hosts.append(host)
+        host = host.split('/')[0].strip()
+        if host:
+            clean_hosts.append(host)
     return clean_hosts
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=parse_allowed_hosts)
+# Liste domínios/IP separados por vírgula. Em desenvolvimento, se omitido ou vazio → localhost.
+_allowed_raw = config('ALLOWED_HOSTS', default='').strip()
+if not _allowed_raw:
+    _allowed_raw = 'localhost,127.0.0.1' if DEBUG else ''
+ALLOWED_HOSTS = parse_allowed_hosts(_allowed_raw)
+if not DEBUG and not ALLOWED_HOSTS:
+    raise ImproperlyConfigured(
+        'ALLOWED_HOSTS não pode estar vazio com DEBUG=False. Defina no .env (ex.: seu-dominio.com.br).'
+    )
 
 # Se estiver na Vercel e não tiver DATABASE_URL, o SQLite vai dar erro de escrita.
 # Use o Vercel Postgres para produção!
@@ -63,13 +84,14 @@ INSTALLED_APPS = [
     'simple_history',
 ]
 
-CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': config('CLOUDINARY_CLOUD_NAME', default='dxq4orwlz'),
-    'API_KEY': config('CLOUDINARY_API_KEY', default='548992256346719'),
-    'API_SECRET': config('CLOUDINARY_API_SECRET', default='LMo6pIPWLdNP31yE-iCnUwfvDkc')
-}
-
-# DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+# Cloudinary: só ative em produção preenchendo CLOUDINARY_CLOUD_NAME (e chaves). Sem isso, uploads usam disco local (MEDIA_ROOT).
+CLOUDINARY_CLOUD_NAME = config('CLOUDINARY_CLOUD_NAME', default='').strip()
+if CLOUDINARY_CLOUD_NAME:
+    CLOUDINARY_STORAGE = {
+        'CLOUD_NAME': CLOUDINARY_CLOUD_NAME,
+        'API_KEY': config('CLOUDINARY_API_KEY', default='').strip(),
+        'API_SECRET': config('CLOUDINARY_API_SECRET', default='').strip(),
+    }
 
 
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
@@ -179,7 +201,11 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # WhiteNoise storage to compress and cache static files
 STORAGES = {
     "default": {
-        "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+        "BACKEND": (
+            "cloudinary_storage.storage.MediaCloudinaryStorage"
+            if CLOUDINARY_CLOUD_NAME
+            else "django.core.files.storage.FileSystemStorage"
+        ),
     },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
@@ -187,10 +213,28 @@ STORAGES = {
 }
 
 # Allow WhiteNoise to serve files even when DEBUG is True
-WHITENOISE_USE_FINDERS = config('DEBUG', default=False, cast=bool)
+WHITENOISE_USE_FINDERS = DEBUG
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# HTTPS / proxy reverso (Render, Railway, nginx, etc.)
+_csrf_raw = config('CSRF_TRUSTED_ORIGINS', default='')
+CSRF_TRUSTED_ORIGINS = [x.strip() for x in _csrf_raw.split(',') if x.strip()]
+
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    USE_X_FORWARDED_HOST = True
+    SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=True, cast=bool)
+    CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=True, cast=bool)
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=False, cast=bool)
+    _hsts = config('SECURE_HSTS_SECONDS', default=0, cast=int)
+    if _hsts > 0:
+        SECURE_HSTS_SECONDS = _hsts
+        SECURE_HSTS_INCLUDE_SUBDOMAINS = config('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=True, cast=bool)
 
 # IXC API Config
 IXC_API_URL = config('IXC_API_URL', default='')
@@ -237,7 +281,7 @@ LOGGING = {
         },
         'django.request': {
             'handlers': ['console'],
-            'level': 'DEBUG',
+            'level': 'WARNING' if not DEBUG else 'DEBUG',
             'propagate': False,
         },
     },

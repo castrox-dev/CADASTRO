@@ -5,12 +5,16 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 <style>
     #interactiveMap {
-        height: 250px;
+        height: min(42vh, 280px);
+        min-height: 200px;
         width: 100%;
         border-radius: 8px;
         border: 1px solid #ddd;
         margin-bottom: 10px;
         z-index: 1;
+    }
+    @media (max-width: 576px) {
+        #interactiveMap { min-height: 180px; }
     }
     .map-instruction {
         font-size: 0.75rem;
@@ -18,14 +22,15 @@
         margin-bottom: 8px;
         display: block;
     }
+    [data-theme="dark"] .map-instruction { color: var(--text-muted); }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container py-5">
-    <div class="card-premium mx-auto" style="max-width: 650px;">
+<div class="container px-3 px-sm-4 py-4 py-lg-5 fibramar-ficha-page">
+    <div class="card-premium mx-auto w-100 fibramar-ficha-card">
         <div class="header-accent"></div>
-        <div class="p-4 text-center border-bottom bg-light">
+        <div class="p-3 p-md-4 text-center border-bottom bg-light">
             <img src="{% static 'img/logo.webp' %}" alt="FIBRAMAR" style="max-width: 180px; margin-bottom: 15px;">
             <h4 class="mb-1">Ficha de Cadastro</h4>
             <p class="text-muted small mb-0">Preencha os dados abaixo para iniciar sua solicitação.</p>
@@ -35,9 +40,11 @@
             </div>
         </div>
 
-        <form id="registrationForm" class="p-4" enctype="multipart/form-data" novalidate>
+        <form id="registrationForm" class="p-3 p-md-4" enctype="multipart/form-data" novalidate>
             {% csrf_token %}
             <input type="hidden" name="consultor_id" value="{{ consultor.id }}">
+            <input type="hidden" name="aluguel_roteador_wifi" id="hid_aluguel_roteador_wifi" value="0">
+            <input type="hidden" name="aluguel_repetidor_mesh" id="hid_aluguel_repetidor_mesh" value="0">
             
             <!-- Step 1: Identificação -->
             <div class="form-step active" id="step1">
@@ -105,7 +112,7 @@
                     </div>
                 </div>
 
-                <div class="d-flex justify-content-end">
+                <div class="form-step-actions justify-content-end">
                     <button type="button" class="btn-fibramar px-5" onclick="nextStep(2)">Próximo Passo</button>
                 </div>
             </div>
@@ -126,15 +133,22 @@
                                 <label>CIDADE *</label>
                                 <select id="cidade" name="cidade" class="form-select form-control-premium" onchange="handleCityChange()">
                                     <option value="">Selecione...</option>
-                                    <option value="marica">Maricá - RJ</option>
-                                    <option value="minas_gerais">Minas Gerais - MG</option>
-                                    <option value="muqui">Muqui - ES</option>
-                                    <option value="piuma">Piúma - ES</option>
-                                    <option value="mimoso">Mimoso do Sul - ES</option>
-                                    <option value="cabo_frio">Cabo Frio - RJ</option>
-                                    <option value="unamar">Unamar - RJ</option>
-                                    <option value="sao_paulo">São Paulo - SP</option>
-                                    <option value="outra">Outra Cidade</option>
+                                    {% if form_config and form_config.cities %}
+                                        {% for c in form_config.cities %}
+                                        <option value="{{ c.slug }}">{{ c.label }}</option>
+                                        {% endfor %}
+                                    {% else %}
+                                        <option value="marica">Maricá - RJ</option>
+                                        <option value="minas_gerais">Minas Gerais - MG</option>
+                                        <option value="muqui">Muqui - ES</option>
+                                        <option value="piuma">Piúma - ES</option>
+                                        <option value="mimoso">Mimoso do Sul - ES</option>
+                                        <option value="cabo_frio">Cabo Frio - RJ</option>
+                                        <option value="saquarema">Saquarema - RJ</option>
+                                        <option value="unamar">Unamar - RJ</option>
+                                        <option value="sao_paulo">São Paulo - SP</option>
+                                        <option value="outra">Outra Cidade</option>
+                                    {% endif %}
                                 </select>
                             </div>
                         </div>
@@ -203,7 +217,7 @@
                     </div>
                 </div>
 
-                <div class="d-flex justify-content-between">
+                <div class="form-step-actions">
                     <button type="button" class="btn-outline-fibramar" onclick="prevStep(1)">Voltar</button>
                     <button type="button" class="btn-fibramar px-5" onclick="nextStep(3)">Próximo Passo</button>
                 </div>
@@ -221,36 +235,59 @@
                         </select>
                     </div>
 
-                    <div class="alert alert-info py-2 small" id="planDetails" style="display:none;">
-                        <div id="planDescription"></div>
+                    <div class="plan-details-card mb-3" id="planDetails" style="display:none;" role="region" aria-live="polite" aria-label="Detalhes do plano selecionado">
+                        <div class="plan-details-card__head">
+                            <i class="bi bi-layout-text-sidebar-reverse" aria-hidden="true"></i>
+                            <span>Detalhes do plano</span>
+                        </div>
+                        <div class="plan-details-card__body" id="planDescription"></div>
                     </div>
 
-                    <div class="mb-3" id="opcionaisGroup" style="display:none;">
+                    <div class="mb-3" id="opcionaisGroup" style="display:none;" data-mode="">
                         <label class="small fw-bold d-block mb-2" id="opcionalLabel"></label>
-                        <div class="btn-group w-100" role="group">
-                            <input type="radio" class="btn-check" name="opcional" id="opc_sim" value="sim">
-                            <label class="btn btn-outline-fibramar py-2" for="opc_sim">Sim, desejo</label>
-                            
-                            <input type="radio" class="btn-check" name="opcional" id="opc_nao" value="nao" checked>
-                            <label class="btn btn-outline-fibramar py-2" for="opc_nao">Não, obrigado</label>
+                        <div id="opcionaisCombo" class="opcionais-combo-checks" style="display:none;" role="group" aria-label="Aluguel opcional">
+                            <p class="small text-muted mb-2">Marque o que deseja — pode escolher um, os dois ou nenhum.</p>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="opc_cb_roteador" autocomplete="off">
+                                <label class="form-check-label" for="opc_cb_roteador">Roteador Wi-Fi — R$ 10,00/mês</label>
+                            </div>
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="opc_cb_mesh" autocomplete="off">
+                                <label class="form-check-label" for="opc_cb_mesh">Repetidor Mesh — R$ 29,99/mês</label>
+                            </div>
+                        </div>
+                        <div id="opcionaisRouterOnly" class="opcionais-combo-checks" style="display:none;" role="group" aria-label="Roteador opcional">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="opc_router_only" autocomplete="off">
+                                <label class="form-check-label" for="opc_router_only">Sim, desejo alugar o roteador Wi-Fi (R$ 10,00/mês)</label>
+                            </div>
+                        </div>
+                        <div id="opcionaisMeshOnly" class="opcionais-combo-checks" style="display:none;" role="group" aria-label="Repetidor Mesh opcional">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="opc_mesh_only" autocomplete="off">
+                                <label class="form-check-label" for="opc_mesh_only">Sim, desejo alugar o repetidor Mesh (R$ 29,99/mês)</label>
+                            </div>
                         </div>
                     </div>
 
                     <div class="mb-3">
                         <label class="small fw-bold d-block mb-2">ACEITA FIDELIDADE DE 12 MESES? *</label>
-                        <div class="btn-group w-100" role="group">
-                            <input type="radio" class="btn-check" name="fidelidade" id="fid_sim" value="sim" checked onchange="calculateInstallation()">
-                            <label class="btn btn-outline-fibramar py-2" for="fid_sim">Sim (12 meses)</label>
-                            
-                            <input type="radio" class="btn-check" name="fidelidade" id="fid_nao" value="nao" onchange="calculateInstallation()">
-                            <label class="btn btn-outline-fibramar py-2" for="fid_nao">Não</label>
+                        <div class="row g-2" role="group" aria-label="Fidelidade">
+                            <div class="col-12 col-md-6">
+                                <input type="radio" class="btn-check" name="fidelidade" id="fid_sim" value="sim" checked onchange="calculateInstallation()">
+                                <label class="btn btn-outline-fibramar w-100 py-3" for="fid_sim">Sim (12 meses)</label>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <input type="radio" class="btn-check" name="fidelidade" id="fid_nao" value="nao" onchange="calculateInstallation()">
+                                <label class="btn btn-outline-fibramar w-100 py-3" for="fid_nao">Não</label>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="card bg-light border-0 p-3 mb-3" id="installationInfo" style="display:none;">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="small fw-bold">VALOR DA INSTALAÇÃO:</span>
-                            <span class="h5 mb-0 text-primary fw-bold" id="installPrice">R$ 0,00</span>
+                    <div class="plan-install-summary mb-3" id="installationInfo" style="display:none;">
+                        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                            <span class="plan-install-summary__label">Valor da instalação</span>
+                            <span class="h5 mb-0 fw-bold plan-install-summary__price" id="installPrice">R$ 0,00</span>
                         </div>
                     </div>
 
@@ -264,7 +301,7 @@
                     </div>
                 </div>
 
-                <div class="d-flex justify-content-between">
+                <div class="form-step-actions">
                     <button type="button" class="btn-outline-fibramar" onclick="prevStep(2)">Voltar</button>
                     <button type="button" class="btn-fibramar px-5" onclick="nextStep(4)">Próximo Passo</button>
                 </div>
@@ -310,7 +347,7 @@
                     </div>
                 </div>
 
-                <div class="d-flex justify-content-between">
+                <div class="form-step-actions">
                     <button type="button" class="btn-outline-fibramar" onclick="prevStep(3)">Voltar</button>
                     <button type="button" class="btn-fibramar px-5" onclick="nextStep(5)">Próximo Passo</button>
                 </div>
@@ -356,7 +393,7 @@
                     </div>
                 </div>
 
-                <div class="d-flex justify-content-between">
+                <div class="form-step-actions">
                     <button type="button" class="btn-outline-fibramar" onclick="prevStep(4)">Voltar</button>
                     <button type="button" class="btn-fibramar px-5" onclick="nextStep(6)">Revisar Dados</button>
                 </div>
@@ -366,12 +403,12 @@
             <div class="form-step" id="step6">
                 <div class="mb-4">
                     <h6 class="text-uppercase small fw-bold text-muted mb-3">6. Revisão Final</h6>
-                    <div id="confirmationSummary" class="bg-light rounded-4 p-3 border">
+                    <div id="confirmationSummary" class="fibramar-review-box rounded-4 p-3 border">
                         <!-- Preenchido via JS -->
                     </div>
                 </div>
 
-                <div class="d-flex justify-content-end align-items-center">
+                <div class="form-step-actions justify-content-end">
                     <button type="submit" class="btn-fibramar px-5">Enviar Cadastro</button>
                 </div>
             </div>
@@ -392,6 +429,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{% if form_config %}{{ form_config|json_script:"form-config-data" }}{% endif %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="{% static 'js/script.js' %}"></script>
 <script>

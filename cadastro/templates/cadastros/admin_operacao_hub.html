@@ -1,0 +1,100 @@
+{% extends "cadastros/base_admin.html" %}
+{% load static %}
+
+{% block admin_page_title %}Configuração da ficha{% endblock %}
+
+{% block admin_content %}
+<div class="dashboard-wrapper">
+    <div class="container-fluid py-4">
+        <p class="text-muted mb-4">
+            Alterações aplicam na <a href="{% url 'client_form' %}">ficha pública</a>, na ficha automática (consultores),
+            nos envios ao IXC e nos relatórios. Use os links abaixo — tudo fica dentro do sistema.
+        </p>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card-premium h-100 p-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <span class="rounded-circle bg-primary-subtle text-primary d-inline-flex align-items-center justify-content-center me-3" style="width:48px;height:48px;">
+                            <i class="bi bi-geo-alt-fill fs-5"></i>
+                        </span>
+                        <div>
+                            <div class="fw-bold">Cidades / filiais</div>
+                            <div class="small text-muted">{{ n_cidades }} cadastradas</div>
+                        </div>
+                    </div>
+                    <p class="small text-muted mb-3">Slug, UF, grupo de planos, taxas, documentos, termo, IXC.</p>
+                    <a class="btn btn-fibramar btn-sm w-100" href="{% url 'operacao_cidades_list' %}">Gerenciar cidades</a>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card-premium h-100 p-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <span class="rounded-circle bg-success-subtle text-success d-inline-flex align-items-center justify-content-center me-3" style="width:48px;height:48px;">
+                            <i class="bi bi-diagram-3 fs-5"></i>
+                        </span>
+                        <div>
+                            <div class="fw-bold">Grupos e planos</div>
+                            <div class="small text-muted">{{ n_grupos }} grupos / {{ n_planos }} planos</div>
+                        </div>
+                    </div>
+                    <p class="small text-muted mb-3">Textos da ficha, opcional (mesh) e ID do plano no IXC.</p>
+                    <a class="btn btn-outline-primary btn-sm w-100" href="{% url 'operacao_grupos_list' %}">Gerenciar planos</a>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card-premium h-100 p-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <span class="rounded-circle bg-warning-subtle text-warning-emphasis d-inline-flex align-items-center justify-content-center me-3" style="width:48px;height:48px;">
+                            <i class="bi bi-calendar-week fs-5"></i>
+                        </span>
+                        <div>
+                            <div class="fw-bold">Vencimentos</div>
+                            <div class="small text-muted">{{ n_faixas }} faixas cadastradas</div>
+                        </div>
+                    </div>
+                    <p class="small text-muted mb-3">Por cidade: faixas de dias do mês e opções com ID IXC. Entre em cada cidade → Vencimentos.</p>
+                    <a class="btn btn-outline-secondary btn-sm w-100" href="{% url 'operacao_cidades_list' %}">Ir para cidades</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <div class="card-premium h-100 p-4">
+                    <h6 class="fw-bold mb-3"><i class="bi bi-sliders me-2"></i>Configuração geral</h6>
+                    <ul class="small text-muted mb-3">
+                        <li>Antecedência mínima para data de instalação</li>
+                        <li>Exigir fotos (padrão global)</li>
+                        <li>Texto extra no modelo da ficha automática</li>
+                    </ul>
+                    <a class="btn btn-fibramar btn-sm" href="{% url 'operacao_config' %}">Abrir configuração geral</a>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card-premium h-100 p-4">
+                    <h6 class="fw-bold mb-3"><i class="bi bi-calendar-event me-2"></i>Vagas de instalação</h6>
+                    <p class="small text-muted mb-3">{{ n_vagas }} registros ativos (base para limitar agenda).</p>
+                    <a class="btn btn-outline-dark btn-sm" href="{% url 'operacao_vagas_list' %}">Gerenciar vagas</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-premium p-4">
+            <h6 class="fw-bold mb-2">Atalhos rápidos</h6>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{% url 'operacao_config' %}" class="btn btn-sm btn-light border">Geral</a>
+                <a href="{% url 'operacao_cidades_list' %}" class="btn btn-sm btn-light border">Cidades</a>
+                <a href="{% url 'operacao_grupos_list' %}" class="btn btn-sm btn-light border">Planos</a>
+                <a href="{% url 'operacao_vagas_list' %}" class="btn btn-sm btn-light border">Vagas</a>
+            </div>
+        </div>
+
+        <div class="card-premium p-4 mt-3">
+            <h6 class="fw-bold mb-2">API JSON</h6>
+            <p class="small text-muted mb-2">Mesmo payload injetado na ficha:</p>
+            <code class="user-select-all d-block p-2 bg-light rounded small">{{ request.scheme }}://{{ request.get_host }}{% url 'api_form_config' %}</code>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "cadastros/base_admin.html" %}
+
+{% block admin_page_title %}{{ page_title }}{% endblock %}
+
+{% block admin_content %}
+<div class="dashboard-wrapper">
+    <div class="container py-4" style="max-width: 520px;">
+        {% include "cadastros/operacao/_messages.html" %}
+
+        <h4 class="fw-bold mb-4">{{ page_title }}</h4>
+
+        <form method="post" class="card-premium p-4">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label">Slug (identificador técnico)</label>
+                {{ form.slug }}
+            </div>
+            <div class="mb-4">
+                <label class="form-label">Nome para exibição no painel</label>
+                {{ form.nome }}
+            </div>
+            <button type="submit" class="btn btn-fibramar">Criar e editar planos</button>
+            <a href="{% url 'operacao_grupos_list' %}" class="btn btn-light ms-2">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

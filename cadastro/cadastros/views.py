@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse, HttpResponse
 from django.core.exceptions import ValidationError
 from .models import Cadastro
+from .form_config import get_form_config_dict
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
 from django.utils.dateparse import parse_date
@@ -104,10 +105,13 @@ def admin_dashboard(request):
     total_geral = Cadastro.objects.count()
     total_hoje = Cadastro.objects.filter(data_cadastro__date=timezone.now().date()).count()
     
+    recent_users = User.objects.order_by('-last_login')[:25]
+
     return render(request, 'cadastros/admin_dashboard.html', {
         'consultores': consultores,
         'total_geral': total_geral,
-        'total_hoje': total_hoje
+        'total_hoje': total_hoje,
+        'recent_users': recent_users,
     })
 
 @login_required
@@ -225,7 +229,8 @@ def client_form(request):
                 fidelidade=data.get('fidelidade') == 'sim',
                 vencimento=data.get('vencimento'),
                 vencimento_id=data.get('vencimento_id'),
-                opcional=data.get('opcional') == 'sim',
+                aluguel_roteador_wifi=data.get('aluguel_roteador_wifi') == '1',
+                aluguel_repetidor_mesh=data.get('aluguel_repetidor_mesh') == '1',
                 pagamento_instalacao=data.get('pagamento_instalacao'),
                 data_instalacao=parse_date(data.get('data_instalacao')),
                 periodo_instalacao=data.get('periodo_instalacao'),
@@ -242,7 +247,11 @@ def client_form(request):
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': f"Erro inesperado: {str(e)}"}, status=400)
 
-    return render(request, 'cadastros/form.html', {'consultor': consultor})
+    try:
+        form_config = get_form_config_dict()
+    except Exception:
+        form_config = None
+    return render(request, 'cadastros/form.html', {'consultor': consultor, 'form_config': form_config})
 
 @login_required
 def dashboard(request):
@@ -337,7 +346,8 @@ def edit_cadastro(request, pk):
             cadastro.fidelidade = data.get('fidelidade') == 'sim'
             cadastro.vencimento = data.get('vencimento')
             cadastro.vencimento_id = data.get('vencimento_id')
-            cadastro.opcional = data.get('opcional') == 'sim'
+            cadastro.aluguel_roteador_wifi = data.get('aluguel_roteador_wifi') == '1'
+            cadastro.aluguel_repetidor_mesh = data.get('aluguel_repetidor_mesh') == '1'
             cadastro.pagamento_instalacao = data.get('pagamento_instalacao')
             if data.get('data_instalacao'):
                 cadastro.data_instalacao = parse_date(data.get('data_instalacao'))
@@ -365,3 +375,32 @@ def delete_cadastro(request, pk):
 @login_required
 def standard_scripts(request):
     return render(request, 'cadastros/scripts.html')
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_operacao_hub(request):
+    from .operacao_models import CidadeOperacao, FaixaVencimento, PlanoDefinicao, PlanoGrupo, VagaInstalacao
+
+    return render(
+        request,
+        'cadastros/admin_operacao_hub.html',
+        {
+            'n_cidades': CidadeOperacao.objects.count(),
+            'n_grupos': PlanoGrupo.objects.count(),
+            'n_planos': PlanoDefinicao.objects.count(),
+            'n_faixas': FaixaVencimento.objects.count(),
+            'n_vagas': VagaInstalacao.objects.filter(ativo=True).count(),
+        },
+    )
+
+
+def api_form_config(request):
+    """JSON público da ficha (planos, vencimentos, cidades). GET apenas."""
+    if request.method != 'GET':
+        return JsonResponse({'ok': False}, status=405)
+    try:
+        return JsonResponse(get_form_config_dict())
+    except Exception as e:
+        logger.exception('api_form_config')
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)

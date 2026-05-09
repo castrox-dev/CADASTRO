@@ -185,13 +185,13 @@ function buscarDadosCNPJ(cnpj) {
 
 // File Upload Listener e Drag-and-Drop
 document.addEventListener('DOMContentLoaded', function() {
-    // Set minimum date for installation (tomorrow)
+    initFormRuntimeConfig();
+    wireOpcionalOpcoesInputs();
+
+    // Data mínima de instalação (configurável no admin)
     const dateInput = document.getElementById('data_instalacao');
     if (dateInput) {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const minDate = tomorrow.toISOString().split('T')[0];
-        dateInput.setAttribute('min', minDate);
+        dateInput.setAttribute('min', getMinInstallDateStr());
     }
 
     // Data de nascimento: só permite quem já completou 18 anos (max = hoje − 18 anos)
@@ -314,7 +314,10 @@ function handleCEPLookup(cepInput) {
                         else if (data.localidade.toLowerCase() === 'mimoso do sul') cidadeSelect.value = 'mimoso';
                         else cidadeSelect.value = 'outra';
                     } else if (data.uf === 'RJ') {
-                        if (data.localidade.toLowerCase() === 'cabo frio') cidadeSelect.value = 'cabo_frio';
+                        const loc = data.localidade.toLowerCase();
+                        if (loc === 'cabo frio') cidadeSelect.value = 'cabo_frio';
+                        else if (loc === 'saquarema') cidadeSelect.value = 'saquarema';
+                        else if (loc === 'unamar') cidadeSelect.value = 'unamar';
                         else cidadeSelect.value = 'outra';
                     } else {
                         cidadeSelect.value = 'outra';
@@ -483,88 +486,315 @@ function useCurrentLocation() {
     );
 }
 
-// Plan Change logic
-const planDetails = {
-    // Muqui e Piúma
+// Plan Change logic (PLAN_DETAILS_LEGACY = fallback se o banco não estiver populado)
+// Opcional = repetidor Mesh em aluguel em todos os planos (texto alinhado ao form_config / BD)
+const LEGACY_OPC_MESH = 'Deseja alugar repetidor Mesh por R$ 29,99/mês?';
+const LEGACY_OPC_ROTEADOR_ESSENCIAL = 'Deseja alugar roteador Wi-Fi por R$ 10,00/mês?';
+const LEGACY_OPC_COMBO_ROTEADOR_MESH =
+    'Aluguel opcional — pode marcar um, os dois ou nenhum: roteador Wi-Fi R$ 10,00/mês; repetidor Mesh R$ 29,99/mês.';
+/** Filial 7 (Jacone, Saquarema, Araruama, Unamar): no Essencial, UI roteador + Mesh independentes. */
+const FILIAL7_COMBO_ESSENCIAL_SLUGS = ['jacone', 'saquarema', 'araruama', 'unamar'];
+/** Filial 7 (exceto Maricá etc.): sem plano Prime 700 MEGA — oferta com Turbo 500 MEGA */
+const CIDADES_SEM_PLANO_PRIME = ['araruama', 'jacone', 'saquarema', 'unamar'];
+const PLAN_DETAILS_LEGACY = {
     muqui_piuma: {
         essencial: {
-            name: "Plano Essencial – 100 MEGA",
-            desc: "R$ 59,99/mês (até o vencimento)<br>R$ 79,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Sem roteador incluso",
-            opcional: "Deseja alugar roteador Wi-Fi por R$ 10,00/mês?"
+            name: "📱 Plano Essencial – 100 MEGA",
+            desc: "<strong>R$ 59,99/mês</strong> (pagando até o vencimento)<br><br><strong>R$ 79,99/mês</strong> (após vencimento)<br><br>- Instalação Grátis<br><br>- <strong>Este plano não inclui roteador Wi-Fi</strong> (você pode usar o seu próprio ou alugar por R$ 10,00/mês)<br><br>- Instalação em até 48h<br><br>- Possui fidelidade de 12 meses",
+            opcional: LEGACY_OPC_ROTEADOR_ESSENCIAL
         },
         rapido: {
-            name: "Plano Rápido – 300 MEGA",
-            desc: "R$ 89,99/mês (até o vencimento)<br>R$ 109,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi 5Ghz incluso"
+            name: "🚀 Plano Rápido – 300 Mega",
+            desc: "<strong>300 Mega • R$ 89,99/mês</strong> (pagando até o vencimento)<br><br><strong>R$ 109,99/mês</strong> (após vencimento)<br><br>- Suporte Especializado<br>- 100% Fibra Óptica<br>- 🤩 Instalação Grátis<br>- 😍 Super Wi-Fi 5Ghz incluso<br><br>💨 <strong>Velocidade na medida certa para toda a família navegar, assistir e conectar.</strong><br><br>- Possui fidelidade de 12 meses",
+            opcional: LEGACY_OPC_MESH
         },
         turbo: {
-            name: "Plano Turbo – 500 MEGA",
-            desc: "R$ 99,99/mês (até o vencimento)<br>R$ 119,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi 5Ghz incluso"
+            name: "⚡️ Plano Turbo – 500 Mega",
+            desc: "<strong>500 Mega • R$ 99,99/mês</strong> (pagando até o vencimento)<br><br><strong>R$ 119,99/mês</strong> (após vencimento)<br><br>- Suporte Especializado<br>- 100% Fibra Óptica<br>- 🤩 Instalação Grátis<br>- 😍 Super Wi-Fi 5Ghz incluso<br><br>🚀 <strong>Ideal para gamers, streamers e multitarefas que não podem ficar sem velocidade.</strong><br><br>- Possui fidelidade de 12 meses",
+            opcional: LEGACY_OPC_MESH
         },
         "1giga": {
-            name: "Plano 1 GIGA Fibramar",
-            desc: "R$ 149,99/mês (até o vencimento)<br>R$ 169,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Wi-Fi 6 incluso",
-            opcional: "Deseja Repetidor Mesh por apenas R$ 29,99/mês?"
+            name: "🚀 Plano 1 GIGA Fibramar",
+            desc: "<strong>1 GIGA • R$ 149,99/mês</strong> (pagando até o vencimento)<br><br><strong>R$ 169,99/mês</strong> (após vencimento)<br><br>- Wi-Fi 6 incluso<br>- 100% Fibra Óptica<br>- 🤩 Instalação Grátis<br><br>⚡️ <strong>Ideal para gamers, streamers e multitarefas que não podem ficar sem velocidade.</strong><br><br>🔗 Opcional: Repetidor Mesh por apenas R$ 29,99/mês<br><br>- Possui fidelidade de 12 meses",
+            opcional: LEGACY_OPC_MESH
         }
     },
-    // Mimoso
     mimoso: {
         essencial: {
-            name: "Plano Essencial – 240 MEGA",
-            desc: "R$ 59,99/mês (até o vencimento)<br>R$ 79,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Sem roteador incluso",
-            opcional: "Deseja alugar roteador Wi-Fi por R$ 10,00/mês?"
+            name: "📱 Plano Essencial – 240 MEGA",
+            desc: "<strong>R$ 59,99/mês</strong> (pagando até o vencimento)<br><br><strong>R$ 79,99/mês</strong> (após vencimento)<br><br>- Instalação Grátis<br><br>- <strong>Este plano não inclui roteador Wi-Fi</strong> (você pode usar o seu próprio ou alugar por R$ 10,00/mês)<br><br>- Instalação em até 48h<br><br>- Possui fidelidade de 12 meses",
+            opcional: LEGACY_OPC_ROTEADOR_ESSENCIAL
         },
         plano_300: {
-            name: "Plano 300 Mega",
-            desc: "R$ 69,99/mês<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi incluso"
+            name: "⚡️ Plano 300 Mega",
+            desc: "<strong>300 Mega • R$ 69,99/mês</strong><br><br>- 100% Fibra Óptica<br>- 🤩 Instalação Grátis<br>- 😍 Super Wi-Fi incluso<br><br>📄 Possui fidelidade de 12 meses<br><br>💨 <strong>Perfeito para navegar, assistir e usar redes sociais com estabilidade.</strong>",
+            opcional: LEGACY_OPC_MESH
         },
         rapido: {
-            name: "Plano Rápido – 400 MEGA",
-            desc: "R$ 79,99/mês (até o vencimento)<br>R$ 99,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi 5Ghz incluso"
+            name: "🚀 Plano Rápido – 400 Mega",
+            desc: "<strong>400 Mega • R$ 79,99/mês</strong> (pagando até o vencimento)<br><br><strong>R$ 99,99/mês</strong> (após vencimento)<br><br>- Suporte Especializado<br>- 100% Fibra Óptica<br>- 🤩 Instalação Grátis<br>- 😍 Super Wi-Fi 5Ghz incluso<br><br>💨 <strong>Velocidade na medida certa para toda a família navegar, assistir e conectar.</strong><br><br>- Possui fidelidade de 12 meses",
+            opcional: LEGACY_OPC_MESH
         },
         turbo: {
-            name: "Plano Turbo – 500 MEGA",
-            desc: "R$ 99,99/mês (até o vencimento)<br>R$ 119,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi 5Ghz incluso"
+            name: "⚡️ Plano Turbo – 500 Mega",
+            desc: "<strong>500 Mega • R$ 99,99/mês</strong> (pagando até o vencimento)<br><br><strong>R$ 119,99/mês</strong> (após vencimento)<br><br>- Suporte Especializado<br>- 100% Fibra Óptica<br>- 🤩 Instalação Grátis<br>- 😍 Super Wi-Fi 5Ghz incluso<br><br>🚀 <strong>Ideal para gamers, streamers e multitarefas que não podem ficar sem velocidade.</strong><br><br>- Possui fidelidade de 12 meses",
+            opcional: LEGACY_OPC_MESH
         },
         ultra: {
-            name: "Plano Ultra – 600 MEGA",
-            desc: "R$ 119,99/mês (até o vencimento)<br>R$ 139,99/mês (após vencimento)<br>Watch TV, Paramount+, Qualifica, Mediquo e McAfee inclusos"
+            name: "🔥 Plano Ultra + Watch TV, Qualifica e Mediquo – 600 Mega",
+            desc: "<strong>600 Mega • R$ 119,99/mês</strong> (pagando até o vencimento)<br><br><strong>R$ 139,99/mês</strong> (após vencimento)<br><br>- 🤩 Instalação Grátis<br>- 😍 Super Wi-Fi 5Ghz incluso<br><br>🎁 <strong>Benefícios Exclusivos:</strong><br><br>- 📺 <strong>Watch TV</strong>: filmes, séries e canais infantis<br>- 📽️ Paramount+<br>- 🎓 <strong>Qualifica</strong>: +220 cursos on-line com certificado reconhecido pela ABED e Carteirinha do Estudante para meia-entrada<br>- 🩺 <strong>Mediquo</strong>: consultas médicas ilimitadas 24 h<br>- 🔰 McAfee antivírus<br><br>- Possui fidelidade de 12 meses",
+            opcional: LEGACY_OPC_MESH
         },
         plano_700: {
-            name: "Plano 700 Mega",
-            desc: "R$ 89,99/mês<br>Instalação Grátis (Fidelidade)<br>Super Wi-Fi + Qualifica App incluso"
+            name: "🚀 Plano 700 Mega",
+            desc: "<strong>700 Mega • R$ 89,99/mês</strong><br><br>- 100% Fibra Óptica<br>- 🤩 Instalação Grátis<br>- 😍 Super Wi-Fi incluso<br>- 🎓 Qualifica App (Aplicativo de cursos e clube de vantagens)<br><br>📄 Possui fidelidade de 12 meses<br><br>✨ <strong>Mais velocidade e benefícios para quem quer estudar, trabalhar e aproveitar o máximo da internet.</strong>",
+            opcional: LEGACY_OPC_MESH
         },
         "1giga": {
-            name: "Plano 1 GIGA Fibramar",
-            desc: "R$ 149,99/mês (até o vencimento)<br>R$ 169,99/mês (após vencimento)<br>Instalação Grátis (Fidelidade)<br>Wi-Fi 6 incluso",
-            opcional: "Deseja Repetidor Mesh por apenas R$ 29,99/mês?"
+            name: "🚀 Plano 1 GIGA Fibramar",
+            desc: "<strong>1 GIGA • R$ 149,99/mês</strong> (pagando até o vencimento)<br><br><strong>R$ 169,99/mês</strong> (após vencimento)<br><br>- Wi-Fi 6 incluso<br>- 100% Fibra Óptica<br>- 🤩 Instalação Grátis<br><br>⚡️ <strong>Ideal para gamers, streamers e multitarefas que não podem ficar sem velocidade.</strong><br><br>🔗 Opcional: Repetidor Mesh por apenas R$ 29,99/mês<br><br>- Possui fidelidade de 12 meses",
+            opcional: LEGACY_OPC_MESH
         }
     },
-    // Padrão (Maricá e outros)
     default: {
         essencial: {
-            name: "Plano Essencial – 240 MEGA",
-            desc: "R$ 59,99/mês (até o vencimento)<br>R$ 79,99/mês (após vencimento)<br>Contrato 12 meses",
-            opcional: "Deseja alugar roteador Wi-Fi por R$ 10,00/mês?"
+            name: "📱 Plano Essencial – 240 MEGA",
+            desc: "R$ 59,99/mês (pagando até o vencimento)<br>R$ 79,99/mês (após vencimento)<br><br>Este plano não inclui roteador Wi-Fi (você pode usar o seu próprio ou alugar por R$ 10,00/mês)<br><br>Instalação em até 48h<br>Permanência mínima de 12 meses",
+            opcional: LEGACY_OPC_ROTEADOR_ESSENCIAL
         },
         rapido: {
-            name: "Plano Rápido - 400 Mega",
-            desc: "R$ 79,99/mês* (até o vencimento)<br>R$ 99,99/mês* (após vencimento)<br>Super Wi-Fi 5Ghz incluso"
+            name: "🚀 Plano Rápido - 400 Mega",
+            desc: "R$ 79,99/mês* (pagando até o vencimento)<br>R$ 99,99/mês* (após vencimento)<br><br>Suporte Especializado<br>100% Fibra Óptica<br>😍 Super Wi-Fi 5Ghz incluso<br><br>💨Velocidade na medida certa para toda a família navegar, assistir e conectar.<br><br>Permanência mínima de 12 meses",
+            opcional: LEGACY_OPC_MESH
         },
         turbo: {
             name: "Plano Turbo - 500 Mega",
-            desc: "R$ 99,99/mês* (até o vencimento)<br>R$ 119,99/mês* (após vencimento)<br>Super Wi-Fi 5Ghz incluso"
+            desc: "R$ 99,99/mês* (até o vencimento)<br>R$ 119,99/mês* (após vencimento)<br>Super Wi-Fi 5Ghz incluso",
+            opcional: LEGACY_OPC_MESH
         },
         ultra: {
-            name: "Plano Ultra + Benefícios - 600 Mega",
-            desc: "R$ 119,99/mês* (até o vencimento)<br>R$ 139,99/mês* (após vencimento)<br>Watch TV, Paramount, Qualifica, Mediquo e McAfee inclusos"
+            name: "🔥 Plano Ultra + Watch TV, Qualifica e Mediquo - 600 Mega",
+            desc: "R$ 119,99/mês* (pagando até o vencimento)<br>R$ 139,99/mês* (após vencimento)<br>😍 Super Wi-Fi 5Ghz incluso<br><br>🎁 Benefícios Exclusivos:<br><br>📺 Watch TV: filmes, séries e canais infantis<br>📽️ Paramount<br>🎓 Qualifica: +220 cursos on-line com certificado reconhecido pela ABED e Carteirinha do Estudante para meia-entrada<br>🩺 Mediquo: consultas médicas ilimitadas 24 h<br>🔰 McAfee antivírus<br><br>Permanência mínima de 12 meses",
+            opcional: LEGACY_OPC_MESH
+        },
+        prime: {
+            name: "⚡️ Plano Prime – 700 MEGA",
+            desc: "<strong>R$ 99,99/mês</strong> (pagando até o vencimento)<br><br><strong>R$ 119,99/mês</strong> (após vencimento)<br><br>- Suporte Especializado<br><br>- Cursos Qualifica + Clube de vantagens<br><br>- 100% Fibra Óptica<br><br>- 😍 Super Wi-Fi 5Ghz incluso<br><br>🚀 <strong>Ideal para gamers, streamers e multitarefas que não podem ficar sem velocidade.</strong><br><br>- Possui fidelidade de 12 meses",
+            opcional: LEGACY_OPC_MESH
         },
         "1giga": {
-            name: "Plano Novo – 1 GIGA",
-            desc: "R$ 149,99 (até o vencimento)<br>R$ 169,99 (valor normal)<br>Wi-Fi 6 incluso 🚀",
-            opcional: "Deseja Repetidor Mesh por apenas R$ 29,99 mensais?"
+            name: "Plano Novo – 1 GIGA Fibramar Internet ✨",
+            desc: "📡 Velocidade: 1 GIGA<br>💰 Valor: R$ 169,99<br>➡️ Promoção: pagando até o vencimento, sai por apenas R$ 149,99<br>📶 Wi-Fi 6 incluso 🚀<br>📄 Contrato de fidelidade: 12 meses<br>🔗 Opcional: Repetidor Mesh por apenas R$ 29,99 mensais",
+            opcional: LEGACY_OPC_MESH
         }
     }
 };
+
+let planDetails = PLAN_DETAILS_LEGACY;
+
+function initFormRuntimeConfig() {
+    const el = document.getElementById('form-config-data');
+    let cfg = null;
+    if (el) {
+        try {
+            cfg = JSON.parse(el.textContent);
+        } catch (e) {
+            cfg = null;
+        }
+    }
+    window.__FORM_CONFIG__ = cfg;
+    if (cfg && cfg.planDetails && Object.keys(cfg.planDetails).length) {
+        planDetails = cfg.planDetails;
+    } else {
+        planDetails = PLAN_DETAILS_LEGACY;
+    }
+}
+
+function getCityCfg(slug) {
+    const cfg = window.__FORM_CONFIG__;
+    if (!cfg || !cfg.cities) return null;
+    for (let i = 0; i < cfg.cities.length; i++) {
+        if (cfg.cities[i].slug === slug) return cfg.cities[i];
+    }
+    return null;
+}
+
+function getExcludedPlanCodesForCity(slug) {
+    const c = getCityCfg(slug);
+    if (c && Array.isArray(c.excludedPlanCodes) && c.excludedPlanCodes.length) {
+        return c.excludedPlanCodes;
+    }
+    if (slug === 'marica') {
+        return ['turbo'];
+    }
+    if (CIDADES_SEM_PLANO_PRIME.indexOf(slug) >= 0) {
+        return ['prime'];
+    }
+    return [];
+}
+
+function getPlanGroupForCity(slug) {
+    const c = getCityCfg(slug);
+    const key = c && c.planGroup ? c.planGroup : 'default';
+    const raw = planDetails[key] || planDetails.default || {};
+    const exclude = getExcludedPlanCodesForCity(slug);
+    if (!exclude.length) {
+        return raw;
+    }
+    const out = {};
+    for (const k of Object.keys(raw)) {
+        if (exclude.indexOf(k) === -1) {
+            out[k] = raw[k];
+        }
+    }
+    return out;
+}
+
+function getMinInstallDateStr() {
+    let days = 1;
+    const cfg = window.__FORM_CONFIG__;
+    if (cfg && cfg.app && cfg.app.minInstallDaysAhead != null) {
+        days = parseInt(cfg.app.minInstallDaysAhead, 10);
+        if (isNaN(days) || days < 1) days = 1;
+    }
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split('T')[0];
+}
+
+function citySkipsDocs(citySlug) {
+    const c = getCityCfg(citySlug);
+    if (c) return !!c.skipDocs;
+    return citySlug === 'marica' || citySlug === 'minas_gerais';
+}
+
+function formatMoneyBR(n) {
+    return 'R$ ' + Number(n).toFixed(2).replace('.', ',');
+}
+
+function getResumoValorInstalacao(citySlug, isFidelidade) {
+    const c = getCityCfg(citySlug);
+    if (!c) {
+        if (citySlug === 'marica') return isFidelidade ? 'R$ 100,00' : 'R$ 460,00';
+        return isFidelidade ? 'GRÁTIS' : 'R$ 360,00';
+    }
+    const ins = c.instalacao;
+    if (isFidelidade) {
+        if (ins.comFidelGratis) return 'GRÁTIS';
+        return formatMoneyBR(ins.valorComFidel);
+    }
+    return formatMoneyBR(ins.valorSemFidel);
+}
+
+/** Texto do admin/fallback: combo roteador + mesh (marcação independente). */
+function isComboOpcionalText(labelText) {
+    if (!labelText) return false;
+    var s = String(labelText).toLowerCase();
+    var hasRouter = s.indexOf('roteador') >= 0 || s.indexOf('wi-fi') >= 0 || s.indexOf('wifi') >= 0;
+    var hasMesh = s.indexOf('mesh') >= 0 || s.indexOf('repetidor') >= 0;
+    if (hasRouter && hasMesh) return true;
+    if (s.indexOf('10,00') >= 0 && s.indexOf('29,99') >= 0) return true;
+    return false;
+}
+
+function isFilial7ComboEssencialCity(slug) {
+    return FILIAL7_COMBO_ESSENCIAL_SLUGS.indexOf(slug) >= 0;
+}
+
+/** Combo roteador+Mesh (duas caixas): só Essencial nestas cidades (filial 7). */
+function shouldUseEssencialFilial7ComboUI(citySlug, planCodigo) {
+    return planCodigo === 'essencial' && isFilial7ComboEssencialCity(citySlug);
+}
+
+function isRouterOnlyOpcionalText(labelText) {
+    if (!labelText) return false;
+    if (isComboOpcionalText(labelText)) return false;
+    var s = String(labelText).toLowerCase();
+    return (s.indexOf('roteador') >= 0 || s.indexOf('wi-fi') >= 0 || s.indexOf('wifi') >= 0)
+        && (s.indexOf('10') >= 0 || s.indexOf('10,00') >= 0);
+}
+
+/** Define modo da UI (combo | router | mesh) e o texto do rótulo. */
+function resolveOpcionalDisplayMode(citySlug, planCodigo, rawOptional) {
+    var raw = rawOptional != null ? String(rawOptional).trim() : '';
+    if (!raw) {
+        return { mode: 'mesh', label: rawOptional };
+    }
+    if (shouldUseEssencialFilial7ComboUI(citySlug, planCodigo)) {
+        return { mode: 'combo', label: LEGACY_OPC_COMBO_ROTEADOR_MESH };
+    }
+    if (isComboOpcionalText(rawOptional)) {
+        return { mode: 'mesh', label: LEGACY_OPC_MESH };
+    }
+    if (isRouterOnlyOpcionalText(rawOptional)) {
+        return { mode: 'router', label: rawOptional };
+    }
+    return { mode: 'mesh', label: rawOptional };
+}
+
+function resetOpcionalInputs() {
+    var ids = ['opc_cb_roteador', 'opc_cb_mesh', 'opc_mesh_only', 'opc_router_only'];
+    for (var i = 0; i < ids.length; i++) {
+        var el = document.getElementById(ids[i]);
+        if (el) el.checked = false;
+    }
+}
+
+function syncOpcionalHiddenFields() {
+    var hAr = document.getElementById('hid_aluguel_roteador_wifi');
+    var hMesh = document.getElementById('hid_aluguel_repetidor_mesh');
+    if (!hAr || !hMesh) return;
+    var og = document.getElementById('opcionaisGroup');
+    if (!og || og.style.display === 'none') {
+        hAr.value = '0';
+        hMesh.value = '0';
+        return;
+    }
+    var mode = og.getAttribute('data-mode') || '';
+    if (mode === 'combo') {
+        var cbr = document.getElementById('opc_cb_roteador');
+        var cbm = document.getElementById('opc_cb_mesh');
+        hAr.value = (cbr && cbr.checked) ? '1' : '0';
+        hMesh.value = (cbm && cbm.checked) ? '1' : '0';
+    } else if (mode === 'mesh') {
+        var m = document.getElementById('opc_mesh_only');
+        hAr.value = '0';
+        hMesh.value = (m && m.checked) ? '1' : '0';
+    } else if (mode === 'router') {
+        var ronly = document.getElementById('opc_router_only');
+        hAr.value = (ronly && ronly.checked) ? '1' : '0';
+        hMesh.value = '0';
+    } else {
+        hAr.value = '0';
+        hMesh.value = '0';
+    }
+}
+
+function wireOpcionalOpcoesInputs() {
+    ['opc_cb_roteador', 'opc_cb_mesh', 'opc_mesh_only', 'opc_router_only'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', function () {
+                syncOpcionalHiddenFields();
+            });
+        }
+    });
+}
+
+/** Descrição do plano: aceita HTML ou texto com *negrito* / **negrito** e quebras \n. */
+function renderPlanDescriptionHtml(raw) {
+    if (raw == null || raw === '') return '';
+    var s = String(raw);
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
+    if (!/<\s*br\s*\/?>/i.test(s) && s.indexOf('\n') >= 0) {
+        s = s.replace(/\n/g, '<br>');
+    }
+    /* Menos “respiro” entre linhas: vários <br> seguidos viram um só */
+    s = s.replace(/(?:<br\s*\/?>[\s\u00A0]*){2,}/gi, '<br>');
+    return s;
+}
 
 function handlePlanChange() {
     const city = document.getElementById('cidade').value;
@@ -573,24 +803,46 @@ function handlePlanChange() {
     const descDiv = document.getElementById('planDescription');
     const opcionalGroup = document.getElementById('opcionaisGroup');
     const opcionalLabel = document.getElementById('opcionalLabel');
+    const comboBox = document.getElementById('opcionaisCombo');
+    const routerOnlyBox = document.getElementById('opcionaisRouterOnly');
+    const meshOnlyBox = document.getElementById('opcionaisMeshOnly');
 
-    let cityPlans = planDetails.default;
-    if (city === 'muqui' || city === 'piuma') cityPlans = planDetails.muqui_piuma;
-    else if (city === 'mimoso') cityPlans = planDetails.mimoso;
+    const cityPlans = getPlanGroupForCity(city);
 
     if (plan && cityPlans[plan]) {
         detailsBox.style.display = 'block';
-        descDiv.innerHTML = `<strong>Detalhes do Plano:</strong><br>${cityPlans[plan].desc}`;
+        descDiv.innerHTML = renderPlanDescriptionHtml(cityPlans[plan].desc);
         
         if (cityPlans[plan].opcional) {
             opcionalGroup.style.display = 'block';
-            opcionalLabel.innerText = cityPlans[plan].opcional;
+            const resolved = resolveOpcionalDisplayMode(city, plan, cityPlans[plan].opcional);
+            opcionalLabel.innerText = resolved.label;
+            opcionalGroup.setAttribute('data-mode', resolved.mode);
+            if (comboBox && meshOnlyBox && routerOnlyBox) {
+                comboBox.style.display = resolved.mode === 'combo' ? 'block' : 'none';
+                routerOnlyBox.style.display = resolved.mode === 'router' ? 'block' : 'none';
+                meshOnlyBox.style.display = resolved.mode === 'mesh' ? 'block' : 'none';
+            }
+            resetOpcionalInputs();
+            syncOpcionalHiddenFields();
         } else {
             opcionalGroup.style.display = 'none';
+            opcionalGroup.setAttribute('data-mode', '');
+            if (comboBox) comboBox.style.display = 'none';
+            if (routerOnlyBox) routerOnlyBox.style.display = 'none';
+            if (meshOnlyBox) meshOnlyBox.style.display = 'none';
+            resetOpcionalInputs();
+            syncOpcionalHiddenFields();
         }
     } else {
         detailsBox.style.display = 'none';
         opcionalGroup.style.display = 'none';
+        opcionalGroup.setAttribute('data-mode', '');
+        if (comboBox) comboBox.style.display = 'none';
+        if (routerOnlyBox) routerOnlyBox.style.display = 'none';
+        if (meshOnlyBox) meshOnlyBox.style.display = 'none';
+        resetOpcionalInputs();
+        syncOpcionalHiddenFields();
     }
 }
 
@@ -610,8 +862,7 @@ function nextStep(step) {
         return;
     }
 
-    // Skip Step 4 (Documents) for Maricá and Minas Gerais
-    if (step === 4 && (city === 'marica' || city === 'minas_gerais')) {
+    if (step === 4 && citySkipsDocs(city)) {
         showStep(5);
         return;
     }
@@ -625,8 +876,7 @@ function prevStep(step) {
     // Se estiver voltando durante uma edição, cancela o modo edição
     isEditingMode = false;
 
-    // Skip Step 4 (Documents) when going back from 5 for Maricá and Minas Gerais
-    if (step === 4 && (city === 'marica' || city === 'minas_gerais')) {
+    if (step === 4 && citySkipsDocs(city)) {
         showStep(3);
         return;
     }
@@ -641,7 +891,7 @@ function startEditing(step) {
 
 function showStep(step) {
     const city = document.getElementById('cidade').value;
-    const isSpecialCity = (city === 'marica' || city === 'minas_gerais');
+    const isSpecialCity = citySkipsDocs(city);
     
     // Toggle visual indicators for Step 4 fields based on city
     // (We no longer use .required = true to avoid browser focus errors on hidden inputs)
@@ -711,7 +961,15 @@ function populateSummary() {
     };
 
     const city = formData.get('cidade');
-    const isSpecialCity = (city === 'marica' || city === 'minas_gerais');
+    const isSpecialCity = citySkipsDocs(city);
+
+    const cfgLabels = (window.__FORM_CONFIG__ && window.__FORM_CONFIG__.cityLabels) || {};
+    const legacyCityMap = {
+        marica: 'Maricá - RJ', muqui: 'Muqui - ES', piuma: 'Piúma - ES',
+        mimoso: 'Mimoso do Sul - ES', cabo_frio: 'Cabo Frio - RJ',
+        saquarema: 'Saquarema - RJ',
+        unamar: 'Unamar - RJ', sao_paulo: 'São Paulo - SP', outra: 'Outra'
+    };
 
     for (const [section, config] of Object.entries(sections)) {
         // Skip DOCUMENTOS section header for special cities
@@ -745,17 +1003,10 @@ function populateSummary() {
             if (field === 'levar_termo') value = value ? 'Sim' : 'Não (Vou anexar comprovante)';
             
             if (field === 'cidade') {
-                const cityMap = { 
-                    marica: 'Maricá - RJ', muqui: 'Muqui - ES', piuma: 'Piúma - ES', 
-                    mimoso: 'Mimoso do Sul - ES', cabo_frio: 'Cabo Frio - RJ', 
-                    unamar: 'Unamar - RJ', sao_paulo: 'São Paulo - SP', outra: 'Outra' 
-                };
-                value = cityMap[value] || value;
+                value = cfgLabels[value] || legacyCityMap[value] || value;
             }
             if (field === 'plano') {
-                let cityPlans = planDetails.default;
-                if (city === 'muqui' || city === 'piuma') cityPlans = planDetails.muqui_piuma;
-                else if (city === 'mimoso') cityPlans = planDetails.mimoso;
+                const cityPlans = getPlanGroupForCity(city);
                 value = cityPlans[value] ? cityPlans[value].name : value;
             }
             if (field === 'fidelidade') value = value === 'sim' ? 'Sim (12 meses)' : 'Não';
@@ -774,15 +1025,45 @@ function populateSummary() {
         });
     }
 
+    syncOpcionalHiddenFields();
+    const hidArEl = document.getElementById('hid_aluguel_roteador_wifi');
+    const hidMeshEl = document.getElementById('hid_aluguel_repetidor_mesh');
+    const ogSummary = document.getElementById('opcionaisGroup');
+    if (hidArEl && hidMeshEl && ogSummary && ogSummary.style.display !== 'none') {
+        const mode = ogSummary.getAttribute('data-mode') || '';
+        const arOn = hidArEl.value === '1';
+        const meshOn = hidMeshEl.value === '1';
+        if (mode === 'combo') {
+            html += `
+                <div class="summary-item">
+                    <span class="summary-label">Roteador Wi-Fi (aluguel):</span>
+                    <span class="summary-value">${arOn ? 'Sim' : 'Não'}</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Repetidor Mesh (aluguel):</span>
+                    <span class="summary-value">${meshOn ? 'Sim' : 'Não'}</span>
+                </div>
+            `;
+        } else if (mode === 'router') {
+            html += `
+                <div class="summary-item">
+                    <span class="summary-label">Roteador Wi-Fi (aluguel):</span>
+                    <span class="summary-value">${arOn ? 'Sim' : 'Não'}</span>
+                </div>
+            `;
+        } else if (mode === 'mesh') {
+            html += `
+                <div class="summary-item">
+                    <span class="summary-label">Repetidor Mesh (aluguel):</span>
+                    <span class="summary-value">${meshOn ? 'Sim' : 'Não'}</span>
+                </div>
+            `;
+        }
+    }
+
     // Financeiro
     const isFidelidade = formData.get('fidelidade') === 'sim';
-    let price = '';
-    
-    if (city === 'marica') {
-        price = isFidelidade ? 'R$ 100,00' : 'R$ 460,00';
-    } else {
-        price = isFidelidade ? 'GRÁTIS' : 'R$ 360,00';
-    }
+    const price = getResumoValorInstalacao(city, isFidelidade);
 
     html += `
         <div class="summary-section-header">RESUMO FINANCEIRO</div>
@@ -820,20 +1101,23 @@ function validateStep(step) {
         }
     }
 
-    // Ajustes específicos do Passo 4 (Documentos)
     if (step === 4) {
-        const isSpecialCity = (city === 'marica' || city === 'minas_gerais');
-        if (!isSpecialCity) {
+        if (!citySkipsDocs(city)) {
+            const c = getCityCfg(city);
+            const exigirFotos = c && typeof c.exigirFotos === 'boolean' ? c.exigirFotos : true;
             if (!levarTermo) requiredFields[4].push('comprovante_residencia');
-            requiredFields[4].push('foto_documento_frente', 'foto_documento_verso', 'selfie_documento');
+            if (exigirFotos) {
+                requiredFields[4].push('foto_documento_frente', 'foto_documento_verso', 'selfie_documento');
+            }
         }
     }
 
-    // Ajuste específico do Passo 5 (Pagamento)
     if (step === 5) {
         const fidInput = document.querySelector('input[name="fidelidade"]:checked');
         const isFidelidade = fidInput ? fidInput.value === 'sim' : true;
-        if (city === 'marica' || !isFidelidade) {
+        const c = getCityCfg(city);
+        const precisaPag = c ? (c.alwaysShowPagamento || !isFidelidade) : (city === 'marica' || !isFidelidade);
+        if (precisaPag) {
             requiredFields[5].push('pagamento_instalacao');
         }
     }
@@ -860,15 +1144,12 @@ function validateStep(step) {
             }
         }
 
-        // Validação extra para data de instalação
         if (fieldName === 'data_instalacao' && isFieldValid) {
             const selectedDate = new Date(input.value + 'T00:00:00');
-            const tomorrow = new Date();
-            tomorrow.setHours(0,0,0,0);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            if (selectedDate < tomorrow) {
+            const minD = new Date(getMinInstallDateStr() + 'T00:00:00');
+            if (selectedDate < minD) {
                 isFieldValid = false;
-                showNotify('A data de instalação deve ser a partir de amanhã.', 'warning');
+                showNotify('A data de instalação não atende à antecedência mínima configurada.', 'warning');
             }
         }
 
@@ -905,12 +1186,16 @@ function handleCityChange() {
     const pagamentoSelect = document.getElementById('pagamento_instalacao');
     const ufSelect = document.getElementById('uf');
 
-    // Auto-select UF based on city
+    const cityCfg = getCityCfg(city);
     if (ufSelect) {
-        if (['marica', 'cabo_frio', 'unamar'].includes(city)) ufSelect.value = 'RJ';
-        else if (['muqui', 'piuma', 'mimoso'].includes(city)) ufSelect.value = 'ES';
-        else if (city === 'minas_gerais') ufSelect.value = 'MG';
-        else if (city === 'sao_paulo') ufSelect.value = 'SP';
+        if (cityCfg && cityCfg.uf) {
+            ufSelect.value = cityCfg.uf;
+        } else {
+            if (['marica', 'cabo_frio', 'saquarema', 'unamar'].includes(city)) ufSelect.value = 'RJ';
+            else if (['muqui', 'piuma', 'mimoso'].includes(city)) ufSelect.value = 'ES';
+            else if (city === 'minas_gerais') ufSelect.value = 'MG';
+            else if (city === 'sao_paulo') ufSelect.value = 'SP';
+        }
     }
 
     // Update Plans list based on city
@@ -920,17 +1205,17 @@ function handleCityChange() {
     installationInfo.style.display = 'block';
     calculateInstallation();
 
-    // Lógica para o campo de pagamento da instalação
     const fidInput = document.querySelector('input[name="fidelidade"]:checked');
     const isFidelidade = fidInput ? fidInput.value === 'sim' : true;
 
-    if (city === 'marica') {
-        pagamentoWrapper.style.display = 'block';
-        if (isFidelidade) {
-            pagamentoSelect.value = 'pix'; // Default para Maricá com fidelidade
-        }
-    } else if (city) {
-        if (isFidelidade) {
+    if (city) {
+        const sempre = cityCfg ? cityCfg.alwaysShowPagamento : (city === 'marica');
+        if (sempre) {
+            pagamentoWrapper.style.display = 'block';
+            if (isFidelidade && city === 'marica') {
+                pagamentoSelect.value = 'pix';
+            }
+        } else if (isFidelidade) {
             pagamentoWrapper.style.display = 'none';
             pagamentoSelect.value = 'gratis';
         } else {
@@ -938,8 +1223,7 @@ function handleCityChange() {
         }
     }
 
-    // Show/Hide Termo option (Unamar, Cabo Frio, SP)
-    const canLevarTermo = ['cabo_frio', 'unamar', 'sao_paulo'].includes(city);
+    const canLevarTermo = cityCfg ? !!cityCfg.termoOption : ['cabo_frio', 'saquarema', 'unamar', 'sao_paulo'].includes(city);
     if (termoOption) {
         termoOption.style.display = canLevarTermo ? 'block' : 'none';
     }
@@ -959,9 +1243,7 @@ function updatePlanOptions(city) {
     const currentVal = planoSelect.value;
     planoSelect.innerHTML = '<option value="">Selecione um plano...</option>';
 
-    let cityPlans = planDetails.default;
-    if (city === 'muqui' || city === 'piuma') cityPlans = planDetails.muqui_piuma;
-    else if (city === 'mimoso') cityPlans = planDetails.mimoso;
+    const cityPlans = getPlanGroupForCity(city);
 
     for (const [key, plan] of Object.entries(cityPlans)) {
         const opt = document.createElement('option');
@@ -995,20 +1277,46 @@ function calculateInstallation() {
     const city = document.getElementById('cidade').value;
     const fidInput = document.querySelector('input[name="fidelidade"]:checked');
     if (!fidInput) return;
-    
+
     const isFidelidade = fidInput.value === 'sim';
     const installPriceSpan = document.getElementById('installPrice');
     const pagamentoWrapper = document.getElementById('pagamento_instalacao_wrapper');
     const pagamentoSelect = document.getElementById('pagamento_instalacao');
+    const cCfg = getCityCfg(city);
+
+    if (!city) return;
+
+    const ins = cCfg && cCfg.instalacao ? cCfg.instalacao : null;
+    if (ins) {
+        if (isFidelidade) {
+            if (ins.comFidelGratis) {
+                installPriceSpan.innerText = 'GRÁTIS';
+            } else {
+                installPriceSpan.innerText = formatMoneyBR(ins.valorComFidel);
+            }
+        } else {
+            installPriceSpan.innerText = formatMoneyBR(ins.valorSemFidel);
+        }
+        const sempre = cCfg.alwaysShowPagamento;
+        if (sempre) {
+            pagamentoWrapper.style.display = 'block';
+        } else if (isFidelidade) {
+            pagamentoWrapper.style.display = 'none';
+            pagamentoSelect.value = 'gratis';
+        } else {
+            pagamentoWrapper.style.display = 'block';
+        }
+        return;
+    }
 
     if (city === 'marica') {
         const price = isFidelidade ? 100 : 460;
         installPriceSpan.innerText = `R$ ${price.toFixed(2).replace('.', ',')}`;
         pagamentoWrapper.style.display = 'block';
-    } else if (city) {
+    } else {
         const price = isFidelidade ? 0 : 360;
         installPriceSpan.innerText = isFidelidade ? 'GRÁTIS' : `R$ ${price.toFixed(2).replace('.', ',')}`;
-        
+
         if (isFidelidade) {
             pagamentoWrapper.style.display = 'none';
             pagamentoSelect.value = 'gratis';
@@ -1028,19 +1336,30 @@ function updateVencimentoOptions(city) {
     const today = new Date().getDate();
     let options = [];
 
-    // Maricá e Minas Gerais (Antiga lógica)
-    if (city === 'marica' || city === 'minas_gerais') {
-        if (today >= 2 && today <= 10) {
-            options = [{ day: '03', id: '107' }, { day: '06', id: '91' }, { day: '09', id: '106' }];
-        } else if (today >= 11 && today <= 20) {
-            options = [{ day: '13', id: '105' }, { day: '18', id: '93' }];
-        } else {
-            options = [{ day: '22', id: '160' }, { day: '26', id: '161' }, { day: '01', id: '159' }];
+    const cfg = getCityCfg(city);
+    if (cfg && cfg.vencimentoRules && cfg.vencimentoRules.length) {
+        for (let r = 0; r < cfg.vencimentoRules.length; r++) {
+            const rule = cfg.vencimentoRules[r];
+            if (today >= rule.fromDay && today <= rule.toDay) {
+                options = rule.options;
+                break;
+            }
         }
-    } else {
-        // Novas Regiões (1, 3, 6, 7, 9, 13, 18)
-        const days = ['01', '03', '06', '07', '09', '13', '18'];
-        options = days.map(d => ({ day: d, id: 'IXC' }));
+    }
+
+    if (!options.length) {
+        if (city === 'marica' || city === 'minas_gerais') {
+            if (today >= 2 && today <= 10) {
+                options = [{ day: '03', id: '107' }, { day: '06', id: '91' }, { day: '09', id: '106' }];
+            } else if (today >= 11 && today <= 20) {
+                options = [{ day: '13', id: '105' }, { day: '18', id: '93' }];
+            } else {
+                options = [{ day: '22', id: '160' }, { day: '26', id: '161' }, { day: '01', id: '159' }];
+            }
+        } else {
+            const days = ['01', '03', '06', '07', '09', '13', '18'];
+            options = days.map(d => ({ day: d, id: 'IXC' }));
+        }
     }
 
     options.forEach(opt => {
@@ -1055,6 +1374,8 @@ function updateVencimentoOptions(city) {
 // Form submission
 document.getElementById('registrationForm').onsubmit = function(e) {
     e.preventDefault();
+
+    syncOpcionalHiddenFields();
     
     // Valida o último passo antes de submeter
     if (!validateStep(currentStep)) return;

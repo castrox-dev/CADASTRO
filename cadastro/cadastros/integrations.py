@@ -16,6 +16,7 @@ class IXCIntegration:
         'minas_gerais': '6',
         'jacone': '7',
         'araruama': '7',
+        'saquarema': '7',
         'unamar': '7',
         'muqui': '8',
         'mimoso': '8',
@@ -43,6 +44,7 @@ class IXCIntegration:
         'rapido': '175',    # 400 MEGA
         'turbo': '176',     # 500 MEGA
         'ultra': '124',     # 600 MEGA
+        'prime': '',        # 700 MEGA — preencher id IXC em Operação ou .env se aplicável
         '1giga': '560',     # 1 GIGA
     }
 
@@ -251,11 +253,45 @@ class IXCIntegration:
 
         return {'status': 'ok', 'message': 'Sem duplicidade no IXC.', 'logs': logs}
 
+    def resolve_filial_id(self, cidade_slug):
+        try:
+            from .operacao_models import CidadeOperacao
+
+            c = CidadeOperacao.objects.get(slug=cidade_slug)
+            if (c.ixc_filial_id or '').strip():
+                return c.ixc_filial_id.strip()
+        except Exception:
+            pass
+        return self.FILIAIS_MAP.get(cidade_slug, '2')
+
+    def resolve_cidade_ixc_id(self, cidade_slug):
+        try:
+            from .operacao_models import CidadeOperacao
+
+            c = CidadeOperacao.objects.get(slug=cidade_slug)
+            if (c.ixc_cidade_id or '').strip():
+                return c.ixc_cidade_id.strip()
+        except Exception:
+            pass
+        return self.CIDADES_MAP.get(cidade_slug, '') or ''
+
+    def resolve_plano_venda_id(self, cidade_slug, plano_codigo):
+        try:
+            from .operacao_models import CidadeOperacao, PlanoDefinicao
+
+            c = CidadeOperacao.objects.select_related('grupo_planos').get(slug=cidade_slug)
+            p = PlanoDefinicao.objects.filter(grupo=c.grupo_planos, codigo=plano_codigo).first()
+            if p and (p.ixc_plano_venda_id or '').strip():
+                return p.ixc_plano_venda_id.strip()
+        except Exception:
+            pass
+        return self.PLANOS_MAP.get(plano_codigo, '')
+
     def build_crm_lead_payload(self, cadastro):
-        id_plano = self.PLANOS_MAP.get(cadastro.plano, '')
+        id_plano = self.resolve_plano_venda_id(cadastro.cidade, cadastro.plano)
         id_origem = self.ORIGENS_MAP.get(cadastro.origem, '1')
-        id_filial = self.FILIAIS_MAP.get(cadastro.cidade, '2')
-        id_cidade = self.CIDADES_MAP.get(cadastro.cidade, '')
+        id_filial = self.resolve_filial_id(cadastro.cidade)
+        id_cidade = self.resolve_cidade_ixc_id(cadastro.cidade)
         ixc_data = cadastro.get_ixc_data()
 
         return {
@@ -295,9 +331,9 @@ class IXCIntegration:
         }
 
     def build_prospect_payloads(self, cadastro, crm_lead_id=None):
-        id_filial = self.FILIAIS_MAP.get(cadastro.cidade, '2')
+        id_filial = self.resolve_filial_id(cadastro.cidade)
         id_canal = self.ORIGENS_MAP.get(cadastro.origem, '1')
-        id_cidade = self.CIDADES_MAP.get(cadastro.cidade, '')
+        id_cidade = self.resolve_cidade_ixc_id(cadastro.cidade)
         ixc_data = cadastro.get_ixc_data()
 
         payload_cliente = {

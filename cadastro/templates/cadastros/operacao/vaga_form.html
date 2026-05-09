@@ -1,0 +1,23 @@
+{% extends "cadastros/base_admin.html" %}
+
+{% block admin_page_title %}{{ page_title }}{% endblock %}
+
+{% block admin_content %}
+<div class="dashboard-wrapper">
+    <div class="container py-4" style="max-width: 480px;">
+        {% include "cadastros/operacao/_messages.html" %}
+
+        <h4 class="fw-bold mb-4">{{ page_title }}</h4>
+
+        <form method="post" class="card-premium p-4">
+            {% csrf_token %}
+            <div class="mb-3"><label class="form-label">Data</label>{{ form.data }}</div>
+            <div class="mb-3"><label class="form-label">Período</label>{{ form.periodo }}</div>
+            <div class="mb-3"><label class="form-label">Vagas máximas</label>{{ form.vagas_max }}</div>
+            <div class="mb-4 form-check">{{ form.ativo }} <label class="form-check-label" for="id_ativo">Ativo</label></div>
+            <button type="submit" class="btn btn-fibramar">Salvar</button>
+            <a href="{% url 'operacao_vagas_list' %}" class="btn btn-light ms-2">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}
