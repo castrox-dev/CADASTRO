@@ -29,12 +29,12 @@
     </div>
 
     <!-- Custom Confirmation Modal -->
-    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true" aria-labelledby="confirmTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
                 <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title fw-bold text-primary" id="confirmTitle">Confirmação</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                 </div>
                 <div class="modal-body py-4">
                     <p class="mb-0 fs-5" id="confirmMessage">Tem certeza que deseja realizar esta ação?</p>
@@ -43,6 +43,19 @@
                     <button type="button" class="btn btn-light px-4 fw-bold" data-bs-dismiss="modal">CANCELAR</button>
                     <button type="button" class="btn btn-danger px-4 fw-bold" id="confirmBtnAction">CONFIRMAR</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Info Modal (logs, listas longas) -->
+    <div class="modal fade" id="infoModal" tabindex="-1" aria-hidden="true" aria-labelledby="infoModalTitle">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="infoModalTitle">Informação</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body" id="infoModalBody"></div>
             </div>
         </div>
     </div>
@@ -91,21 +104,32 @@
         function showNotify(message, type = 'primary') {
             const toastEl = document.getElementById('fibramarToast');
             const messageEl = document.getElementById('toastMessage');
+            const closeBtn = toastEl.querySelector('.btn-close');
             messageEl.innerText = message;
-            toastEl.className = `toast align-items-center text-white border-0 bg-${type}`;
-            const toast = new bootstrap.Toast(toastEl);
+            const isWarning = type === 'warning';
+            toastEl.className = `toast align-items-center border-0 bg-${type} ${isWarning ? 'text-dark' : 'text-white'}`;
+            if (closeBtn) {
+                closeBtn.classList.toggle('btn-close-white', !isWarning);
+            }
+            const toast = bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 4500 });
             toast.show();
         }
 
         function showConfirm(title, message, callback, isDanger = true) {
             document.getElementById('confirmTitle').innerText = title;
             document.getElementById('confirmMessage').innerText = message;
-            
+
             const actionBtn = document.getElementById('confirmBtnAction');
             actionBtn.className = isDanger ? 'btn btn-danger px-4 fw-bold' : 'btn btn-primary px-4 fw-bold';
-            
+
             confirmationCallback = callback;
             confirmModal.show();
+        }
+
+        function showInfo(title, htmlContent) {
+            document.getElementById('infoModalTitle').innerText = title;
+            document.getElementById('infoModalBody').innerHTML = htmlContent;
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('infoModal')).show();
         }
 
         document.getElementById('confirmBtnAction').addEventListener('click', function() {
@@ -116,6 +140,7 @@
             confirmModal.hide();
         });
     </script>
+    <script src="{% static 'js/app_helpers.js' %}"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

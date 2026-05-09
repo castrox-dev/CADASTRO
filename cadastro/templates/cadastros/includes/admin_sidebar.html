@@ -11,55 +11,55 @@
         </a>
     </div>
 
-    <nav class="admin-sidebar-nav flex-grow-1 py-3 px-2 overflow-y-auto">
-        <a href="{% url 'admin_dashboard' %}" class="admin-nav-link {% if rn == 'admin_dashboard' %}active{% endif %}">
-            <i class="bi bi-speedometer2"></i><span>Painel</span>
+    <nav class="admin-sidebar-nav flex-grow-1 py-3 px-2 overflow-y-auto" aria-label="Navegação principal">
+        <a href="{% url 'admin_dashboard' %}" class="admin-nav-link {% if rn == 'admin_dashboard' %}active{% endif %}" {% if rn == 'admin_dashboard' %}aria-current="page"{% endif %}>
+            <i class="bi bi-speedometer2" aria-hidden="true"></i><span>Painel</span>
         </a>
-        <a href="{% url 'reports' %}" class="admin-nav-link {% if rn == 'reports' %}active{% endif %}">
-            <i class="bi bi-graph-up-arrow"></i><span>Relatórios</span>
+        <a href="{% url 'reports' %}" class="admin-nav-link {% if rn == 'reports' %}active{% endif %}" {% if rn == 'reports' %}aria-current="page"{% endif %}>
+            <i class="bi bi-graph-up-arrow" aria-hidden="true"></i><span>Relatórios</span>
         </a>
-        <a href="{% url 'standard_scripts' %}" class="admin-nav-link {% if rn == 'standard_scripts' %}active{% endif %}">
-            <i class="bi bi-file-earmark-text"></i><span>Scripts</span>
+        <a href="{% url 'standard_scripts' %}" class="admin-nav-link {% if rn == 'standard_scripts' %}active{% endif %}" {% if rn == 'standard_scripts' %}aria-current="page"{% endif %}>
+            <i class="bi bi-file-earmark-text" aria-hidden="true"></i><span>Scripts</span>
         </a>
 
         <div class="admin-nav-section small text-white-50 text-uppercase px-3 mt-4 mb-2">Configuração da ficha</div>
-        <a href="{% url 'admin_operacao_hub' %}" class="admin-nav-link {% if rn == 'admin_operacao_hub' %}active{% endif %}">
-            <i class="bi bi-grid-1x2"></i><span>Visão geral</span>
+        <a href="{% url 'admin_operacao_hub' %}" class="admin-nav-link {% if rn == 'admin_operacao_hub' %}active{% endif %}" {% if rn == 'admin_operacao_hub' %}aria-current="page"{% endif %}>
+            <i class="bi bi-grid-1x2" aria-hidden="true"></i><span>Visão geral</span>
         </a>
-        <a href="{% url 'operacao_config' %}" class="admin-nav-link {% if rn == 'operacao_config' %}active{% endif %}">
-            <i class="bi bi-sliders"></i><span>Geral</span>
+        <a href="{% url 'operacao_config' %}" class="admin-nav-link {% if rn == 'operacao_config' %}active{% endif %}" {% if rn == 'operacao_config' %}aria-current="page"{% endif %}>
+            <i class="bi bi-sliders" aria-hidden="true"></i><span>Geral</span>
         </a>
         <a href="{% url 'operacao_cidades_list' %}" class="admin-nav-link {% if rn == 'operacao_cidades_list' or rn == 'operacao_cidade_create' or rn == 'operacao_cidade_edit' or rn == 'operacao_cidade_delete' or rn == 'operacao_cidade_vencimentos' or rn == 'operacao_faixa_opcoes' or rn == 'operacao_faixa_delete' %}active{% endif %}">
-            <i class="bi bi-geo-alt"></i><span>Cidades</span>
+            <i class="bi bi-geo-alt" aria-hidden="true"></i><span>Cidades</span>
         </a>
         <a href="{% url 'operacao_grupos_list' %}" class="admin-nav-link {% if rn == 'operacao_grupos_list' or rn == 'operacao_grupo_create' or rn == 'operacao_grupo_edit' or rn == 'operacao_grupo_delete' %}active{% endif %}">
-            <i class="bi bi-diagram-3"></i><span>Planos</span>
+            <i class="bi bi-diagram-3" aria-hidden="true"></i><span>Planos</span>
         </a>
         <a href="{% url 'operacao_vagas_list' %}" class="admin-nav-link {% if rn == 'operacao_vagas_list' or rn == 'operacao_vaga_create' or rn == 'operacao_vaga_edit' or rn == 'operacao_vaga_delete' %}active{% endif %}">
-            <i class="bi bi-calendar-event"></i><span>Vagas</span>
+            <i class="bi bi-calendar-event" aria-hidden="true"></i><span>Vagas</span>
         </a>
 
         <div class="admin-nav-section small text-white-50 text-uppercase px-3 mt-4 mb-2">Área consultor</div>
-        <a href="{% url 'dashboard' %}" class="admin-nav-link">
-            <i class="bi bi-person-badge"></i><span>Visão consultor</span>
+        <a href="{% url 'dashboard' %}" class="admin-nav-link {% if rn == 'dashboard' %}active{% endif %}" {% if rn == 'dashboard' %}aria-current="page"{% endif %}>
+            <i class="bi bi-person-badge" aria-hidden="true"></i><span>Visão consultor</span>
         </a>
     </nav>
 
     <div class="admin-sidebar-footer px-2 pt-3 pb-2 mt-auto border-top border-white border-opacity-10">
-        <button type="button" class="theme-toggle admin-sidebar-theme w-100 justify-content-start gap-2 mb-2 border-0" id="themeToggle" title="Alternar tema">
-            <i class="bi bi-moon-fill" id="themeIcon"></i>
+        <button type="button" class="theme-toggle admin-sidebar-theme w-100 justify-content-start gap-2 mb-2 border-0" id="themeToggle" title="Alternar tema" aria-label="Alternar tema claro/escuro">
+            <i class="bi bi-moon-fill" id="themeIcon" aria-hidden="true"></i>
             <span class="small">Tema</span>
         </button>
         <div class="dropdown dropup w-100">
-            <button class="btn btn-sm btn-outline-light w-100 text-start d-flex align-items-center justify-content-between" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <span class="text-truncate"><i class="bi bi-person-circle me-2"></i>{{ user.first_name|default:user.username }}</span>
-                <i class="bi bi-chevron-up small"></i>
+            <button class="btn btn-sm btn-outline-light w-100 text-start d-flex align-items-center justify-content-between" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Menu da conta">
+                <span class="text-truncate"><i class="bi bi-person-circle me-2" aria-hidden="true"></i>{{ user.first_name|default:user.username }}</span>
+                <i class="bi bi-chevron-up small" aria-hidden="true"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-start shadow border-0 mb-2 w-100">
                 <li>
                     <form action="{% url 'logout' %}" method="post" class="px-2 py-1">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-link text-danger text-decoration-none p-0 small w-100 text-start"><i class="bi bi-box-arrow-right me-2"></i>Sair</button>
+                        <button type="submit" class="btn btn-link text-danger text-decoration-none p-0 small w-100 text-start"><i class="bi bi-box-arrow-right me-2" aria-hidden="true"></i>Sair</button>
                     </form>
                 </li>
             </ul>

@@ -1380,6 +1380,14 @@ document.getElementById('registrationForm').onsubmit = function(e) {
     // Valida o último passo antes de submeter
     if (!validateStep(currentStep)) return;
 
+    // LGPD — exige consentimento explícito antes de enviar
+    // (marcado pela tela inicial #lgpdGate; se chegou aqui sem valor, algo burlou o fluxo)
+    const consentInput = document.getElementById('consentimentoLgpd');
+    if (!consentInput || consentInput.value !== '1') {
+        showNotify('É necessário aceitar a Política de Privacidade para concluir o cadastro.', 'warning');
+        return;
+    }
+
     const submitBtn = this.querySelector('button[type="submit"]');
     if (submitBtn) {
         submitBtn.disabled = true;

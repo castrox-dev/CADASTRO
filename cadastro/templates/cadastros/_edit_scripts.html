@@ -1,0 +1,36 @@
+{% load static %}
+<script src="{% static 'js/script.js' %}"></script>
+<script>
+    document.getElementById('registrationForm').onsubmit = function(e) {
+        e.preventDefault();
+        const submitBtn = this.querySelector('button[type="submit"]');
+        const formData = new FormData(this);
+
+        fetchJson(window.location.href, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: formData,
+        }, {
+            busyButton: submitBtn,
+            busyLabel: 'SALVANDO...',
+            silentSuccess: false,
+            onSuccess: () => {
+                setTimeout(() => {
+                    window.location.href = "{% url 'cadastro_detail' cadastro.pk %}";
+                }, 1200);
+            },
+        });
+    };
+
+    $(document).ready(function() {
+        const city = $('#cidade').val();
+        if (city) {
+            updatePlanOptions(city);
+            setTimeout(() => {
+                $('#plano').val("{{ cadastro.plano }}");
+                $('#vencimento').val("{{ cadastro.vencimento }}");
+            }, 100);
+        }
+        handleDocumentInput();
+    });
+</script>

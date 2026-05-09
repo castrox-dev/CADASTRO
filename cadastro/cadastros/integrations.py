@@ -48,16 +48,18 @@ class IXCIntegration:
         '1giga': '560',     # 1 GIGA
     }
 
-    # Mapeamento de Canais de Venda (Origens) baseado nos prints do IXC
+    # Fallback do mapeamento de Canais de Venda (Origens). Use OrigemCanalVenda
+    # no painel /admin-dash/ para gerenciar — este dict só roda se o cadastro
+    # vier com uma origem que ainda não foi cadastrada lá.
     ORIGENS_MAP = {
         'Instagram': '6',
         'Facebook': '9',
         'Google': '7',
         'Google Ads': '12',
-        'Indicação': '4', # Indicação de outros clientes
+        'Indicação': '4',
         'Site': '10',
-        'WhatsApp': '1', # Solicitado pelo cliente
-        'TikTok': '13', # Tráfego mídias
+        'WhatsApp': '1',
+        'TikTok': '13',
     }
     CRM_LEAD_RESOURCES = ['crm_leads', 'crm_sp_leads', 'crm_lead', 'contato']
     CRM_PROSPECT_CONVERT_RESOURCES = ['crm_sp_leads', 'crm_leads', 'crm_lead']
@@ -110,14 +112,14 @@ class IXCIntegration:
         return normalized or ['99', '00', '01']
 
     def _save_debug_json(self, cadastro_id, payload, etapa):
+        """Grava JSON de auditoria FORA de MEDIA_ROOT (logs/ixc_debug/)."""
         try:
-            debug_dir = os.path.join(settings.BASE_DIR, 'media', 'ixc_debug')
-            if not os.path.exists(debug_dir):
-                os.makedirs(debug_dir)
-            
+            debug_dir = os.path.join(settings.BASE_DIR, 'logs', 'ixc_debug')
+            os.makedirs(debug_dir, exist_ok=True)
+
             filename = f"debug_id_{cadastro_id}_{etapa}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.json"
             filepath = os.path.join(debug_dir, filename)
-            
+
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(payload, f, indent=4, ensure_ascii=False)
             return filepath
@@ -287,9 +289,27 @@ class IXCIntegration:
             pass
         return self.PLANOS_MAP.get(plano_codigo, '')
 
+    def resolve_origem_ixc_id(self, origem_label, default='1'):
+        """Resolve o ID IXC para a origem informada.
+
+        Usa OrigemCanalVenda(label=origem_label) primeiro; cai no ORIGENS_MAP
+        legado se não houver registro; e retorna `default` em último caso.
+        """
+        if not origem_label:
+            return default
+        try:
+            from .operacao_models import OrigemCanalVenda
+
+            row = OrigemCanalVenda.objects.filter(label=origem_label, ativo=True).first()
+            if row and (row.ixc_id or '').strip():
+                return row.ixc_id.strip()
+        except Exception:
+            pass
+        return self.ORIGENS_MAP.get(origem_label, default)
+
     def build_crm_lead_payload(self, cadastro):
         id_plano = self.resolve_plano_venda_id(cadastro.cidade, cadastro.plano)
-        id_origem = self.ORIGENS_MAP.get(cadastro.origem, '1')
+        id_origem = self.resolve_origem_ixc_id(cadastro.origem)
         id_filial = self.resolve_filial_id(cadastro.cidade)
         id_cidade = self.resolve_cidade_ixc_id(cadastro.cidade)
         ixc_data = cadastro.get_ixc_data()
@@ -332,7 +352,7 @@ class IXCIntegration:
 
     def build_prospect_payloads(self, cadastro, crm_lead_id=None):
         id_filial = self.resolve_filial_id(cadastro.cidade)
-        id_canal = self.ORIGENS_MAP.get(cadastro.origem, '1')
+        id_canal = self.resolve_origem_ixc_id(cadastro.origem)
         id_cidade = self.resolve_cidade_ixc_id(cadastro.cidade)
         ixc_data = cadastro.get_ixc_data()
 

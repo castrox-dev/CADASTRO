@@ -41,6 +41,17 @@ class PlanoDefinicao(models.Model):
         blank=True,
         help_text='ID do plano de venda no IXC (sobrescreve o mapa padrão se preenchido)',
     )
+    nome_velocidade = models.CharField(
+        max_length=40,
+        blank=True,
+        help_text='Texto curto exibido em listagens / OS (ex.: «240 MEGA», «1 GIGA»). Vazio = usar o "titulo".',
+    )
+    preco_mensal_reais = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text='Mensalidade em R$ usada na geração da OS / ficha automática.',
+    )
 
     class Meta:
         verbose_name = 'Definição de plano'
@@ -50,6 +61,17 @@ class PlanoDefinicao(models.Model):
 
     def __str__(self):
         return f'{self.grupo.slug}:{self.codigo}'
+
+    def preco_formatado(self):
+        """Mensalidade formatada para BR ('59,99'). Retorna '0,00' se não definida."""
+        valor = self.preco_mensal_reais or 0
+        return f'{valor:.2f}'.replace('.', ',')
+
+    def velocidade_label(self):
+        """Texto da velocidade (nome_velocidade, com fallback no titulo)."""
+        if self.nome_velocidade:
+            return self.nome_velocidade
+        return self.titulo or self.codigo
 
 
 class CidadeOperacao(models.Model):
@@ -191,6 +213,30 @@ class AppConfigOperacao(models.Model):
 
     def __str__(self):
         return 'Configuração geral'
+
+
+class OrigemCanalVenda(models.Model):
+    """Origem/canal de venda mapeado para o ID do IXC (substitui ORIGENS_MAP hardcoded)."""
+
+    label = models.CharField(
+        max_length=80,
+        unique=True,
+        help_text='Nome exibido na ficha (ex.: Instagram, Facebook, Indicação).',
+    )
+    ixc_id = models.CharField(
+        max_length=32,
+        help_text='ID correspondente em CRM > Configurações > Origens no IXC.',
+    )
+    ordem = models.PositiveSmallIntegerField(default=0)
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Origem / canal de venda'
+        verbose_name_plural = 'Origens / canais de venda'
+        ordering = ['ordem', 'label']
+
+    def __str__(self):
+        return f'{self.label} → {self.ixc_id}'
 
 
 class VagaInstalacao(models.Model):

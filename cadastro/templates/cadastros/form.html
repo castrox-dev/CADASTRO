@@ -30,21 +30,69 @@
 <div class="container px-3 px-sm-4 py-4 py-lg-5 fibramar-ficha-page">
     <div class="card-premium mx-auto w-100 fibramar-ficha-card">
         <div class="header-accent"></div>
-        <div class="p-3 p-md-4 text-center border-bottom bg-light">
-            <img src="{% static 'img/logo.webp' %}" alt="FIBRAMAR" style="max-width: 180px; margin-bottom: 15px;">
-            <h4 class="mb-1">Ficha de Cadastro</h4>
-            <p class="text-muted small mb-0">Preencha os dados abaixo para iniciar sua solicitação.</p>
-            
-            <div class="progress-bar-fibramar mt-4">
-                <div class="progress-fill" id="progress" style="width: 16.6%;"></div>
+
+        <!-- Tela 1 de 2 — Aceite de termos LGPD (Lei 13.709/2018) -->
+        <div id="lgpdGate" class="lgpd-gate p-4 p-md-5 text-center">
+            <div class="lgpd-gate-icon mb-3">
+                <i class="bi bi-shield-lock-fill" aria-hidden="true"></i>
             </div>
+            <img src="{% static 'img/logo.webp' %}" alt="FIBRAMAR" style="max-width: 160px;" class="mb-3">
+            <h4 class="fw-bold mb-2">Antes de começar</h4>
+            <p class="text-muted mb-4">Para realizar a sua contratação, precisaremos de alguns dados pessoais (CPF/CNPJ, RG, foto do documento e do endereço).</p>
+
+            <div class="lgpd-gate-callout text-start mb-4">
+                <div class="d-flex align-items-start gap-3">
+                    <i class="bi bi-info-circle-fill mt-1" aria-hidden="true"></i>
+                    <div>
+                        <p class="mb-2"><strong>Seus dados estão protegidos pela LGPD.</strong></p>
+                        <p class="small mb-2">
+                            Todos os dados informados nesta ficha são tratados conforme a
+                            <strong>Lei nº 13.709/2018 (Lei Geral de Proteção de Dados)</strong>.
+                            Eles serão usados exclusivamente para a contratação dos serviços da Fibramar
+                            e não serão compartilhados com terceiros para fins de marketing.
+                        </p>
+                        <p class="small mb-0">
+                            Para saber mais, acesse a
+                            <a href="https://www.fibramarinternet.com.br/site/politicas" target="_blank" rel="noopener noreferrer">
+                                Política de Privacidade da Fibramar
+                            </a>.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <p class="text-muted small mb-4">
+                Você poderá solicitar a exclusão ou anonimização dos seus dados a qualquer momento pelo e-mail
+                <a href="mailto:fibramarinternet@gmail.com">fibramarinternet@gmail.com</a>.
+            </p>
+
+            <button type="button" id="btnAceitarLgpd" class="btn-fibramar px-5 py-3 fw-bold">
+                <i class="bi bi-check-circle me-2" aria-hidden="true"></i> LI E ACEITO OS TERMOS
+            </button>
+            <p class="text-muted small mt-3 mb-0" style="font-size: 0.7rem;">
+                Ao clicar você confirma o aceite com data/hora e IP registrados, conforme a LGPD.
+            </p>
         </div>
+
+        <!-- Tela 2 de 2 — Formulário propriamente dito (oculto até o aceite) -->
+        <div id="formContainer" class="d-none">
+            <div class="p-3 p-md-4 text-center border-bottom bg-light">
+                <img src="{% static 'img/logo.webp' %}" alt="FIBRAMAR" style="max-width: 180px; margin-bottom: 15px;">
+                <h4 class="mb-1">Ficha de Cadastro</h4>
+                <p class="text-muted small mb-0">Preencha os dados abaixo para iniciar sua solicitação.</p>
+
+                <div class="progress-bar-fibramar mt-4">
+                    <div class="progress-fill" id="progress" style="width: 16.6%;"></div>
+                </div>
+            </div>
 
         <form id="registrationForm" class="p-3 p-md-4" enctype="multipart/form-data" novalidate>
             {% csrf_token %}
             <input type="hidden" name="consultor_id" value="{{ consultor.id }}">
             <input type="hidden" name="aluguel_roteador_wifi" id="hid_aluguel_roteador_wifi" value="0">
             <input type="hidden" name="aluguel_repetidor_mesh" id="hid_aluguel_repetidor_mesh" value="0">
+            <!-- Marcado como "1" pelo botão da tela LGPD acima. -->
+            <input type="hidden" name="consentimento_lgpd" id="consentimentoLgpd" value="">
             
             <!-- Step 1: Identificação -->
             <div class="form-step active" id="step1">
@@ -408,6 +456,13 @@
                     </div>
                 </div>
 
+                <!-- LGPD: aceito previamente na tela inicial; mantemos só um lembrete discreto. -->
+                <div class="alert alert-light border small mb-3" role="status">
+                    <i class="bi bi-shield-check me-1 text-success" aria-hidden="true"></i>
+                    Termos da LGPD aceitos no início do cadastro. Você pode solicitar a exclusão dos seus dados a qualquer momento via
+                    <a href="mailto:fibramarinternet@gmail.com">fibramarinternet@gmail.com</a>.
+                </div>
+
                 <div class="form-step-actions justify-content-end">
                     <button type="submit" class="btn-fibramar px-5">Enviar Cadastro</button>
                 </div>
@@ -424,6 +479,7 @@
             <p class="text-muted">Seus dados foram recebidos com sucesso. Em breve nossa equipe entrará em contato para confirmar a instalação.</p>
             <button onclick="location.reload()" class="btn-fibramar mt-3">Novo Cadastro</button>
         </div>
+        </div><!-- /#formContainer -->
     </div>
 </div>
 {% endblock %}
@@ -438,5 +494,24 @@
         const selected = this.options[this.selectedIndex];
         document.getElementById('vencimento_id_hidden').value = selected.dataset.id || '';
     });
+
+    // Tela LGPD inicial — só libera o formulário quando o cliente aceita
+    (function () {
+        var btn = document.getElementById('btnAceitarLgpd');
+        var gate = document.getElementById('lgpdGate');
+        var container = document.getElementById('formContainer');
+        var hidden = document.getElementById('consentimentoLgpd');
+        if (!btn || !gate || !container) return;
+
+        btn.addEventListener('click', function () {
+            if (hidden) hidden.value = '1';
+            gate.classList.add('d-none');
+            container.classList.remove('d-none');
+            // Foca no primeiro input do step 1 e leva a página ao topo
+            window.scrollTo(0, 0);
+            var firstInput = document.getElementById('documento');
+            if (firstInput) firstInput.focus({ preventScroll: true });
+        });
+    })();
 </script>
 {% endblock %}

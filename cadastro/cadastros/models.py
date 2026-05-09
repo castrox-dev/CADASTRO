@@ -54,7 +54,7 @@ class Cadastro(models.Model):
 
     # Identificação
     tipo_pessoa = models.CharField(max_length=2, choices=TIPO_PESSOA_CHOICES, default='pf')
-    documento = models.CharField(max_length=20, db_index=True) # CPF ou CNPJ
+    documento = models.CharField(max_length=20, db_index=True, unique=True)  # CPF ou CNPJ
     nome_razao = models.CharField(max_length=255) # Nome ou Razão Social
     nome_fantasia = models.CharField(max_length=255, blank=True, null=True)
     rg = models.CharField(max_length=20, blank=True, null=True)
@@ -108,6 +108,23 @@ class Cadastro(models.Model):
     # Campo para edição manual da ficha
     ficha_manual = models.TextField(blank=True, null=True)
 
+    # LGPD — consentimento e anonimização
+    consentimento_lgpd = models.BooleanField(
+        default=False,
+        help_text='Cliente declarou ter lido e concordado com a Política de Privacidade.',
+    )
+    consentimento_em = models.DateTimeField(blank=True, null=True)
+    consentimento_ip = models.GenericIPAddressField(
+        blank=True,
+        null=True,
+        help_text='IP de onde o consentimento foi registrado.',
+    )
+    anonimizado_em = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text='Preenchido quando o cadastro foi anonimizado por exigência LGPD.',
+    )
+
     history = HistoricalRecords()
 
     def clean(self):
@@ -139,45 +156,97 @@ class Cadastro(models.Model):
             raise ValidationError(f"Já existe um cadastro com este CPF/CNPJ. Status: {existing.first().get_status_display()}")
 
     def save(self, *args, **kwargs):
-        self.full_clean()
-        
-        # Compressão de Imagens
-        for field in ['comprovante_residencia', 'foto_documento_frente', 'foto_documento_verso', 'selfie_documento']:
-            file = getattr(self, field)
-            if file and not file._committed: # Apenas se for um novo upload
-                try:
-                    img = Image.open(file)
-                    if img.mode != 'RGB':
-                        img = img.convert('RGB')
-                    
-                    output = BytesIO()
-                    img.save(output, format='JPEG', quality=70, optimize=True)
-                    output.seek(0)
-                    
-                    # Substitui o arquivo original pelo comprimido
-                    new_filename = f"{os.path.splitext(file.name)[0]}.jpg"
-                    setattr(self, field, ContentFile(output.read(), name=new_filename))
-                except Exception:
-                    pass # Se não for imagem ou erro na compressão, segue original
-        
+        update_fields = kwargs.get('update_fields')
+
+        # Saves parciais (update_fields) NÃO disparam full_clean: evita revalidar
+        # CPF/duplicidade/imagens em ações leves (update_status, update_ficha, etc.)
+        # e evita falsos positivos quando a constraint unique já está no banco.
+        if not update_fields:
+            self.full_clean()
+
+            # Compressão de imagens (apenas em saves completos).
+            # 3.4 — preferimos WebP (≈25-35% menor que JPEG) e caímos para JPEG
+            # se a build do Pillow não tiver suporte (caso raro em hosts modernos).
+            for field in ['comprovante_residencia', 'foto_documento_frente', 'foto_documento_verso', 'selfie_documento']:
+                file = getattr(self, field)
+                if file and not file._committed:  # apenas se for um novo upload
+                    try:
+                        img = Image.open(file)
+                        if img.mode not in ('RGB', 'RGBA'):
+                            img = img.convert('RGB')
+
+                        base_name = os.path.splitext(file.name)[0]
+                        output = BytesIO()
+                        try:
+                            img.save(output, format='WEBP', quality=80, method=6)
+                            new_filename = f"{base_name}.webp"
+                        except (KeyError, OSError):
+                            output.seek(0)
+                            output.truncate()
+                            if img.mode == 'RGBA':
+                                img = img.convert('RGB')
+                            img.save(output, format='JPEG', quality=70, optimize=True)
+                            new_filename = f"{base_name}.jpg"
+
+                        output.seek(0)
+                        setattr(self, field, ContentFile(output.read(), name=new_filename))
+                    except Exception:
+                        pass  # Se não for imagem ou erro na compressão, segue original
+
         super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.nome_razao} - {self.documento}"
 
+    # Fallbacks para quando PlanoDefinicao ainda não tem dados (legado).
+    # Idealmente vazio: gerencie tudo em /admin-dash/operacao/.
+    _PLANOS_VELOCIDADE_FALLBACK = {
+        'essencial': '240 MEGA',
+        'rapido': '400 MEGA',
+        'turbo': '500 MEGA',
+        'ultra': '600 MEGA',
+        'prime': '700 MEGA',
+        '1giga': '1 GIGA',
+        'plano_300': '300 MEGA',
+        'plano_700': '700 MEGA',
+    }
+    _PLANOS_PRECO_FALLBACK = {
+        'essencial': '59,99',
+        'rapido': '79,99',
+        'turbo': '99,99',
+        'ultra': '119,99',
+        'prime': '99,99',
+        '1giga': '149,99',
+        'plano_300': '69,99',
+        'plano_700': '89,99',
+    }
+
+    def _get_plano_definicao(self):
+        """Resolve o PlanoDefinicao para esta combinação cidade+plano."""
+        if not self.plano:
+            return None
+        try:
+            cidade = CidadeOperacao.objects.select_related('grupo_planos').get(slug=self.cidade)
+        except CidadeOperacao.DoesNotExist:
+            return None
+        return PlanoDefinicao.objects.filter(grupo=cidade.grupo_planos, codigo=self.plano).first()
+
     @property
     def plano_velocidade(self):
-        planos_nomes = {
-            'essencial': '240 MEGA',
-            'rapido': '400 MEGA',
-            'turbo': '500 MEGA',
-            'ultra': '600 MEGA',
-            'prime': '700 MEGA',
-            '1giga': '1 GIGA',
-            'plano_300': '300 MEGA',
-            'plano_700': '700 MEGA'
-        }
-        return planos_nomes.get(self.plano, self.plano)
+        definicao = self._get_plano_definicao()
+        if definicao:
+            label = definicao.velocidade_label()
+            if label:
+                return label
+        return self._PLANOS_VELOCIDADE_FALLBACK.get(self.plano, self.plano)
+
+    @property
+    def plano_preco_brl(self):
+        """Mensalidade formatada estilo BR ('59,99')."""
+        definicao = self._get_plano_definicao()
+        if definicao and (definicao.preco_mensal_reais or 0) > 0:
+            return definicao.preco_formatado()
+        return self._PLANOS_PRECO_FALLBACK.get(self.plano, '0,00')
 
     @property
     def nome_consultor_display(self):
@@ -197,31 +266,9 @@ class Cadastro(models.Model):
     @property
     def os_formatada(self):
         instalacao_valor = "100,00" if self.fidelidade else "460,00" if self.cidade == 'marica' else "A combinar"
-        
-        # Nomenclatura apenas com Megas para a OS
-        planos_nomes = {
-            'essencial': '240 MEGA',
-            'rapido': '400 MEGA',
-            'turbo': '500 MEGA',
-            'ultra': '600 MEGA',
-            'prime': '700 MEGA',
-            '1giga': '1 GIGA',
-            'plano_300': '300 MEGA',
-            'plano_700': '700 MEGA'
-        }
-        plano_label = planos_nomes.get(self.plano, self.plano)
-        
-        precos = {
-            'essencial': '59,99',
-            'rapido': '79,99',
-            'turbo': '99,99',
-            'ultra': '119,99',
-            'prime': '99,99',
-            '1giga': '149,99',
-            'plano_300': '69,99',
-            'plano_700': '89,99'
-        }
-        plano_valor = precos.get(self.plano, "0,00")
+
+        plano_label = self.plano_velocidade
+        plano_valor = self.plano_preco_brl
         
         extras = []
         if self.aluguel_repetidor_mesh:
@@ -265,18 +312,8 @@ class Cadastro(models.Model):
     def ficha_formatada(self):
         if self.ficha_manual:
             return self.ficha_manual
-            
-        planos_nomes = {
-            'essencial': '240 MEGA',
-            'rapido': '400 MEGA',
-            'turbo': '500 MEGA',
-            'ultra': '600 MEGA',
-            'prime': '700 MEGA',
-            '1giga': '1 GIGA',
-            'plano_300': '300 MEGA',
-            'plano_700': '700 MEGA'
-        }
-        plano_display = planos_nomes.get(self.plano, self.plano)
+
+        plano_display = self.plano_velocidade
 
         ficha = f"#DADOS PARA CADASTRO\n\n"
         ficha += f"Nome completo: {self.nome_razao}\n"
@@ -325,12 +362,105 @@ class Cadastro(models.Model):
         verbose_name = "Cadastro"
         verbose_name_plural = "Cadastros"
 
+    # ----------- LGPD -----------
+    @property
+    def is_anonimizado(self):
+        return self.anonimizado_em is not None
+
+    def anonimizar(self, executado_por=None, motivo: str = ''):
+        """
+        Substitui PII (nome, CPF/CNPJ, RG, e-mail, telefone, endereço, fotos)
+        por placeholders e remove arquivos físicos. Mantém estatísticas (status,
+        plano, cidade, datas) intactas.
+
+        Idempotente: se já foi anonimizado, não faz nada.
+        """
+        if self.is_anonimizado:
+            return False
+
+        for field in [
+            'contrato_social',
+            'comprovante_residencia',
+            'foto_documento_frente',
+            'foto_documento_verso',
+            'selfie_documento',
+        ]:
+            file = getattr(self, field)
+            if file:
+                try:
+                    file.delete(save=False)
+                except Exception:
+                    pass
+                setattr(self, field, None)
+
+        suffix = f"ANON-{self.pk}"
+        self.nome_razao = f"[Cadastro anonimizado #{self.pk}]"
+        self.nome_fantasia = None
+        self.documento = suffix[:20]  # mantém único; respeita unique=True
+        self.rg = None
+        self.inscricao_estadual = None
+        self.data_nascimento = None
+        self.email = f"anon+{self.pk}@example.invalid"
+        self.telefone = '0' * 10
+        self.endereco = '[anonimizado]'
+        self.numero = None
+        self.complemento = None
+        self.referencia = '[anonimizado]'
+        self.google_maps_link = None
+        self.ficha_manual = None
+        self.ixc_lead_id = None
+        self.consentimento_ip = None
+        self.anonimizado_em = timezone.now()
+
+        # save() bypassa full_clean() porque o documento agora é placeholder
+        # (não-CPF/CNPJ) e essas validações falhariam.
+        super(Cadastro, self).save()
+
+        AcessoDadoSensivel.objects.create(
+            user=executado_por,
+            cadastro=self,
+            acao='anonimizado',
+            motivo=motivo or 'Anonimização LGPD',
+        )
+        return True
+
+
+class AcessoDadoSensivel(models.Model):
+    """
+    Audit log para acesso a dados pessoais (PII).
+    Registramos apenas acessos cross-consultor (admin abrindo cadastro de
+    outro consultor) e ações sensíveis (export, anonimização).
+    """
+    ACAO_CHOICES = [
+        ('visualizou', 'Visualizou cadastro'),
+        ('exportou', 'Exportou JSON'),
+        ('editou', 'Editou cadastro'),
+        ('anonimizado', 'Anonimizou cadastro'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='acessos_pii')
+    cadastro = models.ForeignKey('Cadastro', on_delete=models.CASCADE, related_name='acessos')
+    acao = models.CharField(max_length=20, choices=ACAO_CHOICES, default='visualizou')
+    criado_em = models.DateTimeField(auto_now_add=True, db_index=True)
+    motivo = models.CharField(max_length=255, blank=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Acesso a dado sensível'
+        verbose_name_plural = 'Acessos a dados sensíveis'
+        ordering = ['-criado_em']
+
+    def __str__(self):
+        who = self.user.get_username() if self.user else '(removido)'
+        return f"{who} {self.get_acao_display().lower()} cadastro #{self.cadastro_id} em {self.criado_em:%d/%m/%Y %H:%M}"
+
 
 from .operacao_models import (  # noqa: E402
     AppConfigOperacao,
     CidadeOperacao,
     FaixaVencimento,
     OpcaoVencimento,
+    OrigemCanalVenda,
     PlanoDefinicao,
     PlanoGrupo,
     VagaInstalacao,

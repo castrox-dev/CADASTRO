@@ -1,12 +1,13 @@
 from django.contrib import admin
 
 from .forms_operacao import PlanoDefinicaoForm
-from .models import Cadastro
+from .models import AcessoDadoSensivel, Cadastro
 from .operacao_models import (
     AppConfigOperacao,
     CidadeOperacao,
     FaixaVencimento,
     OpcaoVencimento,
+    OrigemCanalVenda,
     PlanoDefinicao,
     PlanoGrupo,
     VagaInstalacao,
@@ -15,9 +16,25 @@ from .operacao_models import (
 
 @admin.register(Cadastro)
 class CadastroAdmin(admin.ModelAdmin):
-    list_display = ('nome_razao', 'documento', 'cidade', 'plano', 'status', 'consultor', 'data_cadastro')
-    list_filter = ('status', 'cidade', 'plano', 'consultor')
+    list_display = ('nome_razao', 'documento', 'cidade', 'plano', 'status', 'consultor', 'data_cadastro', 'consentimento_lgpd', 'anonimizado_em')
+    list_filter = ('status', 'cidade', 'plano', 'consultor', 'consentimento_lgpd', ('anonimizado_em', admin.EmptyFieldListFilter))
     search_fields = ('nome_razao', 'documento', 'email', 'telefone')
+    readonly_fields = ('consentimento_em', 'consentimento_ip', 'anonimizado_em')
+
+
+@admin.register(AcessoDadoSensivel)
+class AcessoDadoSensivelAdmin(admin.ModelAdmin):
+    list_display = ('criado_em', 'user', 'acao', 'cadastro', 'ip')
+    list_filter = ('acao', 'criado_em')
+    search_fields = ('user__username', 'cadastro__documento', 'cadastro__nome_razao', 'ip')
+    date_hierarchy = 'criado_em'
+    readonly_fields = ('user', 'cadastro', 'acao', 'criado_em', 'motivo', 'ip')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 class PlanoDefinicaoInline(admin.StackedInline):
@@ -119,3 +136,12 @@ class AppConfigOperacaoAdmin(admin.ModelAdmin):
 class VagaInstalacaoAdmin(admin.ModelAdmin):
     list_display = ('data', 'periodo', 'vagas_max', 'ativo')
     list_filter = ('ativo', 'periodo')
+
+
+@admin.register(OrigemCanalVenda)
+class OrigemCanalVendaAdmin(admin.ModelAdmin):
+    list_display = ('label', 'ixc_id', 'ordem', 'ativo')
+    list_editable = ('ixc_id', 'ordem', 'ativo')
+    list_filter = ('ativo',)
+    search_fields = ('label', 'ixc_id')
+    ordering = ('ordem', 'label')

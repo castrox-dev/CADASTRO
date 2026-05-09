@@ -75,10 +75,21 @@ class PlanoGrupoForm(forms.ModelForm):
 class PlanoDefinicaoForm(forms.ModelForm):
     class Meta:
         model = PlanoDefinicao
-        fields = ('codigo', 'titulo', 'descricao_html', 'texto_opcional', 'ordem', 'ixc_plano_venda_id')
+        fields = (
+            'codigo',
+            'titulo',
+            'nome_velocidade',
+            'preco_mensal_reais',
+            'descricao_html',
+            'texto_opcional',
+            'ordem',
+            'ixc_plano_venda_id',
+        )
         widgets = {
             'codigo': forms.TextInput(attrs=CONTROL),
             'titulo': forms.TextInput(attrs=CONTROL),
+            'nome_velocidade': forms.TextInput(attrs={**CONTROL, 'placeholder': 'Ex.: 240 MEGA, 1 GIGA'}),
+            'preco_mensal_reais': forms.NumberInput(attrs={**CONTROL, 'step': '0.01', 'min': 0, 'placeholder': '0.00'}),
             'descricao_html': forms.Textarea(attrs={**CONTROL, 'rows': 10}),
             'texto_opcional': forms.Textarea(attrs={**CONTROL, 'rows': 2}),
             'ordem': forms.NumberInput(attrs={**CONTROL, 'min': 0}),
@@ -86,9 +97,13 @@ class PlanoDefinicaoForm(forms.ModelForm):
         }
         labels = {
             'descricao_html': 'Descrição na ficha',
+            'nome_velocidade': 'Velocidade (texto curto)',
+            'preco_mensal_reais': 'Mensalidade (R$)',
         }
         help_texts = {
             'descricao_html': 'Use Enter para nova linha. Negrito: *preço* ou **destaque** (como WhatsApp). Não é necessário usar códigos HTML.',
+            'nome_velocidade': 'Aparece em listagens e na OS automática (ex.: «240 MEGA»). Vazio = usar o "Título".',
+            'preco_mensal_reais': 'Mensalidade em reais usada na geração da OS / ficha automática.',
         }
 
     def __init__(self, *args, **kwargs):

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% comment %}
+Shell do painel administrativo: sidebar + topbar mobile + área principal.
+Templates filhos devem definir `admin_content` (e opcionalmente
+`admin_page_title` para o cabeçalho mobile).
+
+Centraliza o markup que antes era duplicado em `base_admin.html` e
+`dashboard.html`. JS movido para `static/js/admin_shell.js`.
+{% endcomment %}
+
+{% block content %}
+<div class="admin-app-shell">
+    <aside class="admin-sidebar" id="adminSidebar" aria-label="Menu administrativo">
+        {% include "cadastros/includes/admin_sidebar.html" %}
+    </aside>
+    <div class="admin-sidebar-backdrop d-lg-none" id="adminSidebarBackdrop" tabindex="-1"></div>
+    <div class="admin-main">
+        <header class="admin-topbar d-lg-none align-items-center gap-2">
+            <button type="button" class="btn btn-link text-white p-1 rounded admin-menu-toggle" id="adminMenuToggle" aria-label="Abrir menu">
+                <i class="bi bi-list fs-3"></i>
+            </button>
+            <span class="fw-bold text-white text-truncate small flex-grow-1">{% block admin_page_title %}Painel{% endblock %}</span>
+        </header>
+        <div class="admin-main-inner">
+            {% block admin_content %}{% endblock %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script src="{% static 'js/admin_shell.js' %}" defer></script>
+{% endblock %}

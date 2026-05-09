@@ -1,12 +1,15 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse, HttpResponse
 from django.core.exceptions import ValidationError
-from .models import Cadastro
+from django.db import IntegrityError
+from .models import Cadastro, AcessoDadoSensivel
+from .forms_cadastro import CadastroForm
 from .form_config import get_form_config_dict
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
 from django.utils.dateparse import parse_date
 from django.db.models import Count, Q
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from datetime import timedelta
 import logging
@@ -14,6 +17,38 @@ import json
 
 def is_admin(user):
     return user.is_superuser
+
+def _cadastro_for_user(request, pk):
+    """Cadastro acessível ao usuário: superuser vê todos, consultor só o próprio."""
+    qs = Cadastro.objects.all() if request.user.is_superuser else Cadastro.objects.filter(consultor=request.user)
+    return get_object_or_404(qs, pk=pk)
+
+
+def _client_ip(request):
+    """Extrai o IP de origem respeitando proxies (X-Forwarded-For). Para LGPD."""
+    xff = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
+
+
+def _audit_pii(request, cadastro, acao):
+    """
+    Registra um acesso a dado pessoal (PII) quando o usuário NÃO é o consultor
+    dono do cadastro. Consultor abrindo o próprio cadastro NÃO gera log.
+    Falhas no log nunca bloqueiam a request.
+    """
+    try:
+        if cadastro.consultor_id == request.user.id:
+            return
+        AcessoDadoSensivel.objects.create(
+            user=request.user if request.user.is_authenticated else None,
+            cadastro=cadastro,
+            acao=acao,
+            ip=_client_ip(request),
+        )
+    except Exception:
+        logger.exception('Falha ao registrar acesso PII')
 
 from .integrations import IXCIntegration
 logger = logging.getLogger(__name__)
@@ -61,8 +96,20 @@ def send_to_ixc(request, pk):
             cadastro.ixc_lead_enviado_em = timezone.now()
             cadastro.save(update_fields=['ixc_lead_id', 'ixc_lead_enviado_em'])
 
-            logs.append("[PROSPECT] estratégia=novo (criação do zero)")
-            prospect_result = ixc.create_prospect(cadastro, crm_lead_id=crm_lead_id)
+            strategy = (ixc.prospect_strategy or 'auto').lower()
+            logs.append(f"[PROSPECT] estratégia={strategy}")
+
+            if strategy == 'convert':
+                prospect_result = ixc.convert_lead_to_prospect(cadastro, crm_lead_id=crm_lead_id)
+            elif strategy == 'new':
+                prospect_result = ixc.create_prospect(cadastro, crm_lead_id=crm_lead_id)
+            else:
+                # auto: tenta converter primeiro; se falhar, cria do zero.
+                prospect_result = ixc.convert_lead_to_prospect(cadastro, crm_lead_id=crm_lead_id)
+                if prospect_result.get('status') != 'success':
+                    logs.extend(prospect_result.get('logs', []))
+                    logs.append("[PROSPECT] convert falhou, tentando criar do zero")
+                    prospect_result = ixc.create_prospect(cadastro, crm_lead_id=crm_lead_id)
             logs.extend(prospect_result.get('logs', []))
 
             if prospect_result.get('status') == 'success':
@@ -96,45 +143,56 @@ def send_to_ixc(request, pk):
 @login_required
 @user_passes_test(is_admin)
 def admin_dashboard(request):
+    today = timezone.now().date()
     consultores = User.objects.filter(is_superuser=False).annotate(
         total_cadastros=Count('cadastro'),
         pendentes=Count('cadastro', filter=Q(cadastro__status='pendente')),
         realizados=Count('cadastro', filter=Q(cadastro__status='realizado'))
     )
-    
-    total_geral = Cadastro.objects.count()
-    total_hoje = Cadastro.objects.filter(data_cadastro__date=timezone.now().date()).count()
-    
+
+    # Agrega total_geral + total_hoje numa única query (3.2)
+    totais = Cadastro.objects.aggregate(
+        total_geral=Count('id'),
+        total_hoje=Count('id', filter=Q(data_cadastro__date=today)),
+    )
+
     recent_users = User.objects.order_by('-last_login')[:25]
 
     return render(request, 'cadastros/admin_dashboard.html', {
         'consultores': consultores,
-        'total_geral': total_geral,
-        'total_hoje': total_hoje,
+        'total_geral': totais['total_geral'],
+        'total_hoje': totais['total_hoje'],
         'recent_users': recent_users,
     })
 
 @login_required
 @user_passes_test(is_admin)
 def reports_page(request):
-    # ... (existing code)
+    today = timezone.now().date()
+    start_date = today - timedelta(days=6)
+
     status_data = Cadastro.objects.values('status').annotate(total=Count('status'))
-    
-    # Dados para gráfico de linha (Últimos 7 dias)
+
+    # 3.2 — agrega os 7 dias numa única query com TruncDate em vez de 7 chamadas.
+    daily_counts = (
+        Cadastro.objects
+        .filter(data_cadastro__date__gte=start_date)
+        .annotate(day=TruncDate('data_cadastro'))
+        .values('day')
+        .annotate(total=Count('id'))
+    )
+    counts_by_day = {item['day']: item['total'] for item in daily_counts}
     last_7_days = []
     for i in range(6, -1, -1):
-        date = timezone.now().date() - timedelta(days=i)
-        count = Cadastro.objects.filter(data_cadastro__date=date).count()
+        date = today - timedelta(days=i)
         last_7_days.append({
             'date': date.strftime('%d/%m'),
-            'count': count
+            'count': counts_by_day.get(date, 0),
         })
 
-    # Top Planos
     planos_data = Cadastro.objects.values('plano').annotate(total=Count('plano')).order_by('-total')
-    
     total_geral = Cadastro.objects.count()
-    
+
     return render(request, 'cadastros/reports.html', {
         'status_labels': [s['status'].upper() for s in status_data],
         'status_values': [s['total'] for s in status_data],
@@ -195,57 +253,38 @@ def client_form(request):
             pass
 
     if request.method == 'POST':
-        # Aqui capturamos os dados do POST manualmente para facilitar com o JS multi-step
-        data = request.POST
-        files = request.FILES
-        
+        # LGPD — exige aceite explícito da Política de Privacidade
+        consentiu = request.POST.get('consentimento_lgpd') in ('1', 'true', 'on', 'yes')
+        if not consentiu:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'É necessário ler e aceitar a Política de Privacidade para concluir o cadastro.'
+            }, status=400)
+
+        form = CadastroForm(request.POST, request.FILES)
+        if not form.is_valid():
+            msg = next(iter(form.errors.values()))[0] if form.errors else 'Dados inválidos.'
+            return JsonResponse({'status': 'error', 'message': msg}, status=400)
+
+        cadastro = form.save(commit=False)
+        cadastro.consultor = consultor
+        cadastro.consentimento_lgpd = True
+        cadastro.consentimento_em = timezone.now()
+        cadastro.consentimento_ip = _client_ip(request)
         try:
-            cadastro = Cadastro(
-                tipo_pessoa=data.get('tipoPessoa'),
-                documento=data.get('documento'),
-                nome_razao=data.get('nome_razao'),
-                nome_fantasia=data.get('nome_fantasia'),
-                rg=data.get('rg'),
-                inscricao_estadual=data.get('inscricao_estadual'),
-                data_nascimento=parse_date(data.get('data_nascimento')) if data.get('data_nascimento') else None,
-                contrato_social=files.get('contrato_social'),
-                comprovante_residencia=files.get('comprovante_residencia'),
-                foto_documento_frente=files.get('foto_documento_frente'),
-                foto_documento_verso=files.get('foto_documento_verso'),
-                selfie_documento=files.get('selfie_documento'),
-                levar_termo=data.get('levar_termo') == 'on',
-                email=data.get('email'),
-                telefone=data.get('telefone'),
-                cep=data.get('cep'),
-                cidade=data.get('cidade'),
-                uf=data.get('uf'),
-                bairro=data.get('bairro'),
-                endereco=data.get('endereco'),
-                numero=data.get('numero'),
-                complemento=data.get('complemento'),
-                referencia=data.get('referencia'),
-                google_maps_link=data.get('google_maps_link'),
-                plano=data.get('plano'),
-                fidelidade=data.get('fidelidade') == 'sim',
-                vencimento=data.get('vencimento'),
-                vencimento_id=data.get('vencimento_id'),
-                aluguel_roteador_wifi=data.get('aluguel_roteador_wifi') == '1',
-                aluguel_repetidor_mesh=data.get('aluguel_repetidor_mesh') == '1',
-                pagamento_instalacao=data.get('pagamento_instalacao'),
-                data_instalacao=parse_date(data.get('data_instalacao')),
-                periodo_instalacao=data.get('periodo_instalacao'),
-                origem=data.get('origem'),
-                consultor=consultor
-            )
-            # O save() agora chama full_clean() que valida CPF/CNPJ e Duplicidade
             cadastro.save()
-            return JsonResponse({'status': 'success', 'id': cadastro.id})
         except ValidationError as e:
-            # Pega a mensagem de erro amigável (do validador ou da duplicidade)
             msg = e.messages[0] if hasattr(e, 'messages') else str(e)
             return JsonResponse({'status': 'error', 'message': msg}, status=400)
+        except IntegrityError:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Já existe um cadastro com este CPF/CNPJ.'
+            }, status=400)
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': f"Erro inesperado: {str(e)}"}, status=400)
+
+        return JsonResponse({'status': 'success', 'id': cadastro.id})
 
     try:
         form_config = get_form_config_dict()
@@ -255,41 +294,54 @@ def client_form(request):
 
 @login_required
 def dashboard(request):
-    cadastros = Cadastro.objects.filter(consultor=request.user).order_by('-data_cadastro')
-    return render(request, 'cadastros/dashboard.html', {
+    cadastros = (
+        Cadastro.objects
+        .filter(consultor=request.user)
+        .select_related('consultor')
+        .order_by('-data_cadastro')
+    )
+    template = 'cadastros/dashboard_admin.html' if request.user.is_superuser else 'cadastros/dashboard.html'
+    return render(request, template, {
         'cadastros': cadastros,
-        'status_choices': Cadastro.STATUS_CHOICES
+        'status_choices': Cadastro.STATUS_CHOICES,
     })
 
 @login_required
 def update_status(request, pk):
     if request.method == 'POST':
-        cadastro = get_object_or_404(Cadastro, pk=pk, consultor=request.user)
-        cadastro.status = request.POST.get('status')
-        cadastro.save()
+        cadastro = _cadastro_for_user(request, pk)
+        novo_status = request.POST.get('status')
+        valid_statuses = {choice for choice, _ in Cadastro.STATUS_CHOICES}
+        if novo_status not in valid_statuses:
+            return JsonResponse({'status': 'error', 'message': 'Status inválido.'}, status=400)
+        cadastro.status = novo_status
+        cadastro.save(update_fields=['status'])
         return JsonResponse({'status': 'success'})
     return JsonResponse({'status': 'error'}, status=400)
 
 @login_required
 def update_ficha(request, pk):
     if request.method == 'POST':
-        cadastro = get_object_or_404(Cadastro, pk=pk, consultor=request.user)
+        cadastro = _cadastro_for_user(request, pk)
         cadastro.ficha_manual = request.POST.get('ficha_texto')
-        cadastro.save()
+        cadastro.save(update_fields=['ficha_manual'])
         return JsonResponse({'status': 'success'})
     return JsonResponse({'status': 'error'}, status=400)
 
 @login_required
 def cadastro_detail(request, pk):
-    cadastro = get_object_or_404(Cadastro, pk=pk, consultor=request.user)
-    return render(request, 'cadastros/detail.html', {
+    cadastro = _cadastro_for_user(request, pk)
+    _audit_pii(request, cadastro, 'visualizou')
+    template = 'cadastros/detail_admin.html' if request.user.is_superuser else 'cadastros/detail.html'
+    return render(request, template, {
         'cadastro': cadastro,
-        'status_choices': Cadastro.STATUS_CHOICES
+        'status_choices': Cadastro.STATUS_CHOICES,
     })
 
 @login_required
 def export_cadastro_json(request, pk):
-    cadastro = get_object_or_404(Cadastro, pk=pk, consultor=request.user)
+    cadastro = _cadastro_for_user(request, pk)
+    _audit_pii(request, cadastro, 'exportou')
     ixc = IXCIntegration()
     payload = {
         'cadastro_id': cadastro.pk,
@@ -308,69 +360,71 @@ def export_cadastro_json(request, pk):
 
 @login_required
 def edit_cadastro(request, pk):
-    cadastro = get_object_or_404(Cadastro, pk=pk, consultor=request.user)
+    cadastro = _cadastro_for_user(request, pk)
     if request.method == 'POST':
-        # Lógica de atualização simplificada para exemplo, pode-se usar um Form
-        data = request.POST
-        files = request.FILES
-        
+        _audit_pii(request, cadastro, 'editou')
+        form = CadastroForm(request.POST, request.FILES, instance=cadastro, partial=True)
+        if not form.is_valid():
+            msg = next(iter(form.errors.values()))[0] if form.errors else 'Dados inválidos.'
+            return JsonResponse({'status': 'error', 'message': msg}, status=400)
+
+        form.apply_to(cadastro, files=request.FILES)
         try:
-            cadastro.tipo_pessoa = data.get('tipoPessoa')
-            cadastro.documento = data.get('documento')
-            cadastro.nome_razao = data.get('nome_razao')
-            cadastro.nome_fantasia = data.get('nome_fantasia')
-            cadastro.rg = data.get('rg')
-            cadastro.inscricao_estadual = data.get('inscricao_estadual')
-            if data.get('data_nascimento'):
-                cadastro.data_nascimento = parse_date(data.get('data_nascimento'))
-            
-            if files.get('contrato_social'): cadastro.contrato_social = files.get('contrato_social')
-            if files.get('comprovante_residencia'): cadastro.comprovante_residencia = files.get('comprovante_residencia')
-            if files.get('foto_documento_frente'): cadastro.foto_documento_frente = files.get('foto_documento_frente')
-            if files.get('foto_documento_verso'): cadastro.foto_documento_verso = files.get('foto_documento_verso')
-            if files.get('selfie_documento'): cadastro.selfie_documento = files.get('selfie_documento')
-            
-            cadastro.levar_termo = data.get('levar_termo') == 'on'
-            cadastro.email = data.get('email')
-            cadastro.telefone = data.get('telefone')
-            cadastro.cep = data.get('cep')
-            cadastro.cidade = data.get('cidade')
-            cadastro.uf = data.get('uf')
-            cadastro.bairro = data.get('bairro')
-            cadastro.endereco = data.get('endereco')
-            cadastro.numero = data.get('numero')
-            cadastro.complemento = data.get('complemento')
-            cadastro.referencia = data.get('referencia')
-            cadastro.google_maps_link = data.get('google_maps_link')
-            cadastro.plano = data.get('plano')
-            cadastro.fidelidade = data.get('fidelidade') == 'sim'
-            cadastro.vencimento = data.get('vencimento')
-            cadastro.vencimento_id = data.get('vencimento_id')
-            cadastro.aluguel_roteador_wifi = data.get('aluguel_roteador_wifi') == '1'
-            cadastro.aluguel_repetidor_mesh = data.get('aluguel_repetidor_mesh') == '1'
-            cadastro.pagamento_instalacao = data.get('pagamento_instalacao')
-            if data.get('data_instalacao'):
-                cadastro.data_instalacao = parse_date(data.get('data_instalacao'))
-            cadastro.periodo_instalacao = data.get('periodo_instalacao')
-            cadastro.origem = data.get('origem')
-            
             cadastro.save()
-            return JsonResponse({'status': 'success', 'message': 'Cadastro atualizado com sucesso!'})
         except ValidationError as e:
             msg = e.messages[0] if hasattr(e, 'messages') else str(e)
             return JsonResponse({'status': 'error', 'message': msg}, status=400)
+        except IntegrityError:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Já existe um cadastro com este CPF/CNPJ.'
+            }, status=400)
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-    return render(request, 'cadastros/edit.html', {'cadastro': cadastro})
+        return JsonResponse({'status': 'success', 'message': 'Cadastro atualizado com sucesso!'})
+
+    template = 'cadastros/edit_admin.html' if request.user.is_superuser else 'cadastros/edit.html'
+    return render(request, template, {'cadastro': cadastro})
 
 @login_required
 def delete_cadastro(request, pk):
     if request.method == 'POST':
-        cadastro = get_object_or_404(Cadastro, pk=pk, consultor=request.user)
+        cadastro = _cadastro_for_user(request, pk)
         cadastro.delete()
         return JsonResponse({'status': 'success'})
     return JsonResponse({'status': 'error'}, status=400)
+
+
+@login_required
+@user_passes_test(is_admin)
+def anonimizar_cadastro(request, pk):
+    """
+    Anonimização sob demanda (LGPD art. 18). Apenas superusers — pensado para
+    atender a pedido formal de exclusão do titular dos dados sem perder os
+    indicadores operacionais (status, plano, cidade) já agregados.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Método inválido.'}, status=400)
+
+    cadastro = get_object_or_404(Cadastro, pk=pk)
+    if cadastro.is_anonimizado:
+        return JsonResponse({
+            'status': 'warning',
+            'message': 'Este cadastro já estava anonimizado.'
+        })
+
+    motivo = (request.POST.get('motivo') or '').strip()[:255] or 'Pedido do titular (LGPD art. 18)'
+    try:
+        cadastro.anonimizar(executado_por=request.user, motivo=motivo)
+    except Exception as exc:
+        logger.exception('Falha ao anonimizar cadastro %s', pk)
+        return JsonResponse({'status': 'error', 'message': str(exc)}, status=500)
+
+    return JsonResponse({
+        'status': 'success',
+        'message': 'Cadastro anonimizado com sucesso. Os dados pessoais foram removidos.'
+    })
 
 @login_required
 def standard_scripts(request):

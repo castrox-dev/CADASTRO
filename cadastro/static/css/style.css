@@ -182,8 +182,10 @@ img, svg, video, canvas {
 .admin-sidebar {
     width: 260px;
     flex-shrink: 0;
-    background: linear-gradient(180deg, #1f1f44 0%, #14142e 100%);
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    /* Tema light (default): sidebar clara sobre conteúdo claro */
+    background: linear-gradient(180deg, #ffffff 0%, #f4f5fb 100%);
+    border-right: 1px solid var(--border-color);
+    color: var(--text-main);
     position: fixed;
     top: 0;
     left: 0;
@@ -215,16 +217,28 @@ img, svg, video, canvas {
 .admin-topbar {
     display: flex;
     padding: 10px 14px;
-    background: linear-gradient(180deg, #1f1f44 0%, #14142e 100%);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    /* Light: topbar branca/cinza claro */
+    background: linear-gradient(180deg, #ffffff 0%, #f4f5fb 100%);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-main);
     position: sticky;
     top: 0;
     z-index: 1030;
+}
+.admin-topbar .admin-menu-toggle {
+    color: var(--text-main) !important;
+}
+.admin-topbar > span {
+    color: var(--text-main) !important;
 }
 
 [data-theme="dark"] .admin-topbar {
     background: linear-gradient(180deg, #0d0d1c 0%, #07070f 100%);
     border-bottom-color: var(--border-color);
+}
+[data-theme="dark"] .admin-topbar .admin-menu-toggle,
+[data-theme="dark"] .admin-topbar > span {
+    color: #fff !important;
 }
 
 .admin-menu-toggle {
@@ -256,7 +270,8 @@ img, svg, video, canvas {
     padding: 10px 12px;
     margin: 2px 4px;
     border-radius: var(--radius-sm);
-    color: rgba(255, 255, 255, 0.88);
+    /* Light default */
+    color: rgba(15, 23, 42, 0.78);
     text-decoration: none;
     font-size: 0.9rem;
     transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
@@ -269,14 +284,26 @@ img, svg, video, canvas {
 }
 
 .admin-nav-link:hover {
-    background: rgba(255, 255, 255, 0.09);
-    color: #fff;
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--primary-color);
 }
 
 .admin-nav-link.active {
-    background: rgba(255, 107, 0, 0.18);
+    background: rgba(255, 107, 0, 0.14);
     color: var(--secondary-color);
     box-shadow: inset 3px 0 0 var(--secondary-color);
+}
+
+[data-theme="dark"] .admin-nav-link {
+    color: rgba(255, 255, 255, 0.88);
+}
+[data-theme="dark"] .admin-nav-link:hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: #fff;
+}
+[data-theme="dark"] .admin-nav-link.active {
+    background: rgba(255, 107, 0, 0.18);
+    color: var(--secondary-color);
 }
 
 .admin-sidebar-theme {
@@ -674,6 +701,30 @@ button:focus-visible,
     background-color: var(--border-color);
 }
 
+/* Outline variants do Bootstrap usam cores escuras por padrão, somem no fundo escuro */
+[data-theme="dark"] .btn-outline-dark,
+[data-theme="dark"] .btn-outline-secondary {
+    color: var(--text-soft);
+    border-color: var(--border-color-strong);
+    background-color: transparent;
+}
+[data-theme="dark"] .btn-outline-dark:hover,
+[data-theme="dark"] .btn-outline-dark:focus,
+[data-theme="dark"] .btn-outline-secondary:hover,
+[data-theme="dark"] .btn-outline-secondary:focus {
+    background-color: var(--border-color);
+    color: var(--text-main);
+    border-color: var(--border-color-strong);
+}
+
+/* Snippets de código que usam bg-light no template; no dark vira fundo claro com texto claro */
+[data-theme="dark"] code.bg-light,
+[data-theme="dark"] pre.bg-light {
+    background-color: var(--pre-bg) !important;
+    color: var(--text-soft);
+    border: 1px solid var(--border-color);
+}
+
 /* ------- Botões "Ações Rápidas" (página de detalhe) -------- */
 .btn-action-premium {
     position: relative;
@@ -820,6 +871,23 @@ button:focus-visible,
 .form-control-premium::placeholder {
     color: var(--text-muted);
     opacity: 0.85;
+}
+
+/* Help texts (Bootstrap .form-text, Django .helptext, legado .help-block) */
+.form-text,
+.helptext,
+.help-block {
+    color: var(--text-muted);
+}
+
+[data-theme="dark"] .form-text,
+[data-theme="dark"] .form-text *,
+[data-theme="dark"] .helptext,
+[data-theme="dark"] .help-block,
+[data-theme="dark"] .form-check-label,
+[data-theme="dark"] .form-label,
+[data-theme="dark"] label {
+    color: var(--text-soft) !important;
 }
 
 [data-theme="dark"] .form-control,
@@ -1433,3 +1501,182 @@ textarea#fichaTextarea.ficha-textarea:focus {
         padding-right: max(0.75rem, env(safe-area-inset-right));
     }
 }
+
+/* --------------------------------------------------------------------------
+   16. AUDITORIA DE CONTRASTE NO DARK (item 4.4 do MELHORIAS.md)
+   -------------------------------------------------------------------------- */
+
+/* Caret do <select.form-select> no dark — Bootstrap embute SVG escuro
+   que fica invisível em fundo escuro. Substituímos por um SVG claro. */
+[data-theme="dark"] .form-select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23e1e4ed' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+}
+
+/* <option> nativo: no Firefox o popup respeita estes estilos. */
+[data-theme="dark"] select option,
+[data-theme="dark"] .form-select option {
+    background-color: #1c1c2c;
+    color: var(--text-main);
+}
+
+/* <select> "puro" (sem .form-select) usado por integrações antigas. */
+[data-theme="dark"] select:not(.form-select):not(.form-control) {
+    background-color: var(--input-bg);
+    color: var(--text-main);
+    border-color: var(--border-color);
+}
+
+/* Alerts Bootstrap herdados (inline; toasts já cobertos). */
+[data-theme="dark"] .alert-info {
+    background-color: rgba(52, 152, 219, 0.18);
+    border-color: rgba(52, 152, 219, 0.45);
+    color: #b8d6f0;
+}
+[data-theme="dark"] .alert-warning {
+    background-color: rgba(241, 196, 15, 0.16);
+    border-color: rgba(241, 196, 15, 0.45);
+    color: #f3d35a;
+}
+[data-theme="dark"] .alert-success {
+    background-color: rgba(46, 204, 113, 0.16);
+    border-color: rgba(46, 204, 113, 0.45);
+    color: #7fe3a9;
+}
+[data-theme="dark"] .alert-danger {
+    background-color: rgba(231, 76, 60, 0.18);
+    border-color: rgba(231, 76, 60, 0.45);
+    color: #ff8d80;
+}
+[data-theme="dark"] .alert .btn-close {
+    filter: invert(1) grayscale(1) brightness(2);
+}
+
+/* Status badges em telas escuras: garantir borda mínima para destacar
+   sobre fundos quase pretos (cards e tabelas). */
+[data-theme="dark"] .badge[class*="badge-status-"] {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Foco visível em botões de ícone (a11y - 4.6). */
+.btn:focus-visible,
+.btn-link:focus-visible {
+    outline: 2px solid var(--secondary-color);
+    outline-offset: 2px;
+}
+
+/* Bloco de consentimento LGPD (lembrete no Step 6) */
+.lgpd-consent {
+    background: rgba(255, 107, 0, 0.05);
+    border-color: rgba(255, 107, 0, 0.25) !important;
+}
+.lgpd-consent a {
+    color: var(--secondary-color);
+    font-weight: 600;
+}
+[data-theme="dark"] .lgpd-consent {
+    background: rgba(255, 107, 0, 0.10);
+    border-color: rgba(255, 107, 0, 0.40) !important;
+}
+
+/* Tela inicial de aceite LGPD (#lgpdGate) — bloqueia o cadastro até o cliente aceitar */
+.lgpd-gate {
+    max-width: 640px;
+    margin: 0 auto;
+}
+.lgpd-gate-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    background: rgba(255, 107, 0, 0.10);
+    color: var(--secondary-color);
+    margin: 0 auto;
+}
+.lgpd-gate-icon i {
+    font-size: 2.4rem;
+}
+.lgpd-gate-callout {
+    background: rgba(52, 152, 219, 0.08);
+    border-left: 4px solid #3498db;
+    border-radius: 8px;
+    padding: 16px 18px;
+    color: var(--text-main);
+}
+.lgpd-gate-callout i {
+    color: #3498db;
+    font-size: 1.2rem;
+}
+.lgpd-gate-callout a {
+    color: var(--secondary-color);
+    font-weight: 600;
+}
+[data-theme="dark"] .lgpd-gate-callout {
+    background: rgba(52, 152, 219, 0.14);
+    border-left-color: #62b1ee;
+}
+[data-theme="dark"] .lgpd-gate-callout i {
+    color: #62b1ee;
+}
+[data-theme="dark"] .lgpd-gate-icon {
+    background: rgba(255, 107, 0, 0.18);
+}
+
+/* --------------------------------------------------------------------------
+   17. SIDEBAR ADMIN — TEMA LIGHT (sobrescreve utilities Bootstrap inline)
+   -------------------------------------------------------------------------- */
+
+/* No light, anular `text-white` e `text-white-50` que vêm hardcoded
+   no template `admin_sidebar.html` (foram desenhados pensando em sidebar escura). */
+[data-theme="light"] .admin-sidebar .text-white {
+    color: var(--text-main) !important;
+}
+[data-theme="light"] .admin-sidebar .text-white-50,
+[data-theme="light"] .admin-sidebar .text-white\/50 {
+    color: var(--text-muted) !important;
+}
+[data-theme="light"] .admin-sidebar .border-white {
+    border-color: var(--border-color) !important;
+}
+[data-theme="light"] .admin-sidebar .border-opacity-10 {
+    --bs-border-opacity: 1;
+}
+
+/* Logo container e nome no brand */
+[data-theme="light"] .admin-sidebar-brand a {
+    color: var(--text-main) !important;
+}
+
+/* Section labels do menu */
+[data-theme="light"] .admin-sidebar-nav .admin-nav-section {
+    color: var(--text-muted) !important;
+}
+
+/* Botão de tema dentro da sidebar */
+[data-theme="light"] .admin-sidebar-theme {
+    color: var(--text-main) !important;
+}
+[data-theme="light"] .admin-sidebar-theme:hover {
+    background: rgba(0, 0, 0, 0.04) !important;
+    color: var(--primary-color) !important;
+}
+
+/* Dropdown da conta no rodapé: trocar btn-outline-light → look outline-dark no light */
+[data-theme="light"] .admin-sidebar-footer .btn-outline-light {
+    color: var(--text-main);
+    border-color: var(--border-color);
+    background: transparent;
+}
+[data-theme="light"] .admin-sidebar-footer .btn-outline-light:hover,
+[data-theme="light"] .admin-sidebar-footer .btn-outline-light:focus-visible {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+/* Botão hambúrguer da topbar mobile */
+[data-theme="light"] .admin-topbar .admin-menu-toggle:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+

@@ -40,8 +40,10 @@
                 {% if f.non_field_errors %}<div class="alert alert-danger small">{{ f.non_field_errors }}</div>{% endif %}
                 <div class="row g-2">
                     <div class="col-lg-2">{{ f.id }}<label class="form-label small">Código</label>{{ f.codigo }}</div>
-                    <div class="col-lg-4"><label class="form-label small">Título</label>{{ f.titulo }}</div>
-                    <div class="col-lg-2"><label class="form-label small">Ordem</label>{{ f.ordem }}</div>
+                    <div class="col-lg-3"><label class="form-label small">Título</label>{{ f.titulo }}</div>
+                    <div class="col-lg-2"><label class="form-label small">Velocidade</label>{{ f.nome_velocidade }}</div>
+                    <div class="col-lg-2"><label class="form-label small">Mensalidade (R$)</label>{{ f.preco_mensal_reais }}</div>
+                    <div class="col-lg-1"><label class="form-label small">Ordem</label>{{ f.ordem }}</div>
                     <div class="col-lg-2"><label class="form-label small">IXC plano</label>{{ f.ixc_plano_venda_id }}</div>
                     <div class="col-lg-2 pt-lg-4">{% if f.DELETE %}{{ f.DELETE }} <label class="small">Apagar</label>{% endif %}</div>
                     <div class="col-12">
