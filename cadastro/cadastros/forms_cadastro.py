@@ -68,22 +68,67 @@ class CadastroForm(forms.ModelForm):
             'origem',
         ]
 
+    # Labels amigáveis usados nas mensagens de erro retornadas para o cliente.
+    # Mantemos em maiúsculas e com o mesmo nome que aparece no formulário.
+    FRIENDLY_LABELS = {
+        'tipo_pessoa': 'TIPO DE PESSOA',
+        'documento': 'CPF/CNPJ',
+        'nome_razao': 'NOME / RAZÃO SOCIAL',
+        'nome_fantasia': 'NOME FANTASIA',
+        'rg': 'RG',
+        'inscricao_estadual': 'INSCRIÇÃO ESTADUAL',
+        'data_nascimento': 'DATA DE NASCIMENTO',
+        'contrato_social': 'CONTRATO SOCIAL',
+        'comprovante_residencia': 'COMPROVANTE DE RESIDÊNCIA',
+        'foto_documento_frente': 'FOTO DO DOCUMENTO (FRENTE)',
+        'foto_documento_verso': 'FOTO DO DOCUMENTO (VERSO)',
+        'selfie_documento': 'SELFIE COM DOCUMENTO',
+        'email': 'E-MAIL',
+        'telefone': 'TELEFONE',
+        'cep': 'CEP',
+        'cidade': 'CIDADE',
+        'uf': 'UF',
+        'bairro': 'BAIRRO',
+        'endereco': 'ENDEREÇO',
+        'numero': 'NÚMERO',
+        'complemento': 'COMPLEMENTO',
+        'referencia': 'PONTO DE REFERÊNCIA',
+        'google_maps_link': 'LINK DO GOOGLE MAPS',
+        'plano': 'PLANO',
+        'vencimento': 'DIA DE VENCIMENTO',
+        'pagamento_instalacao': 'MODO DE PAGAMENTO',
+        'data_instalacao': 'DATA DA INSTALAÇÃO',
+        'periodo_instalacao': 'PERÍODO',
+        'origem': 'ORIGEM',
+    }
+
     def __init__(self, *args, partial=False, **kwargs):
         """`partial=True` torna todos os campos opcionais (uso em edição parcial)."""
         super().__init__(*args, **kwargs)
+        # Labels amigáveis para mensagens de erro
+        for name, label in self.FRIENDLY_LABELS.items():
+            if name in self.fields:
+                self.fields[name].label = label
         if partial:
             for f in self.fields.values():
                 f.required = False
+        else:
+            # O front envia `tipoPessoa` (camelCase) como hidden e nós convertemos
+            # em `tipo_pessoa` no clean(). Por isso o snake_case não pode ser
+            # validado como required pelo ModelForm — senão dispara
+            # "Este campo é obrigatório" antes mesmo do clean() ter chance de rodar.
+            if 'tipo_pessoa' in self.fields:
+                self.fields['tipo_pessoa'].required = False
 
     # --- Pré-processamento (compatibilidade com o front legado) -------------
     def clean(self):
         cleaned = super().clean()
         data = self.data
 
-        # tipoPessoa (camelCase) → tipo_pessoa
-        tipo_alias = (data.get('tipoPessoa') or '').strip()
-        if tipo_alias and not cleaned.get('tipo_pessoa'):
-            cleaned['tipo_pessoa'] = tipo_alias
+        # tipoPessoa (camelCase) → tipo_pessoa  (com fallback p/ 'pf')
+        tipo_alias = (data.get('tipoPessoa') or data.get('tipo_pessoa') or '').strip().lower()
+        if not cleaned.get('tipo_pessoa'):
+            cleaned['tipo_pessoa'] = tipo_alias if tipo_alias in ('pf', 'pj') else 'pf'
 
         # Checkboxes que chegam como '1' / 'sim' / 'on'
         cleaned['fidelidade'] = self._to_bool(data.get('fidelidade'), {'sim', '1', 'on', 'true'})

@@ -1078,103 +1078,141 @@ function populateSummary() {
 
 
 
-function validateStep(step) {
-    const city = document.getElementById('cidade').value;
-    const type = document.getElementById('tipoPessoa').value;
-    const levarTermo = document.getElementById('levar_termo') ? document.getElementById('levar_termo').checked : false;
-    
-    // Define os campos obrigatórios por passo
+// Mapa de campos obrigatórios por step. Levamos em conta cidade/tipo PF-PJ
+// e a regra "levar termo" no momento de chamar.
+function getRequiredFieldsForStep(step) {
+    const city = document.getElementById('cidade')?.value || '';
+    const type = document.getElementById('tipoPessoa')?.value || 'pf';
+    const levarTermo = document.getElementById('levar_termo')?.checked || false;
+
     const requiredFields = {
         1: ['documento', 'nome_razao', 'email', 'telefone'],
         2: ['cep', 'cidade', 'uf', 'bairro', 'endereco', 'referencia'],
         3: ['plano', 'vencimento'],
-        4: [], // Documentos variam
-        5: ['data_instalacao', 'periodo_instalacao', 'origem']
+        4: [],
+        5: ['data_instalacao', 'periodo_instalacao', 'origem'],
     };
 
-    // Ajustes específicos do Passo 1 (PF/PJ)
-    if (step === 1) {
-        if (type === 'pf') {
-            requiredFields[1].push('rg', 'data_nascimento');
-        } else {
-            requiredFields[1].push('nome_fantasia');
-        }
+    if (type === 'pf') {
+        requiredFields[1].push('rg', 'data_nascimento');
+    } else {
+        requiredFields[1].push('nome_fantasia');
     }
 
-    if (step === 4) {
-        if (!citySkipsDocs(city)) {
-            const c = getCityCfg(city);
-            const exigirFotos = c && typeof c.exigirFotos === 'boolean' ? c.exigirFotos : true;
-            if (!levarTermo) requiredFields[4].push('comprovante_residencia');
-            if (exigirFotos) {
-                requiredFields[4].push('foto_documento_frente', 'foto_documento_verso', 'selfie_documento');
-            }
-        }
-    }
-
-    if (step === 5) {
-        const fidInput = document.querySelector('input[name="fidelidade"]:checked');
-        const isFidelidade = fidInput ? fidInput.value === 'sim' : true;
+    if (!citySkipsDocs(city)) {
         const c = getCityCfg(city);
-        const precisaPag = c ? (c.alwaysShowPagamento || !isFidelidade) : (city === 'marica' || !isFidelidade);
-        if (precisaPag) {
-            requiredFields[5].push('pagamento_instalacao');
+        const exigirFotos = c && typeof c.exigirFotos === 'boolean' ? c.exigirFotos : true;
+        if (!levarTermo) requiredFields[4].push('comprovante_residencia');
+        if (exigirFotos) {
+            requiredFields[4].push('foto_documento_frente', 'foto_documento_verso', 'selfie_documento');
         }
     }
 
-    let valid = true;
-    const fieldsToValidate = requiredFields[step] || [];
-    
-    fieldsToValidate.forEach(fieldName => {
-        const input = document.getElementsByName(fieldName)[0] || document.getElementById(fieldName);
-        if (!input) return;
+    const fidInput = document.querySelector('input[name="fidelidade"]:checked');
+    const isFidelidade = fidInput ? fidInput.value === 'sim' : true;
+    const c = getCityCfg(city);
+    const precisaPag = c ? (c.alwaysShowPagamento || !isFidelidade) : (city === 'marica' || !isFidelidade);
+    if (precisaPag) {
+        requiredFields[5].push('pagamento_instalacao');
+    }
 
-        let isFieldValid = true;
-        if (input.type === 'file') {
-            isFieldValid = input.files && input.files.length > 0;
-        } else {
-            isFieldValid = input.value && input.value.trim() !== '';
-        }
+    return requiredFields[step] || [];
+}
 
-        // Maioridade no cadastro (PF)
-        if (fieldName === 'data_nascimento' && isFieldValid && type === 'pf') {
-            if (!validarIdadeMinima18(input.value)) {
-                isFieldValid = false;
-                showNotify('É necessário ter pelo menos 18 anos para realizar o cadastro.', 'warning');
-            }
-        }
+function getFieldLabel(fieldName, input) {
+    // 1) Tenta um <label for="id"> ou <label> dentro do mesmo .form-group / .pf-only / .pj-only
+    if (input?.id) {
+        const lbl = document.querySelector(`label[for="${input.id}"]`);
+        if (lbl) return lbl.innerText.replace('*', '').trim();
+    }
+    const group = input?.closest('.form-group, .row, .mb-3, .col-md-6, .col-md-12');
+    if (group) {
+        const lbl = group.querySelector('label');
+        if (lbl) return lbl.innerText.replace('*', '').trim();
+    }
+    return fieldName;
+}
 
-        if (fieldName === 'data_instalacao' && isFieldValid) {
-            const selectedDate = new Date(input.value + 'T00:00:00');
-            const minD = new Date(getMinInstallDateStr() + 'T00:00:00');
-            if (selectedDate < minD) {
-                isFieldValid = false;
-                showNotify('A data de instalação não atende à antecedência mínima configurada.', 'warning');
-            }
-        }
+function validateField(fieldName) {
+    const type = document.getElementById('tipoPessoa')?.value || 'pf';
+    const input = document.getElementsByName(fieldName)[0] || document.getElementById(fieldName);
+    if (!input) return { valid: true, input: null };
 
-        if (!isFieldValid) {
-            if (input.type === 'file') {
-                const wrapper = input.closest('.file-upload-wrapper');
-                if (wrapper) wrapper.style.borderColor = 'red';
-            } else {
-                input.style.borderColor = 'red';
-            }
+    let valid = input.type === 'file'
+        ? !!(input.files && input.files.length > 0)
+        : !!(input.value && input.value.trim() !== '');
+
+    let message = null;
+
+    if (valid && fieldName === 'data_nascimento' && type === 'pf') {
+        if (!validarIdadeMinima18(input.value)) {
             valid = false;
-        } else {
-            if (input.type === 'file') {
-                const wrapper = input.closest('.file-upload-wrapper');
-                if (wrapper) wrapper.style.borderColor = '#ddd';
-            } else {
-                input.style.borderColor = '#ddd';
-            }
+            message = 'É necessário ter pelo menos 18 anos para realizar o cadastro.';
         }
-    });
+    }
+    if (valid && fieldName === 'data_instalacao') {
+        const selectedDate = new Date(input.value + 'T00:00:00');
+        const minD = new Date(getMinInstallDateStr() + 'T00:00:00');
+        if (selectedDate < minD) {
+            valid = false;
+            message = 'A data de instalação não atende à antecedência mínima configurada.';
+        }
+    }
 
-    if (!valid && !document.querySelector('.toast.show')) {
-        showNotify('Por favor, preencha todos os campos obrigatórios (*).', 'warning');
+    if (input.type === 'file') {
+        const wrapper = input.closest('.file-upload-wrapper');
+        if (wrapper) wrapper.style.borderColor = valid ? '#ddd' : 'red';
+    } else {
+        input.style.borderColor = valid ? '' : 'red';
+    }
+
+    return { valid, input, message };
+}
+
+// Valida um step. Retorna true/false.
+// Em modo silent, não dispara toast (usado quando varremos vários steps).
+function validateStep(step, options) {
+    options = options || {};
+    const fields = getRequiredFieldsForStep(step);
+    let valid = true;
+    let firstError = null;
+
+    for (const fieldName of fields) {
+        const r = validateField(fieldName);
+        if (!r.valid) {
+            valid = false;
+            if (!firstError) firstError = { fieldName, input: r.input, message: r.message };
+        }
+    }
+
+    if (!valid && !options.silent) {
+        if (firstError && firstError.message) {
+            showNotify(firstError.message, 'warning');
+        } else if (!document.querySelector('.toast.show')) {
+            const lbl = firstError ? getFieldLabel(firstError.fieldName, firstError.input) : null;
+            showNotify(
+                lbl ? `Falta preencher: ${lbl}.` : 'Por favor, preencha todos os campos obrigatórios (*).',
+                'warning'
+            );
+        }
     }
     return valid;
+}
+
+// Varre todos os steps e retorna o primeiro problema encontrado.
+// { ok: true } se está tudo OK; senão { ok:false, step, fieldName, input, message }.
+function findFirstFormError() {
+    const steps = [1, 2, 3, 4, 5];
+    for (const s of steps) {
+        const fields = getRequiredFieldsForStep(s);
+        for (const fieldName of fields) {
+            const r = validateField(fieldName);
+            if (!r.valid) {
+                return { ok: false, step: s, fieldName, input: r.input, message: r.message };
+            }
+        }
+    }
+    return { ok: true };
 }
 
 // Logic for Cities
@@ -1372,13 +1410,52 @@ function updateVencimentoOptions(city) {
 }
 
 // Form submission
+// Remove `required` de inputs que estão dentro de containers display:none
+// (ex.: pf-only/pj-only quando o tipo oposto está selecionado, steps inativos),
+// para evitar o popup nativo "Este campo é obrigatório" do Chrome quando
+// algum reportValidity acidental dispara. Validação real é via JS.
+function clearRequiredOnHiddenInputs() {
+    const form = document.getElementById('registrationForm');
+    if (!form) return;
+    form.querySelectorAll('[required]').forEach((el) => {
+        // offsetParent === null indica que o elemento (ou um ancestral) é display:none.
+        if (el.offsetParent === null) {
+            el.dataset.requiredCleared = '1';
+            el.removeAttribute('required');
+        }
+    });
+}
+
 document.getElementById('registrationForm').onsubmit = function(e) {
     e.preventDefault();
 
     syncOpcionalHiddenFields();
-    
-    // Valida o último passo antes de submeter
-    if (!validateStep(currentStep)) return;
+    clearRequiredOnHiddenInputs();
+
+    // Varre TODOS os steps para encontrar campos obrigatórios em branco
+    // (assim o usuário não fica "preso" no Step 6 sem saber o que falta).
+    const result = findFirstFormError();
+    if (!result.ok) {
+        const lbl = getFieldLabel(result.fieldName, result.input);
+        const msg = result.message || `Falta preencher: ${lbl} (passo ${result.step}).`;
+        showNotify(msg, 'warning');
+
+        // Leva o usuário até o passo errado, scrolla até o campo e foca.
+        if (result.step !== currentStep) {
+            showStep(result.step);
+        }
+        setTimeout(() => {
+            try {
+                if (result.input && typeof result.input.scrollIntoView === 'function') {
+                    result.input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                if (result.input && typeof result.input.focus === 'function') {
+                    result.input.focus({ preventScroll: true });
+                }
+            } catch (_) { /* ignora */ }
+        }, 50);
+        return;
+    }
 
     // LGPD — exige consentimento explícito antes de enviar
     // (marcado pela tela inicial #lgpdGate; se chegou aqui sem valor, algo burlou o fluxo)

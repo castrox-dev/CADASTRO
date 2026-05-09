@@ -32,6 +32,23 @@ def _client_ip(request):
     return request.META.get('REMOTE_ADDR')
 
 
+def _format_form_error(form):
+    """Devolve a 1ª mensagem de erro do form prefixada pelo *label* do campo.
+
+    Sem isso o cliente recebe genérico "Este campo é obrigatório.", sem saber
+    qual campo. Mantemos o label original (em maiúsculas como aparece no UI).
+    """
+    if not form.errors:
+        return 'Dados inválidos.'
+    field_name, errors = next(iter(form.errors.items()))
+    msg = errors[0] if errors else 'Dados inválidos.'
+    if field_name == '__all__':
+        return msg
+    field_obj = form.fields.get(field_name)
+    label = field_obj.label if field_obj and field_obj.label else field_name.replace('_', ' ').upper()
+    return f'{label}: {msg}'
+
+
 def _audit_pii(request, cadastro, acao):
     """
     Registra um acesso a dado pessoal (PII) quando o usuário NÃO é o consultor
@@ -263,8 +280,10 @@ def client_form(request):
 
         form = CadastroForm(request.POST, request.FILES)
         if not form.is_valid():
-            msg = next(iter(form.errors.values()))[0] if form.errors else 'Dados inválidos.'
-            return JsonResponse({'status': 'error', 'message': msg}, status=400)
+            return JsonResponse(
+                {'status': 'error', 'message': _format_form_error(form)},
+                status=400,
+            )
 
         cadastro = form.save(commit=False)
         cadastro.consultor = consultor
@@ -365,8 +384,10 @@ def edit_cadastro(request, pk):
         _audit_pii(request, cadastro, 'editou')
         form = CadastroForm(request.POST, request.FILES, instance=cadastro, partial=True)
         if not form.is_valid():
-            msg = next(iter(form.errors.values()))[0] if form.errors else 'Dados inválidos.'
-            return JsonResponse({'status': 'error', 'message': msg}, status=400)
+            return JsonResponse(
+                {'status': 'error', 'message': _format_form_error(form)},
+                status=400,
+            )
 
         form.apply_to(cadastro, files=request.FILES)
         try:
