@@ -100,8 +100,9 @@
                     <h6 class="text-uppercase small fw-bold text-muted mb-3">1. Identificação</h6>
                     
                     <div class="form-group mb-3">
-                        <label>CPF OU CNPJ *</label>
-                        <input type="text" id="documento" name="documento" class="form-control form-control-premium" placeholder="000.000.000-00 ou 00.000.000/0000-00" inputmode="numeric" pattern="[0-9.\-/]*" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="next" oninput="handleDocumentInput()">
+                        <label id="labelDocumento" for="documento">CPF OU CNPJ *</label>
+                        <input type="text" id="documento" name="documento" class="form-control form-control-premium" placeholder="000.000.000-00 ou 00.000.000/0000-00" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="next" oninput="handleDocumentInput()">
+                        <small class="text-muted d-block mt-1">Digite o CPF (11 dígitos) ou CNPJ (14 dígitos). Detectamos automaticamente.</small>
                         <input type="hidden" id="tipoPessoa" name="tipoPessoa" value="pf">
                     </div>
 

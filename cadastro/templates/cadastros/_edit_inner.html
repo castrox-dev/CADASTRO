@@ -20,8 +20,8 @@
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <div class="form-group">
-                            <label>CPF OU CNPJ *</label>
-                            <input type="text" id="documento" name="documento" class="form-control form-control-premium" required value="{{ cadastro.documento }}" inputmode="numeric" pattern="[0-9.\-/]*" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="next" oninput="handleDocumentInput()">
+                            <label id="labelDocumento" for="documento">CPF OU CNPJ *</label>
+                            <input type="text" id="documento" name="documento" class="form-control form-control-premium" required value="{{ cadastro.documento }}" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="next" oninput="handleDocumentInput()">
                             <input type="hidden" id="tipoPessoa" name="tipoPessoa" value="{{ cadastro.tipo_pessoa }}">
                         </div>
                     </div>

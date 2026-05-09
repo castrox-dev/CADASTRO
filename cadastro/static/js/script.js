@@ -1,88 +1,109 @@
-// Document Auto-detection logic and Masks
+// CPF/CNPJ: campo único com detecção automática (>11 dígitos = CNPJ)
 $(document).ready(function() {
-    // Inicializar máscaras jQuery Mask
     $('#cep').mask('00000-000');
     $('#telefone').mask('(00) 00000-0000');
     $('#rg').mask('00.000.000-0');
-    
-    // Máscara dinâmica para CPF/CNPJ
-    var options = {
-        onKeyPress: function(val, e, field, options) {
-            var masks = ['000.000.000-00', '00.000.000/0000-00'];
-            var mask = (val.replace(/\D/g, '').length > 11) ? masks[1] : masks[0];
-            $('#documento').mask(mask, options);
-            handleDocumentInput(); // Mantém a lógica de troca PF/PJ
-        }
-    };
-    $('#documento').mask('000.000.000-00', options);
+
+    var $doc = $('#documento');
+    if ($doc.length) {
+        // Máscara dinâmica CPF/CNPJ. A máscara de CPF tem um '9' extra para
+        // permitir o 12º dígito sem que o jQuery Mask trave o input antes
+        // do onKeyPress conseguir trocar para a máscara de CNPJ.
+        var documentoMaskBehavior = function (val) {
+            return (val || '').replace(/\D/g, '').length > 11
+                ? '00.000.000/0000-00'
+                : '000.000.000-009';
+        };
+        var documentoMaskOpts = {
+            onKeyPress: function (val, e, field, options) {
+                field.mask(documentoMaskBehavior(val), options);
+                handleDocumentInput();
+            }
+        };
+        $doc.mask(documentoMaskBehavior, documentoMaskOpts);
+        handleDocumentInput();
+    }
 });
 
-function handleDocumentInput() {
-    const input = document.getElementById('documento');
-    const value = input.value;
-    const cleanValue = value.replace(/\D/g, '');
-    
-    const typeHidden = document.getElementById('tipoPessoa');
-    const pfOnly = document.querySelectorAll('.pf-only');
-    const pjOnly = document.querySelectorAll('.pj-only');
-    const labelNome = document.getElementById('labelNome');
-    const inputNome = document.getElementById('nome');
-    
-    // IDs corretos do form.html
-    const nomeFantasia = document.getElementById('nomeFantasia');
-    const contratoSocial = document.getElementById('contratoSocial');
-    const rg = document.getElementById('rg');
-    const dataNascimento = document.getElementById('dataNascimento');
+function applyTipoPessoaUI(kind) {
+    var pfOnly = document.querySelectorAll('.pf-only');
+    var pjOnly = document.querySelectorAll('.pj-only');
+    var labelNome = document.getElementById('labelNome');
+    var inputNome = document.getElementById('nome');
+    var nomeFantasia = document.getElementById('nomeFantasia');
+    var contratoSocial = document.getElementById('contratoSocial');
+    var rg = document.getElementById('rg');
+    var dataNascimento = document.getElementById('dataNascimento');
 
-    // Feedback visual de validação
-    if (cleanValue.length === 11) {
-        if (validarCPF(cleanValue)) {
-            input.style.borderColor = '#28a745';
-            showInputFeedback(input, true, 'CPF Válido');
-        } else {
-            input.style.borderColor = '#dc3545';
-            showInputFeedback(input, false, 'CPF Inválido');
-        }
-    } else if (cleanValue.length === 14) {
-        if (validarCNPJ(cleanValue)) {
-            input.style.borderColor = '#28a745';
-            showInputFeedback(input, true, 'CNPJ Válido');
-            buscarDadosCNPJ(cleanValue);
-        } else {
-            input.style.borderColor = '#dc3545';
-            showInputFeedback(input, false, 'CNPJ Inválido');
-        }
-    } else {
-        input.style.borderColor = '#ddd';
-        removeInputFeedback(input);
-    }
-
-    if (cleanValue.length > 11) {
-        // Switch to PJ
-        typeHidden.value = 'pj';
-        pfOnly.forEach(el => el.style.display = 'none');
-        pjOnly.forEach(el => {
+    if (kind === 'pj') {
+        pfOnly.forEach(function (el) { el.style.display = 'none'; });
+        pjOnly.forEach(function (el) {
             el.style.display = el.classList.contains('row') ? 'flex' : 'block';
         });
-        labelNome.innerText = 'RAZÃO SOCIAL *';
-        inputNome.placeholder = 'Digite a Razão Social';
+        if (labelNome) labelNome.innerText = 'RAZÃO SOCIAL *';
+        if (inputNome) inputNome.placeholder = 'Digite a Razão Social';
         if (nomeFantasia) nomeFantasia.required = true;
         if (contratoSocial) contratoSocial.required = true;
         if (rg) rg.required = false;
         if (dataNascimento) dataNascimento.required = false;
     } else {
-        // Default to PF
-        typeHidden.value = 'pf';
-        pfOnly.forEach(el => {
+        pfOnly.forEach(function (el) {
             el.style.display = el.classList.contains('row') ? 'flex' : 'block';
         });
-        pjOnly.forEach(el => el.style.display = 'none');
-        labelNome.innerText = 'NOME COMPLETO *';
-        inputNome.placeholder = 'Digite seu nome completo';
+        pjOnly.forEach(function (el) { el.style.display = 'none'; });
+        if (labelNome) labelNome.innerText = 'NOME COMPLETO *';
+        if (inputNome) inputNome.placeholder = 'Digite seu nome completo';
         if (nomeFantasia) nomeFantasia.required = false;
         if (contratoSocial) contratoSocial.required = false;
         if (rg) rg.required = true;
         if (dataNascimento) dataNascimento.required = true;
+    }
+}
+
+function handleDocumentInput() {
+    var input = document.getElementById('documento');
+    if (!input) return;
+    var cleanValue = (input.value || '').replace(/\D/g, '');
+    var typeHidden = document.getElementById('tipoPessoa');
+
+    // Detecta PF/PJ a partir do tamanho. Acima de 11 dígitos é CNPJ.
+    var kind = cleanValue.length > 11 ? 'pj' : 'pf';
+    var prev = typeHidden ? typeHidden.value : '';
+    if (typeHidden) typeHidden.value = kind;
+    // Ao voltar para PF, reseta o cache do auto-fill por CNPJ.
+    if (prev === 'pj' && kind === 'pf') window._lastCnpjBrasilApi = '';
+
+    applyTipoPessoaUI(kind);
+
+    // Feedback de validação por tamanho.
+    if (kind === 'pf') {
+        if (cleanValue.length === 11) {
+            if (validarCPF(cleanValue)) {
+                input.style.borderColor = '#28a745';
+                showInputFeedback(input, true, 'CPF válido');
+            } else {
+                input.style.borderColor = '#dc3545';
+                showInputFeedback(input, false, 'CPF inválido');
+            }
+        } else {
+            input.style.borderColor = '#ddd';
+            removeInputFeedback(input);
+        }
+    } else {
+        if (cleanValue.length === 14) {
+            if (validarCNPJ(cleanValue)) {
+                input.style.borderColor = '#28a745';
+                showInputFeedback(input, true, 'CNPJ válido');
+                buscarDadosCNPJ(cleanValue);
+            } else {
+                input.style.borderColor = '#dc3545';
+                showInputFeedback(input, false, 'CNPJ inválido');
+            }
+        } else {
+            input.style.borderColor = '#ddd';
+            removeInputFeedback(input);
+            if (cleanValue.length < 14) window._lastCnpjBrasilApi = '';
+        }
     }
 }
 
@@ -163,15 +184,18 @@ function validarCNPJ(cnpj) {
 }
 
 function buscarDadosCNPJ(cnpj) {
+    if (typeof window._lastCnpjBrasilApi === 'undefined') window._lastCnpjBrasilApi = '';
+    if (window._lastCnpjBrasilApi === cnpj) return;
     showNotify('Buscando dados da empresa...', 'info');
     fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`)
-        .then(r => r.json())
-        .then(data => {
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
             if (data.razao_social) {
+                window._lastCnpjBrasilApi = cnpj;
                 document.getElementById('nome').value = data.razao_social;
                 const nomeFantasia = document.getElementById('nomeFantasia');
                 if (nomeFantasia) nomeFantasia.value = data.nome_fantasia || data.razao_social;
-                
+
                 // Auto-preencher endereço se disponível
                 if (data.cep) {
                     document.getElementById('cep').value = data.cep;
@@ -180,7 +204,7 @@ function buscarDadosCNPJ(cnpj) {
                 showNotify('Dados da empresa carregados!', 'success');
             }
         })
-        .catch(() => showNotify('Não foi possível carregar os dados do CNPJ automaticamente.', 'warning'));
+        .catch(function () { showNotify('Não foi possível carregar os dados do CNPJ automaticamente.', 'warning'); });
 }
 
 // File Upload Listener e Drag-and-Drop
@@ -1097,6 +1121,9 @@ function getRequiredFieldsForStep(step) {
         requiredFields[1].push('rg', 'data_nascimento');
     } else {
         requiredFields[1].push('nome_fantasia');
+        if (document.getElementById('contratoSocial')) {
+            requiredFields[1].push('contrato_social');
+        }
     }
 
     if (!citySkipsDocs(city)) {
@@ -1143,6 +1170,21 @@ function validateField(fieldName) {
         : !!(input.value && input.value.trim() !== '');
 
     let message = null;
+
+    if (valid && fieldName === 'documento') {
+        var clean = (input.value || '').replace(/\D/g, '');
+        if (type === 'pj') {
+            if (clean.length !== 14 || !validarCNPJ(clean)) {
+                valid = false;
+                if (clean.length > 0 && clean.length < 14) message = 'CNPJ incompleto.';
+                else if (clean.length === 14) message = 'CNPJ inválido.';
+            }
+        } else if (clean.length !== 11 || !validarCPF(clean)) {
+            valid = false;
+            if (clean.length > 0 && clean.length < 11) message = 'CPF incompleto.';
+            else if (clean.length === 11) message = 'CPF inválido.';
+        }
+    }
 
     if (valid && fieldName === 'data_nascimento' && type === 'pf') {
         if (!validarIdadeMinima18(input.value)) {
