@@ -46,31 +46,31 @@
                     
                     <div class="form-group mb-3">
                         <label>CPF OU CNPJ *</label>
-                        <input type="text" id="documento" name="documento" class="form-control form-control-premium" placeholder="000.000.000-00 ou 00.000.000/0000-00" oninput="handleDocumentInput()">
+                        <input type="text" id="documento" name="documento" class="form-control form-control-premium" placeholder="000.000.000-00 ou 00.000.000/0000-00" inputmode="numeric" pattern="[0-9.\-/]*" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="next" oninput="handleDocumentInput()">
                         <input type="hidden" id="tipoPessoa" name="tipoPessoa" value="pf">
                     </div>
 
                     <div class="form-group mb-3">
                         <label id="labelNome">NOME COMPLETO *</label>
-                        <input type="text" id="nome" name="nome_razao" class="form-control form-control-premium" placeholder="Seu nome completo">
+                        <input type="text" id="nome" name="nome_razao" class="form-control form-control-premium" placeholder="Seu nome completo" autocomplete="name" autocapitalize="words" enterkeyhint="next">
                     </div>
 
                     <div class="form-group mb-3 pj-only" style="display:none;">
                         <label>NOME FANTASIA *</label>
-                        <input type="text" id="nomeFantasia" name="nome_fantasia" class="form-control form-control-premium" placeholder="Nome Fantasia da Empresa">
+                        <input type="text" id="nomeFantasia" name="nome_fantasia" class="form-control form-control-premium" placeholder="Nome Fantasia da Empresa" autocomplete="organization" autocapitalize="words">
                     </div>
 
                     <div class="row pf-only">
                         <div class="col-md-6 mb-3">
                             <div class="form-group">
                                 <label>RG *</label>
-                                <input type="text" id="rg" name="rg" class="form-control form-control-premium" placeholder="00.000.000-0">
+                                <input type="text" id="rg" name="rg" class="form-control form-control-premium" placeholder="00.000.000-0" inputmode="text" autocomplete="off" autocorrect="off">
                             </div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <div class="form-group">
                                 <label>DATA DE NASCIMENTO *</label>
-                                <input type="date" id="dataNascimento" name="data_nascimento" class="form-control form-control-premium">
+                                <input type="date" id="dataNascimento" name="data_nascimento" class="form-control form-control-premium" autocomplete="bday">
                                 <p class="text-muted small mt-1 mb-0">O titular do contrato deve ter 18 anos ou mais.</p>
                             </div>
                         </div>
@@ -78,7 +78,7 @@
 
                     <div class="form-group mb-3 pj-only" style="display:none;">
                         <label>INSCRIÇÃO ESTADUAL (Opcional)</label>
-                        <input type="text" id="inscricaoEstadual" name="inscricao_estadual" class="form-control form-control-premium" placeholder="Isento ou número">
+                        <input type="text" id="inscricaoEstadual" name="inscricao_estadual" class="form-control form-control-premium" placeholder="Isento ou número" inputmode="text" autocomplete="off">
                     </div>
 
                     <div class="form-group mb-3 pj-only" style="display:none;">
@@ -93,13 +93,13 @@
                         <div class="col-md-6 mb-3">
                             <div class="form-group">
                                 <label>E-MAIL *</label>
-                                <input type="email" name="email" class="form-control form-control-premium" placeholder="exemplo@email.com">
+                                <input type="email" name="email" class="form-control form-control-premium" placeholder="exemplo@email.com" autocomplete="email" inputmode="email" enterkeyhint="next">
                             </div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <div class="form-group">
                                 <label>TELEFONE (WHATSAPP) *</label>
-                                <input type="text" id="telefone" name="telefone" class="form-control form-control-premium" placeholder="(00) 00000-0000">
+                                <input type="tel" id="telefone" name="telefone" class="form-control form-control-premium" placeholder="(00) 00000-0000" inputmode="tel" autocomplete="tel" enterkeyhint="next">
                             </div>
                         </div>
                     </div>
@@ -117,7 +117,7 @@
                     
                     <div class="form-group mb-3">
                         <label>CEP *</label>
-                        <input type="text" id="cep" name="cep" class="form-control form-control-premium" placeholder="00000-000">
+                        <input type="text" id="cep" name="cep" class="form-control form-control-premium" placeholder="00000-000" inputmode="numeric" autocomplete="postal-code" enterkeyhint="next">
                     </div>
 
                     <div class="row">
@@ -154,25 +154,25 @@
 
                     <div class="form-group mb-3">
                         <label>BAIRRO *</label>
-                        <input type="text" id="bairro" name="bairro" class="form-control form-control-premium" placeholder="Ex: Centro">
+                        <input type="text" id="bairro" name="bairro" class="form-control form-control-premium" placeholder="Ex: Centro" autocomplete="address-level2" autocapitalize="words" enterkeyhint="next">
                     </div>
 
                     <div class="form-group mb-3">
                         <label>RUA/LOGRADOURO *</label>
-                        <input type="text" id="endereco" name="endereco" class="form-control form-control-premium" placeholder="Nome da rua">
+                        <input type="text" id="endereco" name="endereco" class="form-control form-control-premium" placeholder="Nome da rua" autocomplete="street-address" autocapitalize="words" enterkeyhint="next">
                     </div>
 
                     <div class="row">
                         <div class="col-md-4 mb-3">
                             <div class="form-group">
                                 <label>NÚMERO *</label>
-                                <input type="text" name="numero" class="form-control form-control-premium" placeholder="Nº">
+                                <input type="text" name="numero" class="form-control form-control-premium" placeholder="Nº, S/N, letra…" inputmode="text" autocomplete="off" enterkeyhint="next">
                             </div>
                         </div>
                         <div class="col-md-8 mb-3">
                             <div class="form-group">
                                 <label>COMPLEMENTO</label>
-                                <input type="text" name="complemento" class="form-control form-control-premium" placeholder="Apt, Bloco, etc.">
+                                <input type="text" name="complemento" class="form-control form-control-premium" placeholder="Apt, Bloco, etc." autocomplete="address-line2" autocapitalize="words" enterkeyhint="next">
                             </div>
                         </div>
                     </div>
@@ -199,7 +199,7 @@
 
                     <div class="form-group mb-3">
                         <label>PONTO DE REFERÊNCIA *</label>
-                        <textarea name="referencia" class="form-control form-control-premium" rows="2" placeholder="Ex: Próximo ao mercado..."></textarea>
+                        <textarea name="referencia" class="form-control form-control-premium" rows="2" placeholder="Ex: Próximo ao mercado..." autocomplete="off" autocapitalize="sentences" enterkeyhint="next"></textarea>
                     </div>
                 </div>
 
@@ -336,7 +336,7 @@
                         <div class="col-md-6 mb-3">
                             <div class="form-group">
                                 <label>DATA PARA INSTALAÇÃO *</label>
-                                <input type="date" id="data_instalacao" name="data_instalacao" class="form-control form-control-premium">
+                                <input type="date" id="data_instalacao" name="data_instalacao" class="form-control form-control-premium" autocomplete="off">
                             </div>
                         </div>
                         <div class="col-md-6 mb-3">
@@ -352,7 +352,7 @@
 
                     <div class="form-group mb-3">
                         <label>COMO NOS CONHECEU? *</label>
-                        <input type="text" name="origem" class="form-control form-control-premium" placeholder="Ex: Instagram, Indicação, etc.">
+                        <input type="text" name="origem" class="form-control form-control-premium" placeholder="Ex: Instagram, Indicação, etc." inputmode="text" autocapitalize="sentences" enterkeyhint="done">
                     </div>
                 </div>
 

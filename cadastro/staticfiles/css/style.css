@@ -1028,12 +1028,14 @@ textarea#fichaTextarea.ficha-textarea:focus {
     padding: 10px 16px;
     display: flex;
     align-items: flex-start;
+    gap: 10px;
     border-bottom: 1px solid var(--border-color);
 }
 .summary-label {
     font-weight: 600;
     width: 200px;
     min-width: 200px;
+    flex-shrink: 0;
     color: var(--text-muted);
     font-size: 12px;
     text-transform: uppercase;
@@ -1041,9 +1043,23 @@ textarea#fichaTextarea.ficha-textarea:focus {
 }
 .summary-value {
     flex: 1;
+    min-width: 0;
     color: var(--text-main);
     font-size: 14px;
     font-weight: 500;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.summary-value a {
+    overflow-wrap: anywhere;
+    word-break: break-all;
+}
+
+/* Revisão final: não estourar a largura do card (e-mail, URLs longas) */
+#confirmationSummary {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-width: 100%;
 }
 
 /* --------------------------------------------------------------------------
@@ -1073,5 +1089,20 @@ textarea#fichaTextarea.ficha-textarea:focus {
     .navbar-fibramar { padding: 12px 16px; }
     .btn-action-premium { padding: 10px 14px; font-size: 12px; }
     .stats-card .value { font-size: 26px; }
-    .summary-label { width: 130px; min-width: 130px; }
+    .summary-section-header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .summary-item {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+    }
+    .summary-label {
+        width: 100%;
+        min-width: 0;
+    }
+    .summary-value {
+        width: 100%;
+    }
 }
