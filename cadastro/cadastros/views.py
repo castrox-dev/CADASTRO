@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, Http404
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from .models import Cadastro, AcessoDadoSensivel
@@ -11,6 +11,7 @@ from django.utils.dateparse import parse_date
 from django.db.models import Count, Q
 from django.db.models.functions import TruncDate
 from django.utils import timezone
+from django.conf import settings
 from datetime import timedelta
 import logging
 import json
@@ -70,92 +71,253 @@ def _audit_pii(request, cadastro, acao):
 from .integrations import IXCIntegration
 logger = logging.getLogger(__name__)
 
+_IXC_MSG_MAX = 8000
+_IXC_LOGS_MAX = 30000
+
+
+def _truncate_ixc_msg(text, limit=_IXC_MSG_MAX):
+    if not text:
+        return ''
+    return str(text)[:limit]
+
 @login_required
 def send_to_ixc(request, pk):
     """
-    Aciona a integração para criar lead e, em seguida, prospect no IXC.
+    Integração IXC em etapas (POST):
+    - ixc_etapa=lead (padrão): cria lead/contato.
+    - ixc_etapa=prospect: cria crm_prospect (requer lead já enviado neste cadastro).
     """
-    if request.method == 'POST':
-        cadastro = get_object_or_404(Cadastro, pk=pk)
-        logs = [f"[INICIO] envio cadastro_id={cadastro.pk}"]
-        
-        # Instancia a integração
-        ixc = IXCIntegration()
-        if cadastro.ixc_lead_id:
-            logs.append(f"[DUPLICIDADE] ixc_lead_id local existente={cadastro.ixc_lead_id} (validando no IXC antes de bloquear)")
+    if request.method != 'POST':
+        return JsonResponse(
+            {'status': 'error', 'message': 'Use POST.', 'logs': []},
+            status=405,
+        )
+    try:
+        cadastro = _cadastro_for_user(request, pk)
+    except Http404:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Cadastro não encontrado ou você não tem permissão para este envio.',
+                'logs': ['[ERRO] cadastro inexistente ou fora do seu escopo (evita 404 HTML sem JSON).'],
+            },
+            status=404,
+        )
+    logs = [f"[INICIO] envio cadastro_id={cadastro.pk}"]
+    etapa = (request.POST.get('ixc_etapa') or 'lead').strip().lower()
+    try:
+        if etapa == 'prospect':
+            return _send_ixc_prospect_body(request, cadastro, logs)
+        if etapa != 'lead':
+            return JsonResponse(
+                {
+                    'status': 'error',
+                    'message': 'Parâmetro ixc_etapa inválido. Use lead ou prospect.',
+                    'logs': logs + [f'[ERRO] ixc_etapa={etapa!r}'],
+                },
+                status=400,
+            )
+        return _send_ixc_lead_body(request, cadastro, logs)
+    except Exception as e:
+        logger.exception("IXC send_to_ixc falhou cadastro=%s", cadastro.pk)
+        logs.append(f"[ERRO_INTERNO] {e}")
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Erro interno ao integrar com o IXC: {e}',
+            'logs': logs,
+        })
 
-        # Regra de duplicidade remota: documento já existente no IXC.
-        duplicate_check = ixc.check_duplicate_before_create(cadastro)
-        logs.extend(duplicate_check.get('logs', []))
-        if duplicate_check.get('status') == 'duplicate':
-            resource = duplicate_check.get('resource')
-            found_id = duplicate_check.get('found_id')
-            logger.warning("IXC duplicate cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
-            return JsonResponse({
-                'status': 'warning',
-                'message': f"Duplicidade no IXC: documento já existe em {resource} (ID: {found_id or 'N/A'}).",
-                'duplicate': True,
-                'logs': logs
-            })
-        
-        # Se não houver duplicidade remota, não bloqueia por ID local antigo.
-        if cadastro.ixc_lead_id:
-            logs.append("[DUPLICIDADE] sem duplicidade remota; ignorando ixc_lead_id local antigo")
-        
-        # Passo 1: Criar Lead no CRM
+
+def _send_ixc_lead_body(request, cadastro, logs):
+    """Etapa 1: apenas lead/contato no IXC (sem criar crm_prospect automaticamente)."""
+    ixc = IXCIntegration()
+    if cadastro.ixc_lead_id:
+        logs.append(f"[DUPLICIDADE] ixc_lead_id local existente={cadastro.ixc_lead_id} (validando no IXC antes de bloquear)")
+
+    duplicate_check = ixc.check_duplicate_before_create(cadastro)
+    logs.extend(duplicate_check.get('logs', []))
+    if duplicate_check.get('status') == 'duplicate':
+        resource = duplicate_check.get('resource')
+        found_id = duplicate_check.get('found_id')
+        logger.warning("IXC duplicate cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+        return JsonResponse({
+            'status': 'warning',
+            'message': f"Duplicidade no IXC: documento já existe em {resource} (ID: {found_id or 'N/A'}).",
+            'duplicate': True,
+            'logs': logs,
+            'ixc_etapa': 'lead',
+            'prospect_pendente': False,
+        })
+
+    lead_id_local = (cadastro.ixc_lead_id or '').strip()
+    if lead_id_local and getattr(settings, 'IXC_REUSE_LOCAL_LEAD_ID', False):
+        logs.append(
+            f"[CRM_LEAD] reutilizando lead já vinculado id={lead_id_local} "
+            "(não cria novo POST no IXC)"
+        )
+        lead_result = {
+            'status': 'success',
+            'lead_id': lead_id_local,
+            'lead_resource': 'local',
+            'message': '',
+            'logs': [],
+        }
+    else:
         lead_result = ixc.create_crm_lead(cadastro)
-        logs.extend(lead_result.get('logs', []))
-        
-        if lead_result['status'] == 'success':
-            crm_lead_id = lead_result.get('lead_id')
-            logs.append(f"[CRM_LEAD] id={crm_lead_id}")
-            cadastro.ixc_lead_id = str(crm_lead_id) if crm_lead_id else None
-            cadastro.ixc_lead_enviado_em = timezone.now()
-            cadastro.save(update_fields=['ixc_lead_id', 'ixc_lead_enviado_em'])
+    logs.extend(lead_result.get('logs', []))
 
-            strategy = (ixc.prospect_strategy or 'auto').lower()
-            logs.append(f"[PROSPECT] estratégia={strategy}")
+    if lead_result['status'] == 'success':
+        crm_lead_id = lead_result.get('lead_id')
+        logs.append(f"[CRM_LEAD] id={crm_lead_id}")
+        ja_tinha_prospect = bool((cadastro.ixc_prospect_id or '').strip())
+        cadastro.ixc_lead_id = str(crm_lead_id) if crm_lead_id else None
+        cadastro.ixc_lead_enviado_em = timezone.now()
+        cadastro.ixc_envio_status = 'integrado'
 
-            if strategy == 'convert':
-                prospect_result = ixc.convert_lead_to_prospect(cadastro, crm_lead_id=crm_lead_id)
-            elif strategy == 'new':
-                prospect_result = ixc.create_prospect(cadastro, crm_lead_id=crm_lead_id)
-            else:
-                # auto: tenta converter primeiro; se falhar, cria do zero.
-                prospect_result = ixc.convert_lead_to_prospect(cadastro, crm_lead_id=crm_lead_id)
-                if prospect_result.get('status') != 'success':
-                    logs.extend(prospect_result.get('logs', []))
-                    logs.append("[PROSPECT] convert falhou, tentando criar do zero")
-                    prospect_result = ixc.create_prospect(cadastro, crm_lead_id=crm_lead_id)
-            logs.extend(prospect_result.get('logs', []))
+        lead_res_name = (lead_result.get('lead_resource') or '').strip()
+        log_dict = {'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX)}
+        if lead_res_name:
+            log_dict['ixc_lead_resource'] = lead_res_name
 
-            if prospect_result.get('status') == 'success':
-                prospect_id = prospect_result.get('prospect_id')
-                logs.append(f"[FIM] lead enviado e prospect criado/convertido id={prospect_id or 'N/A'}")
-                logger.info("IXC lead+prospect success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
-                msg_prospect = f"ID: {prospect_id}" if prospect_id else "ID não retornado pela API"
-                return JsonResponse({
-                    'status': 'success',
-                    'message': f"Lead criado (ID: {crm_lead_id}) e prospect processado com sucesso ({msg_prospect}).",
-                    'lead_id': crm_lead_id,
-                    'prospect_id': prospect_id,
-                    'logs': logs
-                })
+        cadastro.ixc_envio_mensagem = _truncate_ixc_msg(
+            ' | '.join(
+                p
+                for p in (
+                    f"recurso={lead_res_name}",
+                    f"lead_id={crm_lead_id}",
+                    (lead_result.get('message') or '').strip(),
+                )
+                if p
+            )
+        )
+        cadastro.ixc_envio_logs = log_dict
+        cadastro.save(
+            update_fields=[
+                'ixc_lead_id',
+                'ixc_lead_enviado_em',
+                'ixc_envio_status',
+                'ixc_envio_mensagem',
+                'ixc_envio_logs',
+            ]
+        )
+        logs.append(f"[FIM] lead enviado id={crm_lead_id}")
+        logger.info("IXC lead success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+        prospect_pendente = not ja_tinha_prospect
+        return JsonResponse({
+            'status': 'success',
+            'message': f"Lead criado/enviado ao IXC (ID: {crm_lead_id}). Etapa 1 concluída.",
+            'lead_id': crm_lead_id,
+            'ixc_etapa': 'lead',
+            'prospect_pendente': prospect_pendente,
+            'logs': logs,
+        })
 
-            logs.append("[FIM] lead criado, mas prospect falhou")
-            logger.warning("IXC partial success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
-            return JsonResponse({
-                'status': 'warning',
-                'message': f"Lead criado (ID: {crm_lead_id}), mas não foi possível criar o prospect automaticamente.",
-                'lead_id': crm_lead_id,
-                'logs': logs
-            })
-        else:
-            logs.append("[FIM] falha no lead")
-            logger.error("IXC error cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
-            return JsonResponse({'status': 'error', 'message': lead_result['message'], 'logs': logs})
-            
-    return JsonResponse({'status': 'error'}, status=400)
+    logs.append("[FIM] falha no lead")
+    logger.error("IXC error cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+    cadastro.ixc_envio_status = 'erro_ixc'
+    cadastro.ixc_envio_mensagem = _truncate_ixc_msg(lead_result.get('message') or '')
+    cadastro.ixc_envio_logs = {
+        'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX),
+    }
+    cadastro.save(update_fields=['ixc_envio_status', 'ixc_envio_mensagem', 'ixc_envio_logs'])
+    return JsonResponse({
+        'status': 'error',
+        'message': lead_result.get('message') or 'Falha ao criar lead no IXC.',
+        'logs': logs,
+        'ixc_etapa': 'lead',
+    })
+
+
+def _send_ixc_prospect_body(request, cadastro, logs):
+    """Etapa 2: apenas crm_prospect (após lead). Exige ixc_lead_id no cadastro."""
+    ixc = IXCIntegration()
+    logs.append('[IXC] etapa=prospect')
+
+    if (cadastro.ixc_prospect_id or '').strip():
+        pid = cadastro.ixc_prospect_id.strip()
+        logs.append(f"[CRM_PROSPECT] já existe ixc_prospect_id={pid}")
+        return JsonResponse({
+            'status': 'warning',
+            'message': f'Prospecção já vinculada (ID IXC: {pid}).',
+            'prospect_id': pid,
+            'ixc_etapa': 'prospect',
+            'logs': logs,
+        })
+
+    lead_key = (cadastro.ixc_lead_id or '').strip()
+    if not lead_key:
+        logs.append('[CRM_PROSPECT] ixc_lead_id ausente — faça a etapa 1 (lead) antes.')
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Envie o lead primeiro (etapa 1). Depois use «Criar prospecção IXC».',
+                'logs': logs,
+                'ixc_etapa': 'prospect',
+            },
+            status=400,
+        )
+
+    lr = ''
+    if isinstance(cadastro.ixc_envio_logs, dict):
+        lr = (cadastro.ixc_envio_logs.get('ixc_lead_resource') or '').strip()
+    link_id = lead_key if lr in ('contato', 'local') else None
+    if lead_key and lr and lr not in ('contato', 'local'):
+        logs.append(
+            f'[CRM_PROSPECT] recurso do lead={lr!r} — id_contato não enviado (só contato/local).'
+        )
+
+    prospect_result = ixc.create_crm_prospect(cadastro, link_contato_id=link_id, force=True)
+    logs.extend(prospect_result.get('logs', []))
+
+    if prospect_result.get('status') == 'success':
+        pr_id = prospect_result.get('prospect_id')
+        cadastro.ixc_prospect_id = str(pr_id) if pr_id is not None else None
+        prev = (cadastro.ixc_envio_mensagem or '').strip()
+        tail = f"prospect_id={cadastro.ixc_prospect_id}"
+        cadastro.ixc_envio_mensagem = _truncate_ixc_msg(' | '.join(p for p in (prev, tail) if p))
+        log_block = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
+        log_block = {**log_block, 'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX)}
+        cadastro.ixc_envio_logs = log_block
+        cadastro.save(update_fields=['ixc_prospect_id', 'ixc_envio_mensagem', 'ixc_envio_logs'])
+        logs.append(f'[FIM] prospecção id={pr_id}')
+        logger.info("IXC prospect success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Prospecção criada no IXC (ID: {pr_id}). Etapa 2 concluída.',
+            'prospect_id': pr_id,
+            'ixc_etapa': 'prospect',
+            'logs': logs,
+        })
+
+    if prospect_result.get('status') == 'warning':
+        log_block = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
+        log_block = {**log_block, 'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX)}
+        cadastro.ixc_envio_logs = log_block
+        cadastro.save(update_fields=['ixc_envio_logs'])
+        logger.warning("IXC prospect skipped/warning cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+        return JsonResponse({
+            'status': 'warning',
+            'message': prospect_result.get('message') or 'Prospecção não disponível neste ambiente IXC.',
+            'ixc_etapa': 'prospect',
+            'logs': logs,
+        })
+
+    logger.error("IXC prospect error cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+    prev = (cadastro.ixc_envio_mensagem or '').strip()
+    err_msg = prospect_result.get('message') or 'Falha ao criar prospecção no IXC.'
+    tail = f"prospect_erro: {err_msg}"
+    cadastro.ixc_envio_mensagem = _truncate_ixc_msg(' | '.join(p for p in (prev, tail) if p))
+    log_block = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
+    log_block = {**log_block, 'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX)}
+    cadastro.ixc_envio_logs = log_block
+    cadastro.save(update_fields=['ixc_envio_mensagem', 'ixc_envio_logs'])
+    return JsonResponse({
+        'status': 'error',
+        'message': err_msg,
+        'ixc_etapa': 'prospect',
+        'logs': logs,
+    })
+
 
 @login_required
 @user_passes_test(is_admin)
@@ -365,9 +527,10 @@ def export_cadastro_json(request, pk):
     payload = {
         'cadastro_id': cadastro.pk,
         'lead_resources': [ixc.lead_resource_override] if ixc.lead_resource_override else ixc.CRM_LEAD_RESOURCES,
-        'prospect_resources': ixc.CRM_PROSPECT_NEW_RESOURCES,
         'lead_payload': ixc.build_crm_lead_payload(cadastro),
-        'prospect_payloads': ixc.build_prospect_payloads(cadastro, crm_lead_id=cadastro.ixc_lead_id),
+        'crm_prospect_resource': getattr(settings, 'IXC_CRM_PROSPECT_RESOURCE', '').strip()
+        or '(sequência padrão — ver CRM_PROSPECT_RESOURCES em integrations)',
+        'crm_prospect_payload': ixc.build_crm_prospect_payload(cadastro, link_contato_id=None),
     }
 
     response = HttpResponse(

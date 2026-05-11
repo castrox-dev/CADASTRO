@@ -240,13 +240,24 @@ if not DEBUG:
 IXC_API_URL = config('IXC_API_URL', default='')
 IXC_API_TOKEN = config('IXC_API_TOKEN', default='')
 IXC_LEAD_RESOURCE = config('IXC_LEAD_RESOURCE', default='')
-IXC_PROSPECT_STRATEGY = config('IXC_PROSPECT_STRATEGY', default='auto')
-IXC_PROSPECT_TIPO_ASSINANTE = config('IXC_PROSPECT_TIPO_ASSINANTE', default='1')
-IXC_PROSPECT_CLASSIFICACAO_ISS = config('IXC_PROSPECT_CLASSIFICACAO_ISS', default='99')
-IXC_PROSPECT_CLASSIFICACAO_ISS_FALLBACKS = config('IXC_PROSPECT_CLASSIFICACAO_ISS_FALLBACKS', default='99,00,01')
-IXC_PROSPECT_CLASSIFICACAO_ISS_ID = config('IXC_PROSPECT_CLASSIFICACAO_ISS_ID', default='')
-IXC_PROSPECT_CONTRIBUINTE_ICMS = config('IXC_PROSPECT_CONTRIBUINTE_ICMS', default='N')
-IXC_PROSPECT_TIPO_LOCALIDADE = config('IXC_PROSPECT_TIPO_LOCALIDADE', default='U')
+# Opcional: força id_plano_venda / id_origem no payload do lead (útil em IXC demo ou homolog).
+IXC_FORCE_PLANO_VENDA_ID = config('IXC_FORCE_PLANO_VENDA_ID', default='').strip()
+IXC_FORCE_CANAL_VENDA_ID = config('IXC_FORCE_CANAL_VENDA_ID', default='').strip()
+# Se o plano/canal ainda vier vazio após Operação + demo, use estes IDs do seu IXC (opcional).
+IXC_DEFAULT_PLANO_VENDA_ID = config('IXC_DEFAULT_PLANO_VENDA_ID', default='').strip()
+IXC_DEFAULT_CANAL_VENDA_ID = config('IXC_DEFAULT_CANAL_VENDA_ID', default='').strip()
+# Campanha (input#id_campanha no CRM IXC): só envie se o seu webservice exigir; costuma ser cadastro diferente de «Canal de venda».
+IXC_FORCE_CAMPANHA_ID = config('IXC_FORCE_CAMPANHA_ID', default='').strip()
+IXC_DEFAULT_CAMPANHA_ID = config('IXC_DEFAULT_CAMPANHA_ID', default='').strip()
+IXC_SEND_CANAL_AS_ID_CAMPANHA = config('IXC_SEND_CANAL_AS_ID_CAMPANHA', default=False, cast=bool)
+# True = após incluir, chama alterar com o mesmo JSON (2ª requisição). Pode duplicar lead em alguns IXC — use só se necessário.
+IXC_LEAD_POST_ALTERAR = config('IXC_LEAD_POST_ALTERAR', default=False, cast=bool)
+# True = se já houver ixc_lead_id no cadastro, não chama o webservice de lead de novo. False = sempre tenta criar lead.
+IXC_REUSE_LOCAL_LEAD_ID = config('IXC_REUSE_LOCAL_LEAD_ID', default=False, cast=bool)
+# Etapa 2 no painel usa force=True (ignora esta flag). Só afeta chamadas programáticas sem force.
+IXC_CREATE_CRM_PROSPECT = config('IXC_CREATE_CRM_PROSPECT', default=False, cast=bool)
+# Vazio = tenta CRM_PROSPECT_RESOURCES em sequência (demo e produção).
+IXC_CRM_PROSPECT_RESOURCE = config('IXC_CRM_PROSPECT_RESOURCE', default='').strip()
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

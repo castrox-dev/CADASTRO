@@ -85,18 +85,32 @@
                     }
                     if (typeof options.onSuccess === 'function') options.onSuccess(data);
                 } else {
+                    var res = result.response;
+                    var httpLine = '';
+                    if (!res.ok) {
+                        httpLine = 'HTTP ' + res.status + (res.statusText ? ' ' + res.statusText : '');
+                    }
+                    var fallbackMsg = data.message
+                        || (httpLine ? ('Resposta do servidor: ' + httpLine + '.') : 'Falha na operação.');
                     var emsg = typeof options.errorMessage === 'function'
                         ? options.errorMessage(data)
-                        : (options.errorMessage || data.message || 'Falha na operação.');
+                        : (options.errorMessage || fallbackMsg);
                     safeNotify(emsg, data.status === 'warning' ? 'warning' : 'danger');
-                    if (typeof options.onError === 'function') options.onError(null, data);
+                    var errPayload = Object.assign({}, data, { message: emsg });
+                    if (typeof options.onError === 'function') options.onError(null, errPayload);
                 }
                 return result;
             })
             .catch(function (err) {
                 console.error('fetchJson:', err);
-                safeNotify(options.errorMessage || 'Erro de conexão.', 'danger');
-                if (typeof options.onError === 'function') options.onError(err, null);
+                var netMsg = 'Falha de rede: não houve resposta válida do servidor (timeout, offline ou URL incorreta).';
+                if (err && err.message) {
+                    netMsg = 'Falha de rede: ' + err.message;
+                }
+                safeNotify(options.errorMessage || netMsg, 'danger');
+                if (typeof options.onError === 'function') {
+                    options.onError(err, { message: netMsg, logs: [] });
+                }
                 throw err;
             })
             .finally(function () {

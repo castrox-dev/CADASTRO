@@ -225,7 +225,7 @@ class OrigemCanalVenda(models.Model):
     )
     ixc_id = models.CharField(
         max_length=32,
-        help_text='ID correspondente em CRM > Configurações > Origens no IXC.',
+        help_text='ID no IXC: preferir o da tela CRM > Cadastros > Canal de vendas (combo «Canal de venda» no lead). Se usar só Origens, pode não preencher o canal.',
     )
     ordem = models.PositiveSmallIntegerField(default=0)
     ativo = models.BooleanField(default=True)

@@ -40,11 +40,7 @@ Observacoes:
 - `IXC_API_URL` pode ser informada com `.../adm.php`; o sistema normaliza automaticamente.
 - `IXC_API_TOKEN` deve estar no formato `id:token`.
 - `IXC_LEAD_RESOURCE` e opcional. Se preencher (ex.: `crm_leads`), o sistema usa apenas esse recurso; se vazio, tenta fallback automatico (`crm_leads`, `crm_sp_leads`, `crm_lead`).
-- `IXC_PROSPECT_STRATEGY`: `auto` (padrao), `new` ou `convert`.
-- Campos obrigatorios de prospect no IXC (ajuste conforme seu ERP): `IXC_PROSPECT_TIPO_ASSINANTE`, `IXC_PROSPECT_CLASSIFICACAO_ISS`, `IXC_PROSPECT_CONTRIBUINTE_ICMS`, `IXC_PROSPECT_TIPO_LOCALIDADE`.
-- `IXC_PROSPECT_CLASSIFICACAO_ISS` costuma aceitar `00`, `01`, `02`, `03` ou `99` (padrao). Se informar `1`, o sistema converte para `01`.
-- `IXC_PROSPECT_CLASSIFICACAO_ISS_FALLBACKS`: lista de tentativas automaticas (separadas por virgula) quando a API retornar "Preencha Classificacao de ISS".
-- `IXC_PROSPECT_CLASSIFICACAO_ISS_ID`: se seu IXC exigir ID interno da classificacao (comum no endpoint `cliente`), preencha aqui. Quando informado, ele tem prioridade sobre codigos `99/00/01`.
+- `IXC_REUSE_LOCAL_LEAD_ID`: se `True`, nao envia de novo ao IXC quando o cadastro ja tiver `ixc_lead_id` gravado.
 
 ### 5) Aplicar migracoes
 

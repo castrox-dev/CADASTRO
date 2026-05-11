@@ -78,13 +78,10 @@ Não há header CSP. Carregamos JS de CDNs (jsdelivr, cdnjs, jquery.com).
 **Concluído.** Adicionados `preco_mensal_reais` (DecimalField) e `nome_velocidade` (CharField) em `PlanoDefinicao` (migration `0022`). Criadas as properties `Cadastro.plano_velocidade` e `Cadastro.plano_preco_brl` que resolvem via `_get_plano_definicao()` (lookup por `cidade.grupo_planos + plano.codigo`), com fallback nos dicts antigos só para defesa em profundidade. `os_formatada` e `ficha_formatada` deixaram de duplicar dicionários inline. Migration de dados `0023` populou os planos existentes com os valores legados — preços/velocidades agora editáveis em `/admin-dash/operacao/grupos/<id>/`.
 
 ### 2.2 [Alta] [x] Eliminar mapas legados em `integrations.py`
-**Parcialmente concluído.** Criado modelo `OrigemCanalVenda(label, ixc_id, ordem, ativo)` (migration `0022`); seed em `0023` carrega as 8 origens atuais. Adicionado `IXCIntegration.resolve_origem_ixc_id()` que faz lookup por `label` no banco e cai no `ORIGENS_MAP` legado se não houver registro. `build_crm_lead_payload` e `build_prospect_payloads` agora usam o resolver. Registrado em `admin.py` para edição via Django Admin (`/admin/`). **Pendente**: criar UI para gerenciar origens no painel customizado `/admin-dash/operacao/origens/` (mesmo padrão das cidades).
+**Parcialmente concluído.** Criado modelo `OrigemCanalVenda(label, ixc_id, ordem, ativo)` (migration `0022`); seed em `0023` carrega as 8 origens atuais. Adicionado `IXCIntegration.resolve_origem_ixc_id()` que faz lookup por `label` no banco e cai no `ORIGENS_MAP` legado se não houver registro. `build_crm_lead_payload` usa o resolver. Registrado em `admin.py` para edição via Django Admin (`/admin/`). **Pendente**: criar UI para gerenciar origens no painel customizado `/admin-dash/operacao/origens/` (mesmo padrão das cidades).
 
-### 2.3 [Alta] [x] Implementar a estratégia `IXC_PROSPECT_STRATEGY=convert`
-**Concluído.** `views.send_to_ixc` agora ramifica:
-- `IXC_PROSPECT_STRATEGY=convert` → usa `convert_lead_to_prospect()`.
-- `IXC_PROSPECT_STRATEGY=new` → usa `create_prospect()` (comportamento antigo).
-- `IXC_PROSPECT_STRATEGY=auto` (padrão) → tenta convert; se falhar, faz fallback para `create_prospect()` automaticamente, registrando logs de cada tentativa.
+### 2.3 [Alta] [x] Prospect IXC / `IXC_PROSPECT_*`
+**Removido.** A integração IXC no app ficou restrita à criação de lead (`create_crm_lead`); fluxo de CRM prospect e variáveis `IXC_PROSPECT_*` / `IXC_ISS_INTERNAL_FALLBACK_IDS` foram retirados.
 
 ### 2.4 [Média] [x] Substituir `client_form`/`edit_cadastro` por Django Forms
 **Concluído.** Criado `cadastros/forms_cadastro.py` com `CadastroForm(forms.ModelForm)` cobrindo todos os campos do `Cadastro`. Aceita o alias `tipoPessoa` (camelCase), normaliza checkboxes (`'1'`/`'sim'`/`'on'` → bool) e expõe `apply_to(instance, files)` com semântica de checkbox HTML para edição segura. As views `client_form` e `edit_cadastro` reduziram ~40 linhas duplicadas cada e agora têm tratamento explícito de `IntegrityError`.
@@ -103,7 +100,7 @@ Não há header CSP. Carregamos JS de CDNs (jsdelivr, cdnjs, jquery.com).
 ## 3. Performance
 
 ### 3.1 [Alta] Tornar a integração IXC assíncrona ⏳ PENDENTE (precisa de decisão de infra)
-`send_to_ixc` faz até 4 requisições HTTP síncronas para o IXC (duplicidade + lead + prospect + retentativas). Bloqueia o request por até 2 min (timeout 30s × 4).
+`send_to_ixc` faz requisições HTTP síncronas ao IXC (checagem de duplicidade + criação de lead, com fallbacks de recurso). Bloqueia o request conforme timeouts configurados em `requests`.
 - **Por que não foi implementado nesta iteração**: exige um worker de fila persistente (Celery+Redis ou `django-q2` com cluster cmd). O deploy atual em Vercel é serverless, então `threading.Thread` "fire-and-forget" não funciona (a função morre quando a request termina). Precisamos primeiro decidir entre:
   1. mover deploy para um host com worker persistente (Render/Railway/Fly.io/VPS) e adicionar Celery+Redis;
   2. adotar um broker hospedado (Upstash QStash, Inngest, Trigger.dev) que dispara webhooks após X segundos — funciona em serverless;
@@ -211,7 +208,7 @@ Criar tabela em `INTEGRACAO_IXC.md` mapeando cada campo do `Cadastro` → endpoi
 ## 6. Deploy e DevOps
 
 ### 6.1 [Alta] Migrar do Vercel para Render/Railway/Fly
-Vercel não tem disco persistente, executa Django como função serverless e tem limite de payload. Os `FileField` (RG/selfie) só funcionam com Cloudinary configurado, e mesmo assim as funções "fluxo único" (criar lead → prospect) podem estourar 10s no Vercel free.
+Vercel não tem disco persistente, executa Django como função serverless e tem limite de payload. Os `FileField` (RG/selfie) só funcionam com Cloudinary configurado; chamadas longas ao IXC ainda podem estourar o limite de tempo do plano free.
 - **Ação**: o `Procfile` já existe na raiz. Conectar repositório no Render → Web Service Python → executar `migrate` automaticamente. Custo similar e suporte nativo a Postgres + cron.
 
 ### 6.2 [Alta] Versionar com Git
@@ -317,8 +314,6 @@ Adicionar `manifest.webmanifest` + service worker para instalar no celular como 
 - 1.1 SSL configurável + 1.2 Tirar PII dos debug JSON
 - 7.1 Suite de testes mínima
 - 2.1 Centralizar tabela de preços
-- 2.3 Implementar `prospect_strategy=convert`
-
 **Sprint 2 — UX e robustez**
 - 3.1 Integração IXC assíncrona (Celery)
 - 5.1 Logs estruturados + 5.2 Retry exponencial

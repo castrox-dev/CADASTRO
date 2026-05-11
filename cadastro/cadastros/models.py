@@ -10,6 +10,51 @@ from PIL import Image
 from io import BytesIO
 from django.core.files.base import ContentFile
 
+def only_digits_br(value):
+    """Apenas dígitos (CPF/CNPJ/CEP/telefone vindos do formulário)."""
+    return ''.join(c for c in str(value or '') if c.isdigit())
+
+
+def format_cpf_display(digits):
+    d = only_digits_br(digits)
+    if len(d) != 11:
+        return d
+    return f'{d[:3]}.{d[3:6]}.{d[6:9]}-{d[9:]}'
+
+
+def format_cnpj_display(digits):
+    d = only_digits_br(digits)
+    if len(d) != 14:
+        return d
+    return f'{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:]}'
+
+
+def format_cep_display(digits):
+    d = only_digits_br(digits)
+    if len(d) != 8:
+        return d
+    return f'{d[:5]}-{d[5:]}'
+
+
+def format_telefone_display(digits):
+    """Padrão BR: (DD) NNNNN-NNNN / (DD) NNNN-NNNN / 9999-9999 sem DDD."""
+    d = only_digits_br(digits)
+    if d.startswith('55') and len(d) > 11:
+        d = d[2:]
+    n = len(d)
+    if n == 8:
+        return f'{d[:4]}-{d[4:]}'
+    if n == 9 and d[0] == '9':
+        return f'{d[:5]}-{d[5:]}'
+    if n == 10:
+        return f'({d[:2]}) {d[2:6]}-{d[6:]}'
+    if n == 11:
+        if d[2] == '9':
+            return f'({d[:2]}) {d[2:7]}-{d[7:]}'
+        return f'({d[:2]}) {d[2:6]}-{d[6:]}'
+    return d
+
+
 def remove_special_chars(text):
     """
     Remove caracteres especiais e acentos de um texto.
@@ -24,7 +69,7 @@ def remove_special_chars(text):
 def get_file_path(instance, filename, field_name):
     ext = filename.split('.')[-1]
     # Limpa o documento para o nome do arquivo
-    clean_doc = instance.documento.replace('.', '').replace('-', '').replace('/', '')
+    clean_doc = only_digits_br(instance.documento)
     filename = f"{clean_doc}_{field_name}.{ext}"
     return os.path.join('documentos_clientes', filename)
 
@@ -104,7 +149,29 @@ class Cadastro(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pendente')
     ixc_lead_id = models.CharField(max_length=50, blank=True, null=True)
     ixc_lead_enviado_em = models.DateTimeField(blank=True, null=True)
-    
+    ixc_prospect_id = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text='ID do registro crm_prospect (prospecção) no IXC, quando criado pelo envio da ficha.',
+    )
+    ixc_envio_status = models.CharField(
+        max_length=20,
+        default='pendente',
+        db_index=True,
+        help_text='Último estado do envio ao IXC (histórico simple_history exige valor).',
+    )
+    ixc_envio_mensagem = models.TextField(
+        blank=True,
+        default='',
+        help_text='Última mensagem da API IXC ou resumo do envio (auditoria).',
+    )
+    ixc_envio_logs = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Auditoria do envio IXC; ex.: {"text": "…linhas de log…"}. No PG pode vir como jsonb legado.',
+    )
+
     # Campo para edição manual da ficha
     ficha_manual = models.TextField(blank=True, null=True)
 
@@ -128,15 +195,29 @@ class Cadastro(models.Model):
     history = HistoricalRecords()
 
     def clean(self):
-        # Sanitização e Validação no clean
-        self.documento = ''.join(filter(str.isdigit, self.documento))
-        self.cep = ''.join(filter(str.isdigit, self.cep))
-        self.telefone = ''.join(filter(str.isdigit, self.telefone))
+        # Normaliza para dígitos, valida e grava no padrão brasileiro de exibição.
+        doc_digits = only_digits_br(self.documento)
+        cep_digits = only_digits_br(self.cep)
+        tel_digits = only_digits_br(self.telefone)
+
+        if self.numero is not None:
+            n = str(self.numero).strip()
+            self.numero = n if n else None
 
         if self.tipo_pessoa == 'pf':
-            BRCPFValidator()(self.documento)
+            BRCPFValidator()(doc_digits)
         else:
-            BRCNPJValidator()(self.documento)
+            BRCNPJValidator()(doc_digits)
+
+        if len(cep_digits) != 8:
+            raise ValidationError({'cep': 'CEP deve ter 8 dígitos.'})
+
+        if tel_digits.startswith('55') and len(tel_digits) >= 12:
+            tel_digits = tel_digits[2:]
+        if len(tel_digits) < 8 or len(tel_digits) > 11:
+            raise ValidationError(
+                {'telefone': 'Informe um telefone válido (com DDD: 10 ou 11 dígitos, ou 8/9 dígitos sem DDD).'}
+            )
 
         # Maioridade (18+) — apenas pessoa física com data informada
         if self.tipo_pessoa == 'pf' and self.data_nascimento:
@@ -150,10 +231,19 @@ class Cadastro(models.Model):
                     'É necessário ter pelo menos 18 anos para realizar o cadastro.'
                 )
 
-        # Verificação de Duplicidade
-        existing = Cadastro.objects.filter(documento=self.documento).exclude(pk=self.pk)
-        if existing.exists():
-            raise ValidationError(f"Já existe um cadastro com este CPF/CNPJ. Status: {existing.first().get_status_display()}")
+        # Duplicidade: compara pelo valor numérico (registros antigos podem estar só com dígitos).
+        for other in Cadastro.objects.exclude(pk=self.pk).only('documento', 'status'):
+            if only_digits_br(other.documento) == doc_digits:
+                raise ValidationError(
+                    f'Já existe um cadastro com este CPF/CNPJ. Status: {other.get_status_display()}'
+                )
+
+        if self.tipo_pessoa == 'pf':
+            self.documento = format_cpf_display(doc_digits)
+        else:
+            self.documento = format_cnpj_display(doc_digits)
+        self.cep = format_cep_display(cep_digits)
+        self.telefone = format_telefone_display(tel_digits)
 
     def save(self, *args, **kwargs):
         update_fields = kwargs.get('update_fields')
@@ -409,6 +499,11 @@ class Cadastro(models.Model):
         self.google_maps_link = None
         self.ficha_manual = None
         self.ixc_lead_id = None
+        self.ixc_lead_enviado_em = None
+        self.ixc_prospect_id = None
+        self.ixc_envio_status = 'pendente'
+        self.ixc_envio_mensagem = ''
+        self.ixc_envio_logs = {}
         self.consentimento_ip = None
         self.anonimizado_em = timezone.now()
 
