@@ -69,14 +69,8 @@ class IXCIntegration:
         'TikTok': '13',
     }
     CRM_LEAD_RESOURCES = ['crm_leads', 'crm_sp_leads', 'crm_lead', 'contato']
-    # Ordem de tentativa em produção; o demo público em geral não expõe prospecção no WS.
-    CRM_PROSPECT_RESOURCES = [
-        'crm_prospect',
-        'crm_prospeccao',
-        'crm_sp_prospect',
-        'crm_prospects',
-        'crm_sp_prospects',
-    ]
+    # Prospecção: padrão só `crm_prospect` (exemplos públicos IXC/SDK). Nomes extras = Postman do provedor
+    # em IXC_CRM_PROSPECT_FALLBACK_RESOURCES (vírgula), não lista “chutada” no código.
 
     def _crm_lead_resources_to_try(self):
         """Ordem de recursos para criar lead. No demo público só `contato` responde — 1 POST por vez, sem fila em crm_* inexistentes."""
@@ -87,11 +81,22 @@ class IXCIntegration:
         return list(self.CRM_LEAD_RESOURCES)
 
     def _crm_prospect_resources_to_try(self):
-        """Recursos WS para incluir prospecção (tenta em sequência; demo e produção usam a mesma lista se não houver override)."""
+        """Recursos WS para incluir prospecção. Ordem: IXC_CRM_PROSPECT_RESOURCE (um só) senão
+        `crm_prospect` + opcionais em IXC_CRM_PROSPECT_FALLBACK_RESOURCES (conforme doc Postman do provedor).
+        """
         override = (getattr(settings, 'IXC_CRM_PROSPECT_RESOURCE', None) or '').strip()
         if override:
             return [override]
-        return list(self.CRM_PROSPECT_RESOURCES)
+        fallbacks_raw = (getattr(settings, 'IXC_CRM_PROSPECT_FALLBACK_RESOURCES', '') or '').strip()
+        extra = [x.strip() for x in fallbacks_raw.split(',') if x.strip()]
+        base = ['crm_prospect']
+        seen = set()
+        out = []
+        for name in base + extra:
+            if name not in seen:
+                seen.add(name)
+                out.append(name)
+        return out
 
     def __init__(self):
         self.url = self._normalize_base_url(getattr(settings, 'IXC_API_URL', ''))
@@ -511,25 +516,44 @@ class IXCIntegration:
         self._merge_crm_venda_fks(payload, id_plano, id_origem, id_canal)
         return payload
 
-    def build_crm_prospect_payload(self, cadastro, *, link_contato_id=None):
-        """Monta JSON para `crm_prospect` (prospecção CRM) a partir da mesma ficha do lead."""
+    def build_crm_prospect_payload(self, cadastro, *, link_contato_id=None, ixc_lead_resource=None):
+        """Monta JSON para prospecção CRM a partir da mesma ficha do lead.
+
+        `link_contato_id`: ID retornado na etapa 1 no IXC (mesmo valor de `ixc_lead_id` local).
+        `ixc_lead_resource`: recurso usado na etapa 1 (`contato`, `crm_leads`, …) — define vínculo
+        (`id_contato` vs `id_lead`).
+        """
         id_plano, id_origem, id_canal = self._resolve_plano_e_canal_venda(cadastro)
         id_filial = self.resolve_filial_id(cadastro.cidade)
         id_cidade = self.resolve_cidade_ixc_id(cadastro.cidade)
         ixc_data = cadastro.get_ixc_data()
         doc_display, cep_display, tel_display = self._ixc_display_pii(cadastro)
         tipo_ixc = 'J' if getattr(cadastro, 'tipo_pessoa', 'pf') == 'pj' else 'F'
+        idf = self._ixc_fk_value(id_filial) if str(id_filial).strip().isdigit() else id_filial
+
         payload = {
             'razao': ixc_data['nome_razao'].upper(),
             'nome': ixc_data['nome_razao'].upper(),
+            'contato': ixc_data['nome_razao'].upper(),
             'tipo_pessoa': tipo_ixc,
-            'id_filial': id_filial,
+            'id_filial': idf,
+            'ativo': 'S',
+            'data_cadastro': (
+                cadastro.data_cadastro.strftime('%d/%m/%Y %H:%M:%S')
+                if cadastro.data_cadastro
+                else timezone.now().strftime('%d/%m/%Y %H:%M:%S')
+            ),
             'cnpj_cpf': doc_display,
             'email': cadastro.email.lower(),
             'fone': tel_display,
             'fone_celular': tel_display,
             'fone_residencial': tel_display,
             'fone_comercial': tel_display,
+            'fone_movel': tel_display,
+            'telefone_celular': tel_display,
+            'whatsapp': tel_display,
+            'fone_whatsapp': tel_display,
+            'celular_whatsapp': tel_display,
             'cep': cep_display,
             'endereco': ixc_data['endereco'].upper(),
             'numero': ixc_data['numero'].upper(),
@@ -537,6 +561,7 @@ class IXCIntegration:
             'complemento': ixc_data['complemento'].upper(),
             'cidade': id_cidade or str(cadastro.cidade or '').upper(),
             'uf': (cadastro.uf or '').upper(),
+            'referencia': ixc_data['referencia'].upper(),
             'descricao': (
                 f"Ficha web cadastro_id={cadastro.pk} | Plano: {cadastro.plano_velocidade} | "
                 f"Origem: {cadastro.origem}"
@@ -544,17 +569,26 @@ class IXCIntegration:
         }
         if cadastro.data_nascimento:
             payload['data_nascimento'] = cadastro.data_nascimento.strftime('%d/%m/%Y')
+            payload['nascimento'] = cadastro.data_nascimento.strftime('%d/%m/%Y')
         self._merge_crm_venda_fks(payload, id_plano, id_origem, id_canal)
+
+        lid = None
         if link_contato_id not in (None, '', 0, '0'):
             lid = self._ixc_fk_value(str(link_contato_id).strip())
-            if lid is not None:
+        res = (ixc_lead_resource or '').strip().lower()
+        if lid is not None:
+            if res in ('contato', 'local', ''):
+                payload['id_contato'] = lid
+            elif res in ('crm_leads', 'crm_sp_leads', 'crm_lead'):
+                payload['id_lead'] = lid
+            else:
                 payload['id_contato'] = lid
         return payload
 
-    def create_crm_prospect(self, cadastro, *, link_contato_id=None, force=False):
+    def create_crm_prospect(self, cadastro, *, link_contato_id=None, ixc_lead_resource=None, force=False):
         """
         Cria prospecção no IXC, reutilizando a ficha do cadastro.
-        Tenta vários nomes de recurso em produção; no host demo não chama WS sem IXC_CRM_PROSPECT_RESOURCE.
+        Tenta vários nomes de recurso até um aceitar o POST (configurável por IXC_CRM_PROSPECT_RESOURCE).
         `force=True` ignora IXC_CREATE_CRM_PROSPECT (etapa 2 do painel).
         """
         if not force and not getattr(settings, 'IXC_CREATE_CRM_PROSPECT', False):
@@ -569,17 +603,23 @@ class IXCIntegration:
                 'message': 'API do IXC não configurada.',
                 'logs': ['[CRM_PROSPECT] IXC_API_URL/IXC_API_TOKEN ausentes.'],
             }
-        payload = self.build_crm_prospect_payload(cadastro, link_contato_id=link_contato_id)
+        payload = self.build_crm_prospect_payload(
+            cadastro,
+            link_contato_id=link_contato_id,
+            ixc_lead_resource=ixc_lead_resource,
+        )
         debug_path = self._save_debug_json(cadastro.pk, payload, 'CRM_PROSPECT')
         all_logs = []
         if debug_path:
             all_logs.append(f'[CRM_PROSPECT] debug_json={debug_path}')
         if link_contato_id:
-            all_logs.append(f'[CRM_PROSPECT] id_contato_vinculo={link_contato_id}')
+            all_logs.append(
+                f'[CRM_PROSPECT] vinculo_ixc_id={link_contato_id} recurso_etapa1={ixc_lead_resource or "(vazio)"}'
+            )
 
         resources_to_try = self._crm_prospect_resources_to_try()
         last_error = None
-        for resource in resources_to_try:
+        for idx, resource in enumerate(resources_to_try):
             endpoint = f"{self.url}/webservice/v1/{resource}"
             result = self._post_ixc(
                 endpoint,
@@ -596,11 +636,18 @@ class IXCIntegration:
                 response_message = str(response_data.get('message', ''))
                 response_type = str(response_data.get('type', '')).lower()
 
-            message_text = f"{result.get('message', '')} {response_message}".lower()
             if self._is_resource_unavailable(result) or (
                 response_type == 'error' and 'recurso' in response_message.lower()
             ):
-                all_logs.append(f'[CRM_PROSPECT] recurso indisponível, tentando fallback: {resource}')
+                nxt = resources_to_try[idx + 1] if idx + 1 < len(resources_to_try) else None
+                if nxt:
+                    all_logs.append(
+                        f'[CRM_PROSPECT] recurso `{resource}` indisponível no IXC; tentando `{nxt}`.'
+                    )
+                else:
+                    all_logs.append(
+                        f'[CRM_PROSPECT] recurso `{resource}` indisponível no IXC (sem mais recursos na fila).'
+                    )
                 last_error = result
                 continue
 
@@ -637,9 +684,17 @@ class IXCIntegration:
         msg_tail = ''
         if last_error and isinstance(last_error.get('data'), dict):
             msg_tail = str(last_error['data'].get('message', '') or '')
+        base_msg = msg_tail or 'Nenhum recurso de prospecção disponível neste IXC.'
+        if self._is_demo_ixc_host() and last_error and self._is_resource_unavailable(last_error):
+            base_msg = (
+                f'{base_msg} '
+                'No IXC demo (demo.ixcsoft.com.br) o webservice de prospecção costuma não existir; '
+                'a etapa 1 em `contato` é a suportada. Para a etapa 2, use o IXC do seu provedor e o recurso '
+                'indicado no Postman (IXC_CRM_PROSPECT_RESOURCE / IXC_CRM_PROSPECT_FALLBACK_RESOURCES).'
+            )
         return {
             'status': 'error',
-            'message': msg_tail or 'Nenhum recurso de prospecção disponível neste IXC.',
+            'message': base_msg,
             'logs': all_logs or (last_error.get('logs', []) if last_error else []),
         }
 
@@ -684,7 +739,7 @@ class IXCIntegration:
             last_error = None
             resources_to_try = self._crm_lead_resources_to_try()
 
-            for resource in resources_to_try:
+            for idx, resource in enumerate(resources_to_try):
                 endpoint = f"{self.url}/webservice/v1/{resource}"
                 result = self._post_ixc(
                     endpoint,
@@ -709,7 +764,15 @@ class IXCIntegration:
                 if ('recurso' in message_text and 'não está disponível' in message_text) or (
                     response_type == 'error' and 'recurso' in response_message.lower()
                 ):
-                    all_logs.append(f"[CRM_LEAD] recurso indisponível, tentando fallback: {resource}")
+                    nxt = resources_to_try[idx + 1] if idx + 1 < len(resources_to_try) else None
+                    if nxt:
+                        all_logs.append(
+                            f'[CRM_LEAD] recurso `{resource}` indisponível no IXC; tentando `{nxt}`.'
+                        )
+                    else:
+                        all_logs.append(
+                            f'[CRM_LEAD] recurso `{resource}` indisponível no IXC (sem mais recursos na fila).'
+                        )
                     last_error = result
                     continue
 

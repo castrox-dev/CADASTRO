@@ -80,6 +80,24 @@ def _truncate_ixc_msg(text, limit=_IXC_MSG_MAX):
         return ''
     return str(text)[:limit]
 
+
+def _infer_ixc_lead_resource_for_prospect(cadastro, ixc):
+    """Recupera o recurso IXC usado na etapa 1 (contato, crm_leads, …) para montar id_contato vs id_lead."""
+    d = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
+    r = (d.get('ixc_lead_resource') or '').strip()
+    if r:
+        return r
+    msg = cadastro.ixc_envio_mensagem or ''
+    for part in msg.split('|'):
+        part = part.strip()
+        if part.lower().startswith('recurso='):
+            val = part.split('=', 1)[1].strip()
+            if val:
+                return val
+    if ixc._is_demo_ixc_host():
+        return 'contato'
+    return ''
+
 @login_required
 def send_to_ixc(request, pk):
     """
@@ -176,8 +194,8 @@ def _send_ixc_lead_body(request, cadastro, logs):
 
         lead_res_name = (lead_result.get('lead_resource') or '').strip()
         log_dict = {'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX)}
-        if lead_res_name:
-            log_dict['ixc_lead_resource'] = lead_res_name
+        # Sempre gravar chave (etapa 2 lê para id_contato / id_lead). Cadastros antigos só tinham texto em ixc_envio_mensagem.
+        log_dict['ixc_lead_resource'] = lead_res_name or ''
 
         cadastro.ixc_envio_mensagem = _truncate_ixc_msg(
             ' | '.join(
@@ -257,16 +275,22 @@ def _send_ixc_prospect_body(request, cadastro, logs):
             status=400,
         )
 
-    lr = ''
-    if isinstance(cadastro.ixc_envio_logs, dict):
-        lr = (cadastro.ixc_envio_logs.get('ixc_lead_resource') or '').strip()
-    link_id = lead_key if lr in ('contato', 'local') else None
-    if lead_key and lr and lr not in ('contato', 'local'):
+    lr = _infer_ixc_lead_resource_for_prospect(cadastro, ixc)
+    had_res_in_logs = isinstance(cadastro.ixc_envio_logs, dict) and (
+        cadastro.ixc_envio_logs.get('ixc_lead_resource') or ''
+    ).strip()
+    if not had_res_in_logs:
         logs.append(
-            f'[CRM_PROSPECT] recurso do lead={lr!r} — id_contato não enviado (só contato/local).'
+            f'[CRM_PROSPECT] recurso_etapa1={lr!r} (inferido: mensagem/env ou padrão demo=contato; '
+            'reenvie a etapa 1 para gravar ixc_lead_resource no JSON se usar lead fora de contato).'
         )
 
-    prospect_result = ixc.create_crm_prospect(cadastro, link_contato_id=link_id, force=True)
+    prospect_result = ixc.create_crm_prospect(
+        cadastro,
+        link_contato_id=lead_key,
+        ixc_lead_resource=lr,
+        force=True,
+    )
     logs.extend(prospect_result.get('logs', []))
 
     if prospect_result.get('status') == 'success':
@@ -529,7 +553,7 @@ def export_cadastro_json(request, pk):
         'lead_resources': [ixc.lead_resource_override] if ixc.lead_resource_override else ixc.CRM_LEAD_RESOURCES,
         'lead_payload': ixc.build_crm_lead_payload(cadastro),
         'crm_prospect_resource': getattr(settings, 'IXC_CRM_PROSPECT_RESOURCE', '').strip()
-        or '(sequência padrão — ver CRM_PROSPECT_RESOURCES em integrations)',
+        or 'crm_prospect (+ IXC_CRM_PROSPECT_FALLBACK_RESOURCES se configurado)',
         'crm_prospect_payload': ixc.build_crm_prospect_payload(cadastro, link_contato_id=None),
     }
 

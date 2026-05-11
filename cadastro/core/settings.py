@@ -256,8 +256,10 @@ IXC_LEAD_POST_ALTERAR = config('IXC_LEAD_POST_ALTERAR', default=False, cast=bool
 IXC_REUSE_LOCAL_LEAD_ID = config('IXC_REUSE_LOCAL_LEAD_ID', default=False, cast=bool)
 # Etapa 2 no painel usa force=True (ignora esta flag). Só afeta chamadas programáticas sem force.
 IXC_CREATE_CRM_PROSPECT = config('IXC_CREATE_CRM_PROSPECT', default=False, cast=bool)
-# Vazio = tenta CRM_PROSPECT_RESOURCES em sequência (demo e produção).
+# Vazio = tenta `crm_prospect` e, se houver, IXC_CRM_PROSPECT_FALLBACK_RESOURCES (Postman do provedor).
 IXC_CRM_PROSPECT_RESOURCE = config('IXC_CRM_PROSPECT_RESOURCE', default='').strip()
+# Opcional: nomes extras de recurso WS para prospect, na ordem, separados por vírgula (conforme Postman do provedor).
+IXC_CRM_PROSPECT_FALLBACK_RESOURCES = config('IXC_CRM_PROSPECT_FALLBACK_RESOURCES', default='').strip()
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
