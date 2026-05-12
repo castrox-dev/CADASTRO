@@ -70,12 +70,15 @@
                             
                             <hr class="my-4 opacity-10">
 
-                            <button id="btnSendIXC" type="button" class="btn-action-premium btn-action-ixc" onclick="sendToIXCLead({{ cadastro.pk }})">
-                                <i class="bi bi-send-check-fill"></i> 1 — ENVIAR LEAD (IXC)
+                            <button id="btnSendIXC" type="button" class="btn-action-premium btn-action-ixc" onclick="sendToIXCCompleto({{ cadastro.pk }})">
+                                <i class="bi bi-send-check-fill"></i> ENVIAR PARA IXC (LEAD + PROSPECÇÃO)
                             </button>
-                            {% if cadastro.ixc_lead_id and not cadastro.ixc_prospect_id %}
-                            <button id="btnSendIXCProspect" type="button" class="btn-action-premium btn-action-ixc mt-2" style="--bs-btn-bg:#1a4d6e;" onclick="sendIXCProspectConfirm({{ cadastro.pk }})">
-                                <i class="bi bi-person-lines-fill"></i> 2 — CRIAR PROSPECÇÃO (IXC)
+                            {% if user.is_superuser %}
+                            <button id="btnIXCClienteContratoTest" type="button" class="btn-action-premium btn-action-ixc mt-2" style="--bs-btn-bg:#5c4d00;border-color:#8a7500;" onclick="sendIXCClienteContratoTest({{ cadastro.pk }})">
+                                <i class="bi bi-file-earmark-medical"></i> TESTE: CRIAR CONTRATO (cliente_contrato)
+                            </button>
+                            <button id="btnIXCRadusuariosPppoeTest" type="button" class="btn-action-premium btn-action-ixc mt-2" style="--bs-btn-bg:#1a3d5c;border-color:#2a5a8a;" onclick="sendIXCRadusuariosPppoeTest({{ cadastro.pk }})">
+                                <i class="bi bi-router"></i> TESTE: LOGIN PPPoE (radusuarios)
                             </button>
                             {% endif %}
                             
@@ -408,89 +411,118 @@ function _ixcShowLogModal(logLines, title) {
     showInfo(title, contentHtml);
 }
 
-/** Etapa 1: lead/contato IXC. Após sucesso, pergunta se deseja etapa 2 (prospecção). */
-function sendToIXCLead(pk) {
+function sendIXCClienteContratoTest(pk) {
+    showConfirm(
+        'Teste IXC — cliente_contrato',
+        'Será enviado um POST de inclusão para webservice/v1/cliente_contrato. Confira IXC_CONTRATO_* e IXC_API_* no .env. Continuar?',
+        function () {
+            const btn = document.getElementById('btnIXCClienteContratoTest');
+            const logLines = [];
+            const pushLog = (line) => {
+                const now = new Date().toLocaleTimeString('pt-BR');
+                logLines.push(`[${now}] ${line}`);
+            };
+            pushLog('POST cliente_contrato (teste)...');
+            fetchJson(`/cadastro/${pk}/ixc-test-cliente-contrato/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: '',
+            }, {
+                busyButton: btn,
+                busyLabel: 'ENVIANDO...',
+                silentSuccess: true,
+                onSuccess: (data) => {
+                    _ixcAppendLogs(logLines, data);
+                    if (data.status === 'warning') {
+                        showNotify(data.message || 'Aviso.', 'warning');
+                        _ixcShowLogModal(logLines, 'IXC — cliente_contrato (aviso)');
+                    } else {
+                        showNotify(data.message || 'Contrato (teste) enviado.', 'success');
+                        _ixcShowLogModal(logLines, 'IXC — cliente_contrato (sucesso)');
+                    }
+                },
+                onError: (err, data) => {
+                    const msg = (data && data.message) ? data.message : 'Erro de conexão com o servidor.';
+                    _ixcAppendLogs(logLines, data);
+                    pushLog(`Falha: ${msg}`);
+                    _ixcShowLogModal(logLines, 'IXC — cliente_contrato (erro)');
+                },
+            });
+        },
+        false
+    );
+}
+
+function sendIXCRadusuariosPppoeTest(pk) {
+    showConfirm(
+        'Teste IXC — radusuarios (PPPoE)',
+        'Será enviado um POST de inclusão para webservice/v1/radusuarios (login = endereço.nome em minúsculas; senha = CPF/CNPJ só dígitos). '
+            + 'id_contrato vem de ixc_contrato_id, .env ou listagem automática no IXC (contratos do id_cliente). Continuar?',
+        function () {
+            const btn = document.getElementById('btnIXCRadusuariosPppoeTest');
+            const logLines = [];
+            const pushLog = (line) => {
+                const now = new Date().toLocaleTimeString('pt-BR');
+                logLines.push(`[${now}] ${line}`);
+            };
+            pushLog('POST radusuarios (teste PPPoE)...');
+            fetchJson(`/cadastro/${pk}/ixc-test-radusuarios-pppoe/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: '',
+            }, {
+                busyButton: btn,
+                busyLabel: 'ENVIANDO...',
+                silentSuccess: true,
+                onSuccess: (data) => {
+                    _ixcAppendLogs(logLines, data);
+                    if (data.status === 'warning') {
+                        showNotify(data.message || 'Aviso.', 'warning');
+                        _ixcShowLogModal(logLines, 'IXC — radusuarios (aviso)');
+                    } else {
+                        showNotify(data.message || 'Login PPPoE (teste) enviado.', 'success');
+                        _ixcShowLogModal(logLines, 'IXC — radusuarios (sucesso)');
+                    }
+                },
+                onError: (err, data) => {
+                    const msg = (data && data.message) ? data.message : 'Erro de conexão com o servidor.';
+                    _ixcAppendLogs(logLines, data);
+                    pushLog(`Falha: ${msg}`);
+                    _ixcShowLogModal(logLines, 'IXC — radusuarios (erro)');
+                },
+            });
+        },
+        false
+    );
+}
+
+/** Um clique: lead (se necessário) + prospecção no servidor (`ixc_etapa=completo`). */
+function sendToIXCCompleto(pk) {
     const btn = document.getElementById('btnSendIXC');
     const logLines = [];
     const pushLog = (line) => {
         const now = new Date().toLocaleTimeString('pt-BR');
         logLines.push(`[${now}] ${line}`);
     };
-    pushLog('Etapa 1: criando lead no IXC...');
+    pushLog('Fluxo completo: lead + prospecção no IXC...');
 
-    const body = new URLSearchParams({ ixc_etapa: 'lead' }).toString();
+    const body = new URLSearchParams({ ixc_etapa: 'completo' }).toString();
     fetchJson(`/cadastro/${pk}/send-ixc/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: body,
     }, {
         busyButton: btn,
-        busyLabel: 'ENVIANDO LEAD...',
+        busyLabel: 'ENVIANDO AO IXC...',
         silentSuccess: true,
         onSuccess: (data) => {
             _ixcAppendLogs(logLines, data);
             if (data.status === 'warning') {
-                showNotify(data.message || 'Envio parcial.', 'warning');
-                _ixcShowLogModal(logLines, 'IXC — Etapa 1 (aviso)');
+                showNotify(data.message || 'Aviso no envio IXC.', 'warning');
+                _ixcShowLogModal(logLines, 'IXC — envio (aviso)');
             } else {
-                showNotify(data.message || 'Lead enviado.', 'success');
-                if (data.prospect_pendente) {
-                    showConfirm(
-                        'Etapa 2 — Prospecção IXC',
-                        'Lead enviado com sucesso. Criar agora a prospecção (crm_prospect)? CONFIRMAR = Sim, CANCELAR = Não. Se escolher Não, atualize a página (F5) para aparecer o botão «2 — CRIAR PROSPECÇÃO».',
-                        function () { sendIXCProspect(pk, logLines); },
-                        false
-                    );
-                } else {
-                    _ixcShowLogModal(logLines, 'IXC — Etapa 1 (sucesso)');
-                }
-            }
-        },
-        onError: (err, data) => {
-            const msg = (data && data.message) ? data.message : 'Erro de conexão com o servidor.';
-            _ixcAppendLogs(logLines, data);
-            pushLog(`Falha: ${msg}`);
-            _ixcShowLogModal(logLines, 'IXC — Etapa 1 (erro)');
-        },
-    });
-}
-
-function sendIXCProspectConfirm(pk) {
-    showConfirm(
-        'Criar prospecção IXC',
-        'Confirma a criação da prospecção (crm_prospect) no IXC? Use após a etapa 1 (lead) concluída.',
-        function () { sendIXCProspect(pk); },
-        false
-    );
-}
-
-/** Etapa 2: crm_prospect (mesma ficha). `priorLogLines` opcional: continua o log da etapa 1. */
-function sendIXCProspect(pk, priorLogLines) {
-    const btn = document.getElementById('btnSendIXCProspect');
-    const logLines = (priorLogLines && priorLogLines.length) ? priorLogLines.slice() : [];
-    const pushLog = (line) => {
-        const now = new Date().toLocaleTimeString('pt-BR');
-        logLines.push(`[${now}] ${line}`);
-    };
-    pushLog('Etapa 2: criando prospecção (crm_prospect)...');
-
-    const body = new URLSearchParams({ ixc_etapa: 'prospect' }).toString();
-    fetchJson(`/cadastro/${pk}/send-ixc/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body,
-    }, {
-        busyButton: btn || null,
-        busyLabel: 'CRIANDO PROSPECÇÃO...',
-        silentSuccess: true,
-        onSuccess: (data) => {
-            _ixcAppendLogs(logLines, data);
-            if (data.status === 'warning') {
-                showNotify(data.message || 'Aviso na prospecção.', 'warning');
-                _ixcShowLogModal(logLines, 'IXC — Etapa 2 (aviso)');
-            } else {
-                showNotify(data.message || 'Prospecção criada.', 'success');
-                _ixcShowLogModal(logLines, 'IXC — Etapa 2 (sucesso)');
+                showNotify(data.message || 'Enviado ao IXC.', 'success');
+                _ixcShowLogModal(logLines, 'IXC — envio (sucesso)');
                 setTimeout(function () { window.location.reload(); }, 1800);
             }
         },
@@ -498,7 +530,7 @@ function sendIXCProspect(pk, priorLogLines) {
             const msg = (data && data.message) ? data.message : 'Erro de conexão com o servidor.';
             _ixcAppendLogs(logLines, data);
             pushLog(`Falha: ${msg}`);
-            _ixcShowLogModal(logLines, 'IXC — Etapa 2 (erro)');
+            _ixcShowLogModal(logLines, 'IXC — envio (erro)');
         },
     });
 }

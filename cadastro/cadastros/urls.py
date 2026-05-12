@@ -33,6 +33,16 @@ urlpatterns = [
     path('cadastro/<int:pk>/update-ficha/', views.update_ficha, name='update_ficha'),
     path('cadastro/<int:pk>/delete/', views.delete_cadastro, name='delete_cadastro'),
     path('cadastro/<int:pk>/send-ixc/', views.send_to_ixc, name='send_to_ixc'),
+    path(
+        'cadastro/<int:pk>/ixc-test-cliente-contrato/',
+        views.ixc_test_cliente_contrato,
+        name='ixc_test_cliente_contrato',
+    ),
+    path(
+        'cadastro/<int:pk>/ixc-test-radusuarios-pppoe/',
+        views.ixc_test_radusuarios_pppoe,
+        name='ixc_test_radusuarios_pppoe',
+    ),
     path('cadastro/<int:pk>/anonimizar/', views.anonimizar_cadastro, name='anonimizar_cadastro'),
     path('scripts/', views.standard_scripts, name='standard_scripts'),
     path('api/form-config/', views.api_form_config, name='api_form_config'),
