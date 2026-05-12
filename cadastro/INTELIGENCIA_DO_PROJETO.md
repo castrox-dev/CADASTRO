@@ -87,7 +87,7 @@ Prefixo: raiz do site (`''` em `core.urls` → rotas em `cadastros/urls.py`).
 
 | Método | Caminho | Body / query | Resposta típica |
 |--------|---------|--------------|------------------|
-| POST | `/cadastro/<pk>/send-ixc/` | `application/x-www-form-urlencoded`: `ixc_etapa=lead` (padrão) ou `ixc_etapa=prospect` | `{ status, message, logs?, lead_id?, prospect_id?, duplicate?, prospect_pendente?, ixc_etapa? }` |
+| POST | `/cadastro/<pk>/send-ixc/` | `ixc_etapa=lead` (padrão: lead + `crm_candidatos` encadeado), `candidatos` (só `crm_candidatos`) ou `prospect` | `{ status, message, logs?, lead_id?, candidato_id?, candidato_status?, prospect_id?, … }` |
 | POST | `/cadastro/<pk>/update-status/` | `status` (POST field) | `{ status: success\|error, message? }` |
 | POST | `/cadastro/<pk>/update-ficha/` | `ficha_texto` | `{ status }` |
 | POST | `/cadastro/<pk>/edit/` | multipart form (arquivos + campos) | `{ status, message }` — erros 400 com mensagem amigável |
@@ -112,13 +112,15 @@ Prefixo: raiz do site (`''` em `core.urls` → rotas em `cadastros/urls.py`).
 **Métodos relevantes (reutilizar):**
 
 - `build_crm_lead_payload(cadastro)`
+- `build_crm_candidatos_payload(cadastro, link_contato_id=..., ixc_lead_resource=...)`
 - `build_crm_prospect_payload(cadastro, link_contato_id=..., ixc_lead_resource=...)`
 - `create_crm_lead(cadastro)`
+- `create_crm_candidatos(..., link_contato_id=..., ixc_lead_resource=..., force=True)` — encadeado após lead na etapa 1 (config: `IXC_CHAIN_CRM_CANDIDATOS_AFTER_LEAD`).
 - `create_crm_prospect(..., link_contato_id=..., ixc_lead_resource=..., force=True)` — etapa 2: `link_contato_id` = `ixc_lead_id` local; vínculo IXC: `id_contato` (etapa 1 `contato`/`local`) ou `id_lead` (`crm_lead` / `crm_leads` / `crm_sp_leads`).
 - `check_duplicate_before_create(cadastro)`
 - `_post_ixc`, `_merge_crm_venda_fks`, resolvers de filial/cidade/plano/canal
 
-**Variáveis de ambiente (trecho IXC):** ver `env.example` / `settings` — `IXC_API_URL`, `IXC_API_TOKEN`, `IXC_LEAD_RESOURCE`, `IXC_*_PLANO/CANAL`, `IXC_CRM_PROSPECT_RESOURCE`, `IXC_CRM_PROSPECT_FALLBACK_RESOURCES` (CSV, só nomes da doc Postman do provedor), `IXC_LEAD_POST_ALTERAR`, `IXC_REUSE_LOCAL_LEAD_ID`, etc.
+**Variáveis de ambiente (trecho IXC):** ver `env.example` / `settings` — `IXC_API_URL`, `IXC_API_TOKEN`, `IXC_LEAD_RESOURCE`, `IXC_*_PLANO/CANAL`, `IXC_CHAIN_CRM_CANDIDATOS_AFTER_LEAD`, `IXC_CRM_CANDIDATOS_RESOURCE`, `IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES`, `IXC_CRM_PROSPECT_RESOURCE`, `IXC_CRM_PROSPECT_FALLBACK_RESOURCES` (CSV, só nomes da doc Postman do provedor), `IXC_LEAD_POST_ALTERAR`, `IXC_REUSE_LOCAL_LEAD_ID`, etc.
 
 **Auditoria local:** `logs/ixc_debug/debug_id_*_CRM_LEAD|CRM_PROSPECT_*.json`
 
@@ -126,7 +128,7 @@ Prefixo: raiz do site (`''` em `core.urls` → rotas em `cadastros/urls.py`).
 
 ## 7. Modelos e regras de negócio (resumo)
 
-- **`Cadastro`:** ficha completa; campos IXC `ixc_lead_id`, `ixc_prospect_id`, `ixc_envio_status`, `ixc_envio_mensagem`, `ixc_envio_logs` (JSON com `text` e opcionalmente `ixc_lead_resource`).
+- **`Cadastro`:** ficha completa; campos IXC `ixc_lead_id`, `ixc_candidato_id`, `ixc_prospect_id`, `ixc_envio_status`, `ixc_envio_mensagem`, `ixc_envio_logs` (JSON com `text` e opcionalmente `ixc_lead_resource`, `ixc_candidato_id`).
 - **`get_ixc_data()` / `clean()`:** normalização BR (CPF/CNPJ, CEP, telefone), unicidade documento.
 - **Operação:** `operacao_models` — `CidadeOperacao`, `PlanoDefinicao`, `OrigemCanalVenda`, faixas de vencimento — alimentam IDs IXC e textos da ficha.
 - **LGPD:** anonimização zera vínculos IXC locais conforme implementação em `models.py`.

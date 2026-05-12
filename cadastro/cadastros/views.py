@@ -81,6 +81,11 @@ def _truncate_ixc_msg(text, limit=_IXC_MSG_MAX):
     return str(text)[:limit]
 
 
+def _ixc_url_is_demo_public():
+    """True se IXC_API_URL aponta para o demo público (webservices crm_* costumam não existir)."""
+    return 'demo.ixcsoft.com.br' in (getattr(settings, 'IXC_API_URL', '') or '').lower()
+
+
 def _infer_ixc_lead_resource_for_prospect(cadastro, ixc):
     """Recupera o recurso IXC usado na etapa 1 (contato, crm_leads, …) para montar id_contato vs id_lead."""
     d = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
@@ -98,11 +103,38 @@ def _infer_ixc_lead_resource_for_prospect(cadastro, ixc):
         return 'contato'
     return ''
 
+
+def _chain_ixc_candidatos_after_lead(ixc, cadastro, logs, crm_lead_id, lead_res_name):
+    """Após lead com sucesso: POST ``crm_candidatos``. Retorna (id ou None, status: success|error|skipped)."""
+    if not getattr(settings, 'IXC_CHAIN_CRM_CANDIDATOS_AFTER_LEAD', True):
+        logs.append('[CRM_CANDIDATOS] encadeamento desativado (IXC_CHAIN_CRM_CANDIDATOS_AFTER_LEAD=False).')
+        return None, 'skipped'
+    if (cadastro.ixc_candidato_id or '').strip():
+        cid = cadastro.ixc_candidato_id.strip()
+        logs.append(f'[CRM_CANDIDATOS] já existe ixc_candidato_id={cid}')
+        return cid, 'skipped'
+    cr = (lead_res_name or '').strip() or None
+    r = ixc.create_crm_candidatos(
+        cadastro,
+        link_contato_id=crm_lead_id,
+        ixc_lead_resource=cr,
+        force=True,
+    )
+    logs.extend(r.get('logs', []))
+    if r.get('status') == 'success':
+        cid = r.get('candidato_id')
+        logs.append(f'[FIM] crm_candidatos id={cid}')
+        return cid, 'success'
+    logs.append('[FIM] crm_candidatos falhou (lead já integrado — ver log acima).')
+    return None, 'error'
+
+
 @login_required
 def send_to_ixc(request, pk):
     """
     Integração IXC em etapas (POST):
-    - ixc_etapa=lead (padrão): cria lead/contato.
+    - ixc_etapa=lead (padrão): cria lead/contato e, por padrão, ``crm_candidatos`` encadeado.
+    - ixc_etapa=candidatos: apenas ``crm_candidatos`` (exige lead já enviado).
     - ixc_etapa=prospect: cria crm_prospect (requer lead já enviado neste cadastro).
     """
     if request.method != 'POST':
@@ -126,11 +158,13 @@ def send_to_ixc(request, pk):
     try:
         if etapa == 'prospect':
             return _send_ixc_prospect_body(request, cadastro, logs)
+        if etapa == 'candidatos':
+            return _send_ixc_candidatos_body(request, cadastro, logs)
         if etapa != 'lead':
             return JsonResponse(
                 {
                     'status': 'error',
-                    'message': 'Parâmetro ixc_etapa inválido. Use lead ou prospect.',
+                    'message': 'Parâmetro ixc_etapa inválido. Use lead, candidatos ou prospect.',
                     'logs': logs + [f'[ERRO] ixc_etapa={etapa!r}'],
                 },
                 status=400,
@@ -147,7 +181,7 @@ def send_to_ixc(request, pk):
 
 
 def _send_ixc_lead_body(request, cadastro, logs):
-    """Etapa 1: apenas lead/contato no IXC (sem criar crm_prospect automaticamente)."""
+    """Etapa 1: lead/contato no IXC e, se configurado, encadeia ``crm_candidatos`` (não cria crm_prospect aqui)."""
     ixc = IXCIntegration()
     if cadastro.ixc_lead_id:
         logs.append(f"[DUPLICIDADE] ixc_lead_id local existente={cadastro.ixc_lead_id} (validando no IXC antes de bloquear)")
@@ -193,9 +227,21 @@ def _send_ixc_lead_body(request, cadastro, logs):
         cadastro.ixc_envio_status = 'integrado'
 
         lead_res_name = (lead_result.get('lead_resource') or '').strip()
+        cand_id, cand_status = _chain_ixc_candidatos_after_lead(ixc, cadastro, logs, crm_lead_id, lead_res_name)
+        if cand_id and cand_status == 'success':
+            cadastro.ixc_candidato_id = str(cand_id)
+
         log_dict = {'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX)}
         # Sempre gravar chave (etapa 2 lê para id_contato / id_lead). Cadastros antigos só tinham texto em ixc_envio_mensagem.
         log_dict['ixc_lead_resource'] = lead_res_name or ''
+        if cand_id and cand_status == 'success':
+            log_dict['ixc_candidato_id'] = str(cand_id)
+
+        msg_tail_cand = ''
+        if cand_status == 'success' and cand_id:
+            msg_tail_cand = f"candidato_id={cand_id}"
+        elif cand_status == 'error':
+            msg_tail_cand = 'candidato=erro'
 
         cadastro.ixc_envio_mensagem = _truncate_ixc_msg(
             ' | '.join(
@@ -203,6 +249,7 @@ def _send_ixc_lead_body(request, cadastro, logs):
                 for p in (
                     f"recurso={lead_res_name}",
                     f"lead_id={crm_lead_id}",
+                    msg_tail_cand,
                     (lead_result.get('message') or '').strip(),
                 )
                 if p
@@ -216,15 +263,25 @@ def _send_ixc_lead_body(request, cadastro, logs):
                 'ixc_envio_status',
                 'ixc_envio_mensagem',
                 'ixc_envio_logs',
+                'ixc_candidato_id',
             ]
         )
         logs.append(f"[FIM] lead enviado id={crm_lead_id}")
         logger.info("IXC lead success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
         prospect_pendente = not ja_tinha_prospect
+        msg_parts = [f"Lead IXC (ID: {crm_lead_id})"]
+        if cand_status == 'success' and cand_id:
+            msg_parts.append(f"CRM candidatos (ID: {cand_id})")
+        elif cand_status == 'error':
+            msg_parts.append('CRM candidatos: falhou (ver log)')
+        elif cand_status == 'skipped' and cand_id:
+            msg_parts.append(f"CRM candidatos já vinculado (ID: {cand_id}).")
         return JsonResponse({
             'status': 'success',
-            'message': f"Lead criado/enviado ao IXC (ID: {crm_lead_id}). Etapa 1 concluída.",
+            'message': '. '.join(msg_parts) + '.',
             'lead_id': crm_lead_id,
+            'candidato_id': str(cand_id) if cand_id else None,
+            'candidato_status': cand_status,
             'ixc_etapa': 'lead',
             'prospect_pendente': prospect_pendente,
             'logs': logs,
@@ -339,6 +396,131 @@ def _send_ixc_prospect_body(request, cadastro, logs):
         'status': 'error',
         'message': err_msg,
         'ixc_etapa': 'prospect',
+        'logs': logs,
+    })
+
+
+def _send_ixc_candidatos_body(request, cadastro, logs):
+    """Apenas crm_candidatos no IXC. Exige ixc_lead_id (etapa 1) e que ainda não exista ixc_candidato_id local."""
+    ixc = IXCIntegration()
+    logs.append('[IXC] etapa=candidatos')
+
+    if (cadastro.ixc_candidato_id or '').strip():
+        cid = cadastro.ixc_candidato_id.strip()
+        logs.append(f"[CRM_CANDIDATOS] já existe ixc_candidato_id={cid}")
+        return JsonResponse({
+            'status': 'warning',
+            'message': f'CRM candidatos já vinculado (ID IXC: {cid}).',
+            'candidato_id': cid,
+            'ixc_etapa': 'candidatos',
+            'logs': logs,
+        })
+
+    lead_key = (cadastro.ixc_lead_id or '').strip()
+    if not lead_key:
+        logs.append('[CRM_CANDIDATOS] ixc_lead_id ausente — faça a etapa 1 (lead) antes.')
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Envie o lead primeiro (etapa 1). Depois use «CRM candidatos (somente IXC)».',
+                'logs': logs,
+                'ixc_etapa': 'candidatos',
+            },
+            status=400,
+        )
+
+    lr = _infer_ixc_lead_resource_for_prospect(cadastro, ixc)
+    had_res_in_logs = isinstance(cadastro.ixc_envio_logs, dict) and (
+        cadastro.ixc_envio_logs.get('ixc_lead_resource') or ''
+    ).strip()
+    if not had_res_in_logs:
+        logs.append(
+            f'[CRM_CANDIDATOS] recurso_etapa1={lr!r} (inferido; reenvie a etapa 1 para gravar '
+            'ixc_lead_resource no JSON se o lead não for contato).'
+        )
+
+    cand_result = ixc.create_crm_candidatos(
+        cadastro,
+        link_contato_id=lead_key,
+        ixc_lead_resource=lr,
+        force=True,
+    )
+    logs.extend(cand_result.get('logs', []))
+
+    if cand_result.get('status') == 'success':
+        c_id = cand_result.get('candidato_id')
+        cadastro.ixc_candidato_id = str(c_id) if c_id is not None else None
+        prev = (cadastro.ixc_envio_mensagem or '').strip()
+        tail = f"candidato_id={cadastro.ixc_candidato_id}"
+        cadastro.ixc_envio_mensagem = _truncate_ixc_msg(' | '.join(p for p in (prev, tail) if p))
+        log_block = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
+        log_block = {**log_block, 'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX)}
+        if cadastro.ixc_candidato_id:
+            log_block['ixc_candidato_id'] = cadastro.ixc_candidato_id
+        cadastro.ixc_envio_logs = log_block
+        cadastro.save(update_fields=['ixc_candidato_id', 'ixc_envio_mensagem', 'ixc_envio_logs'])
+        logs.append(f'[FIM] crm_candidatos id={c_id}')
+        logger.info("IXC candidatos success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+        return JsonResponse({
+            'status': 'success',
+            'message': f'CRM candidatos criado no IXC (ID: {c_id}).',
+            'candidato_id': c_id,
+            'candidato_status': 'success',
+            'ixc_etapa': 'candidatos',
+            'logs': logs,
+        })
+
+    if cand_result.get('status') == 'skipped':
+        log_block = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
+        log_block = {**log_block, 'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX)}
+        cadastro.ixc_envio_logs = log_block
+        cadastro.save(update_fields=['ixc_envio_logs'])
+        logger.warning("IXC candidatos skipped cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+        return JsonResponse({
+            'status': 'warning',
+            'message': cand_result.get('message') or 'CRM candidatos não enviado (configuração).',
+            'ixc_etapa': 'candidatos',
+            'logs': logs,
+        })
+
+    if cand_result.get('status') == 'error':
+        err_msg = cand_result.get('message') or ''
+        em = err_msg.lower()
+        if ixc._is_demo_ixc_host() and (
+            'não está disponível' in em
+            or 'nao esta disponivel' in em
+            or ('recurso' in em and 'dispon' in em)
+        ):
+            log_block = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
+            log_block = {**log_block, 'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX)}
+            cadastro.ixc_envio_logs = log_block
+            cadastro.save(update_fields=['ixc_envio_logs'])
+            logger.info("IXC candidatos indisponível no demo cadastro=%s", cadastro.pk)
+            return JsonResponse({
+                'status': 'warning',
+                'message': (
+                    'IXC demo: os webservices ``crm_canditados`` / ``crm_candidatos`` não existem nesta base pública. '
+                    'No IXC do seu provedor, configure IXC_API_URL / token e o nome do recurso no Postman '
+                    '(IXC_CRM_CANDIDATOS_RESOURCE ou IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES).'
+                ),
+                'ixc_etapa': 'candidatos',
+                'logs': logs,
+                'candidato_status': 'skipped_demo',
+            })
+
+    logger.error("IXC candidatos error cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+    prev = (cadastro.ixc_envio_mensagem or '').strip()
+    err_msg = cand_result.get('message') or 'Falha ao criar CRM candidatos no IXC.'
+    tail = f"candidato_erro: {err_msg}"
+    cadastro.ixc_envio_mensagem = _truncate_ixc_msg(' | '.join(p for p in (prev, tail) if p))
+    log_block = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
+    log_block = {**log_block, 'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX)}
+    cadastro.ixc_envio_logs = log_block
+    cadastro.save(update_fields=['ixc_envio_mensagem', 'ixc_envio_logs'])
+    return JsonResponse({
+        'status': 'error',
+        'message': err_msg,
+        'ixc_etapa': 'candidatos',
         'logs': logs,
     })
 
@@ -541,6 +723,7 @@ def cadastro_detail(request, pk):
     return render(request, template, {
         'cadastro': cadastro,
         'status_choices': Cadastro.STATUS_CHOICES,
+        'ixc_demo_host': _ixc_url_is_demo_public(),
     })
 
 @login_required
@@ -550,11 +733,32 @@ def export_cadastro_json(request, pk):
     ixc = IXCIntegration()
     payload = {
         'cadastro_id': cadastro.pk,
+        'documentacao_integracao': {
+            'aba_vendas_ixc': (
+                'No IXCSoft, a aba «Vendas» do cliente mostra o histórico de movimentos de venda/nota '
+                'gerados dentro do próprio ERP (faturamento, contratos, NF etc.). Não é alimentada por '
+                'este portal: o CADASTRO só envia os payloads abaixo (lead/contato, CRM candidatos, '
+                'prospecção). Códigos como «Tipo doc.» 501 ou 633 são tabelas internas do IXC.'
+            ),
+            'debug_json_no_servidor': (
+                'Cada POST ao IXC grava uma cópia do body em `cadastro/logs/ixc_debug/` '
+                '(nome `debug_id_<cadastro_id>_CRM_LEAD|CRM_CANDIDATOS|CRM_PROSPECT>_*.json`). '
+                'O log da tela de envio mostra `[DEBUG] JSON gerado em: …` com o caminho completo.'
+            ),
+        },
+        'ixc_vinculos_locais': {
+            'ixc_lead_id': cadastro.ixc_lead_id or None,
+            'ixc_candidato_id': cadastro.ixc_candidato_id or None,
+            'ixc_prospect_id': cadastro.ixc_prospect_id or None,
+        },
         'lead_resources': [ixc.lead_resource_override] if ixc.lead_resource_override else ixc.CRM_LEAD_RESOURCES,
         'lead_payload': ixc.build_crm_lead_payload(cadastro),
         'crm_prospect_resource': getattr(settings, 'IXC_CRM_PROSPECT_RESOURCE', '').strip()
         or 'crm_prospect (+ IXC_CRM_PROSPECT_FALLBACK_RESOURCES se configurado)',
         'crm_prospect_payload': ixc.build_crm_prospect_payload(cadastro, link_contato_id=None),
+        'crm_candidatos_resource': getattr(settings, 'IXC_CRM_CANDIDATOS_RESOURCE', '').strip()
+        or 'crm_candidatos (+ IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES se configurado)',
+        'crm_candidatos_payload': ixc.build_crm_candidatos_payload(cadastro, link_contato_id=None),
     }
 
     response = HttpResponse(
@@ -602,6 +806,46 @@ def delete_cadastro(request, pk):
         cadastro.delete()
         return JsonResponse({'status': 'success'})
     return JsonResponse({'status': 'error'}, status=400)
+
+
+@login_required
+@user_passes_test(is_admin)
+def clear_ixc_candidato_local(request, pk):
+    """Remove só o vínculo local ``ixc_candidato_id`` (não apaga registro no IXC). Superuser — para reenviar crm_candidatos."""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Método inválido.', 'logs': []}, status=400)
+
+    cadastro = get_object_or_404(Cadastro, pk=pk)
+    old = (cadastro.ixc_candidato_id or '').strip()
+    if not old:
+        return JsonResponse({
+            'status': 'warning',
+            'message': 'Esta ficha não tem ixc_candidato_id gravado.',
+            'logs': ['[IXC] nada a limpar.'],
+        })
+
+    cadastro.ixc_candidato_id = None
+    logs_dict = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
+    if logs_dict and 'ixc_candidato_id' in logs_dict:
+        logs_dict = dict(logs_dict)
+        logs_dict.pop('ixc_candidato_id', None)
+        cadastro.ixc_envio_logs = logs_dict
+
+    cadastro.save(update_fields=['ixc_candidato_id', 'ixc_envio_logs'])
+    logger.info(
+        'IXC candidato local cleared cadastro=%s old_id=%s user=%s',
+        pk,
+        old,
+        request.user.pk,
+    )
+    return JsonResponse({
+        'status': 'success',
+        'message': (
+            f'Vínculo local removido (candidato IXC era {old}). '
+            'O registro no IXC não é excluído por aqui; na próxima integração um novo candidato pode ser criado se a API permitir.'
+        ),
+        'logs': [f'[IXC] removido ixc_candidato_id local={old}'],
+    })
 
 
 @login_required

@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import json
 import os
 from decouple import config
 import dj_database_url
@@ -260,6 +261,18 @@ IXC_CREATE_CRM_PROSPECT = config('IXC_CREATE_CRM_PROSPECT', default=False, cast=
 IXC_CRM_PROSPECT_RESOURCE = config('IXC_CRM_PROSPECT_RESOURCE', default='').strip()
 # Opcional: nomes extras de recurso WS para prospect, na ordem, separados por vírgula (conforme Postman do provedor).
 IXC_CRM_PROSPECT_FALLBACK_RESOURCES = config('IXC_CRM_PROSPECT_FALLBACK_RESOURCES', default='').strip()
+# Após lead com sucesso, POST em crm_candidatos (vínculo id_contato / id_lead). False = só lead.
+IXC_CHAIN_CRM_CANDIDATOS_AFTER_LEAD = config('IXC_CHAIN_CRM_CANDIDATOS_AFTER_LEAD', default=True, cast=bool)
+# Recurso WS candidatos (opcional). Vazio = tenta `crm_candidatos` + IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES.
+IXC_CRM_CANDIDATOS_RESOURCE = config('IXC_CRM_CANDIDATOS_RESOURCE', default='').strip()
+IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES = config('IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES', default='').strip()
+IXC_CREATE_CRM_CANDIDATOS = config('IXC_CREATE_CRM_CANDIDATOS', default=True, cast=bool)
+# Opcional: FKs de contrato (homolog); o payload atual do ``contato``/prospect não mescla estes campos — reservado para evoluções.
+IXC_CONTRATO_PLANO_VENDA_ID = config('IXC_CONTRATO_PLANO_VENDA_ID', default='').strip()
+IXC_CONTRATO_TIPO_COBRANCA_ID = config('IXC_CONTRATO_TIPO_COBRANCA_ID', default='').strip()
+IXC_CONTRATO_MODELO_IMPRESSAO_ID = config('IXC_CONTRATO_MODELO_IMPRESSAO_ID', default='').strip()
+IXC_CONTRATO_CARTEIRA_COBRANCA_ID = config('IXC_CONTRATO_CARTEIRA_COBRANCA_ID', default='').strip()
+IXC_CONTRATO_VENDEDOR_ID = config('IXC_CONTRATO_VENDEDOR_ID', default='').strip()
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

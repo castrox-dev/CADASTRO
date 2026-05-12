@@ -71,11 +71,21 @@
                             <hr class="my-4 opacity-10">
 
                             <button id="btnSendIXC" type="button" class="btn-action-premium btn-action-ixc" onclick="sendToIXCLead({{ cadastro.pk }})">
-                                <i class="bi bi-send-check-fill"></i> 1 — ENVIAR LEAD (IXC)
+                                <i class="bi bi-send-check-fill"></i> 1 — LEAD + CRM CANDIDATOS (IXC)
                             </button>
+                            {% if cadastro.ixc_lead_id and not cadastro.ixc_candidato_id and not ixc_demo_host %}
+                            <button id="btnSendIXCCandidatos" type="button" class="btn-action-premium btn-action-ixc mt-2" style="--bs-btn-bg:#2d5a27;" onclick="sendIXCCandidatosConfirm({{ cadastro.pk }})">
+                                <i class="bi bi-person-badge"></i> CRM CANDIDATOS (somente IXC)
+                            </button>
+                            {% endif %}
                             {% if cadastro.ixc_lead_id and not cadastro.ixc_prospect_id %}
                             <button id="btnSendIXCProspect" type="button" class="btn-action-premium btn-action-ixc mt-2" style="--bs-btn-bg:#1a4d6e;" onclick="sendIXCProspectConfirm({{ cadastro.pk }})">
                                 <i class="bi bi-person-lines-fill"></i> 2 — CRIAR PROSPECÇÃO (IXC)
+                            </button>
+                            {% endif %}
+                            {% if user.is_superuser and cadastro.ixc_candidato_id %}
+                            <button id="btnClearIXCCandidatoLocal" type="button" class="btn-action-premium mt-2" style="--bs-btn-bg:#6b4423;" title="Só banco local; não remove linha no IXC" onclick="confirmClearIXCCandidatoLocal({{ cadastro.pk }})">
+                                <i class="bi bi-unlink" aria-hidden="true"></i> ADMIN — limpar vínculo IXC candidato (local)
                             </button>
                             {% endif %}
                             
@@ -416,7 +426,7 @@ function sendToIXCLead(pk) {
         const now = new Date().toLocaleTimeString('pt-BR');
         logLines.push(`[${now}] ${line}`);
     };
-    pushLog('Etapa 1: criando lead no IXC...');
+    pushLog('Etapa 1: criando lead no IXC e encadeando crm_candidatos...');
 
     const body = new URLSearchParams({ ixc_etapa: 'lead' }).toString();
     fetchJson(`/cadastro/${pk}/send-ixc/`, {
@@ -434,6 +444,9 @@ function sendToIXCLead(pk) {
                 _ixcShowLogModal(logLines, 'IXC — Etapa 1 (aviso)');
             } else {
                 showNotify(data.message || 'Lead enviado.', 'success');
+                if (data.candidato_status === 'error') {
+                    showNotify('Lead OK, mas CRM candidatos falhou — abra o log para detalhes.', 'warning');
+                }
                 if (data.prospect_pendente) {
                     showConfirm(
                         'Etapa 2 — Prospecção IXC',
@@ -462,6 +475,54 @@ function sendIXCProspectConfirm(pk) {
         function () { sendIXCProspect(pk); },
         false
     );
+}
+
+function sendIXCCandidatosConfirm(pk) {
+    showConfirm(
+        'Criar CRM candidatos IXC',
+        'Confirma criar apenas o registro crm_candidatos no IXC (sem novo lead)? É necessário já ter enviado o lead (etapa 1).',
+        function () { sendIXCCandidatos(pk); },
+        false
+    );
+}
+
+/** Somente crm_candidatos (POST ixc_etapa=candidatos). */
+function sendIXCCandidatos(pk) {
+    const btn = document.getElementById('btnSendIXCCandidatos');
+    const logLines = [];
+    const pushLog = (line) => {
+        const now = new Date().toLocaleTimeString('pt-BR');
+        logLines.push(`[${now}] ${line}`);
+    };
+    pushLog('Criando somente crm_candidatos no IXC...');
+
+    const body = new URLSearchParams({ ixc_etapa: 'candidatos' }).toString();
+    fetchJson(`/cadastro/${pk}/send-ixc/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body,
+    }, {
+        busyButton: btn || null,
+        busyLabel: 'CRM CANDIDATOS...',
+        silentSuccess: true,
+        onSuccess: (data) => {
+            _ixcAppendLogs(logLines, data);
+            if (data.status === 'warning') {
+                showNotify(data.message || 'Aviso.', 'warning');
+                _ixcShowLogModal(logLines, 'IXC — CRM candidatos (aviso)');
+            } else {
+                showNotify(data.message || 'CRM candidatos criado.', 'success');
+                _ixcShowLogModal(logLines, 'IXC — CRM candidatos (sucesso)');
+                setTimeout(function () { window.location.reload(); }, 1800);
+            }
+        },
+        onError: (err, data) => {
+            const msg = (data && data.message) ? data.message : 'Erro de conexão com o servidor.';
+            _ixcAppendLogs(logLines, data);
+            pushLog(`Falha: ${msg}`);
+            _ixcShowLogModal(logLines, 'IXC — CRM candidatos (erro)');
+        },
+    });
 }
 
 /** Etapa 2: crm_prospect (mesma ficha). `priorLogLines` opcional: continua o log da etapa 1. */
@@ -517,6 +578,43 @@ function confirmDelete(pk) {
                     setTimeout(() => { window.location.href = "{% url 'dashboard' %}"; }, 1200);
                 },
                 errorMessage: 'Erro ao excluir cadastro.',
+            });
+        },
+        true
+    );
+}
+
+function confirmClearIXCCandidatoLocal(pk) {
+    showConfirm(
+        'Limpar vínculo IXC candidato (admin)',
+        'Remove apenas o ID gravado neste sistema (ixc_candidato_id). Não apaga o candidato no IXC. Use se o ID estiver errado ou o registro foi removido no ERP e você precisa reenviar. Continuar?',
+        function () {
+            const btn = document.getElementById('btnClearIXCCandidatoLocal');
+            const logLines = [];
+            fetchJson(`/cadastro/${pk}/ixc-clear-candidato-local/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            }, {
+                busyButton: btn,
+                busyLabel: 'LIMPANDO...',
+                silentSuccess: true,
+                onSuccess: (data) => {
+                    _ixcAppendLogs(logLines, data);
+                    if (data.status === 'warning') {
+                        showNotify(data.message || 'Nada a limpar.', 'warning');
+                        _ixcShowLogModal(logLines, 'IXC — limpar vínculo');
+                    } else {
+                        showNotify(data.message || 'Vínculo removido.', 'success');
+                        _ixcShowLogModal(logLines, 'IXC — limpar vínculo (sucesso)');
+                        setTimeout(function () { window.location.reload(); }, 1400);
+                    }
+                },
+                onError: (err, data) => {
+                    const msg = (data && data.message) ? data.message : 'Erro ao limpar vínculo.';
+                    _ixcAppendLogs(logLines, data);
+                    logLines.push(`Falha: ${msg}`);
+                    _ixcShowLogModal(logLines, 'IXC — limpar vínculo (erro)');
+                },
             });
         },
         true
