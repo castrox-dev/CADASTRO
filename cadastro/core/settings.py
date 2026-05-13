@@ -334,8 +334,6 @@ IXC_CONTRATO_TEST_GERAR_FINAN_ASSIN_DIGITAL = config(
 # Código de status no IXC (varia por instalação). Vazio = não envia ``status`` no incluir.
 IXC_CONTRATO_TEST_STATUS = config('IXC_CONTRATO_TEST_STATUS', default='').strip()
 
-<<<<<<< Updated upstream
-=======
 # --- POST radusuarios (login PPPoE) — URL de teste isolado ainda disponível; fluxo principal junto ao cliente_contrato acima.
 IXC_RADUSUARIOS_RESOURCE = config('IXC_RADUSUARIOS_RESOURCE', default='radusuarios').strip()
 IXC_RADUSUARIOS_TEST_ID_CONTRATO = config('IXC_RADUSUARIOS_TEST_ID_CONTRATO', default='').strip()
@@ -405,7 +403,6 @@ IXC_RADUSUARIOS_OMITIR_GRUPO_MAPA_ENV_COM_VD_MERGE = config(
 # ``prospect`` = ixc_prospect_id primeiro (comportamento antigo; em alguns IXC o id da prospecção não é id_cliente).
 IXC_RADUSUARIOS_ID_CLIENTE_FONTE = config('IXC_RADUSUARIOS_ID_CLIENTE_FONTE', default='lead').strip().lower()
 
->>>>>>> Stashed changes
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 

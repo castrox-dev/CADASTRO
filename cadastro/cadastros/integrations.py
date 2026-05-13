@@ -2,6 +2,8 @@ import requests
 import base64
 import json
 import os
+import re
+import unicodedata
 from django.conf import settings
 from django.utils import timezone
 
@@ -211,14 +213,6 @@ class IXCIntegration:
             return None
 
     def _post_ixc(self, endpoint, payload, etapa, extra_headers=None):
-        ep_low = (endpoint or '').lower()
-        if 'radusuario' in ep_low:
-            return {
-                'status': 'error',
-                'message': 'Chamadas a radusuarios (PPPoE) estão desativadas neste portal.',
-                'logs': [f'[{etapa}] BLOQUEADO (política): {endpoint}'],
-                'endpoint': endpoint,
-            }
         logs = [
             f"[{etapa}] endpoint: {endpoint}",
             f"[{etapa}] auth: {'ok' if bool(self.token) else 'ausente'}",
@@ -392,8 +386,6 @@ class IXCIntegration:
             pass
         return self.FILIAIS_MAP.get(cidade_slug, '2')
 
-<<<<<<< Updated upstream
-=======
     def _fetch_first_contrato_id_for_id_cliente(self, id_cliente):
         """Lista contratos no IXC por id_cliente (``ixcsoft: listar``). Retorna (id_contrato ou None, logs)."""
         logs = []
@@ -1196,7 +1188,6 @@ class IXCIntegration:
                 + (' (há id_vd_contrato)' if vd_raw else ' (id_contrato sem id_vd no POST)')
             )
 
->>>>>>> Stashed changes
     def resolve_cidade_ixc_id(self, cidade_slug):
         try:
             from .operacao_models import CidadeOperacao
@@ -1838,8 +1829,6 @@ class IXCIntegration:
         except Exception as e:
             return {'status': 'error', 'message': str(e), 'logs': [f"[CRM_LEAD] excecao: {str(e)}"]}
 
-<<<<<<< Updated upstream
-=======
     def _load_cliente_contrato_template(self):
         path = os.path.join(os.path.dirname(__file__), 'data', 'ixc_cliente_contrato_incluir_template.json')
         with open(path, encoding='utf-8') as f:
@@ -2507,6 +2496,5 @@ class IXCIntegration:
             'logs': logs,
         }
 
->>>>>>> Stashed changes
     def create_os(self, cadastro, ixc_id):
         pass

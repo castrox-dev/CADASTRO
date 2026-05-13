@@ -38,6 +38,11 @@ urlpatterns = [
         views.clear_ixc_candidato_local,
         name='clear_ixc_candidato_local',
     ),
+    path(
+        'cadastro/<int:pk>/ixc-test-cliente-contrato/',
+        views.ixc_test_cliente_contrato,
+        name='ixc_test_cliente_contrato',
+    ),
     path('cadastro/<int:pk>/anonimizar/', views.anonimizar_cadastro, name='anonimizar_cadastro'),
     path('scripts/', views.standard_scripts, name='standard_scripts'),
     path('api/form-config/', views.api_form_config, name='api_form_config'),

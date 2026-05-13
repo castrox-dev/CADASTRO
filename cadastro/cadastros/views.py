@@ -135,18 +135,13 @@ def _chain_ixc_candidatos_after_lead(ixc, cadastro, logs, crm_lead_id, lead_res_
 def send_to_ixc(request, pk):
     """
     Integração IXC em etapas (POST):
-<<<<<<< Updated upstream
     - ixc_etapa=lead (padrão): cria lead/contato e, por padrão, ``crm_candidatos`` encadeado.
     - ixc_etapa=candidatos: apenas ``crm_candidatos`` (exige lead já enviado).
     - ixc_etapa=prospect: cria crm_prospect (requer lead já enviado neste cadastro).
-=======
-    - ixc_etapa=lead (padrão): cria lead/contato.
-    - ixc_etapa=prospect: cria prospecção (requer lead já enviado neste cadastro).
-    - ixc_etapa=completo: **1)** contato (WS `contato`, padrão) **2)** prospecção (`crm_canditados` / fallbacks).
+    - ixc_etapa=completo: cria lead se faltar; em seguida prospecção se ainda não houver ``ixc_prospect_id``.
     - ixc_etapa=limpar: apaga só no Django os IDs/auditoria IXC já gravados (não altera o IXC).
       Corpo: ``ixc_limpar_escopo=prospecto`` (só ``ixc_prospect_id``) ou ``tudo`` (lead, prospect,
       contrato, logs locais). Útil para rodar de novo «completo» / prospecção após vínculo antigo.
->>>>>>> Stashed changes
     """
     if request.method != 'POST':
         return JsonResponse(
@@ -167,13 +162,10 @@ def send_to_ixc(request, pk):
     logs = [f"[INICIO] envio cadastro_id={cadastro.pk}"]
     etapa = (request.POST.get('ixc_etapa') or 'lead').strip().lower()
     try:
-<<<<<<< Updated upstream
-=======
         if etapa == 'limpar':
             return _limpar_vinculo_ixc_local(request, cadastro, logs)
         if etapa == 'completo':
             return _send_ixc_completo(request, cadastro, logs)
->>>>>>> Stashed changes
         if etapa == 'prospect':
             return _send_ixc_prospect_body(request, cadastro, logs)
         if etapa == 'candidatos':
@@ -182,11 +174,9 @@ def send_to_ixc(request, pk):
             return JsonResponse(
                 {
                     'status': 'error',
-<<<<<<< Updated upstream
-                    'message': 'Parâmetro ixc_etapa inválido. Use lead, candidatos ou prospect.',
-=======
-                    'message': 'Parâmetro ixc_etapa inválido. Use lead, prospect, completo ou limpar.',
->>>>>>> Stashed changes
+                    'message': (
+                        'Parâmetro ixc_etapa inválido. Use lead, candidatos, prospect, completo ou limpar.'
+                    ),
                     'logs': logs + [f'[ERRO] ixc_etapa={etapa!r}'],
                 },
                 status=400,
@@ -278,6 +268,33 @@ def _limpar_vinculo_ixc_local(request, cadastro, logs):
             'ixc_etapa': 'limpar',
             'ixc_limpar_escopo': escopo,
             'cleared': cleared + ['ixc_envio_*'],
+        }
+    )
+
+
+def _send_ixc_completo(request, cadastro, logs):
+    """Cria lead se necessário e, na mesma requisição, prospecção se ainda não houver ID local."""
+    logs.append('[IXC] etapa=completo')
+    if not (cadastro.ixc_lead_id or '').strip():
+        lead_resp = _send_ixc_lead_body(request, cadastro, logs)
+        if lead_resp.status_code != 200:
+            return lead_resp
+        try:
+            data = json.loads(lead_resp.content.decode('utf-8'))
+        except (ValueError, UnicodeDecodeError, AttributeError):
+            return lead_resp
+        if data.get('status') == 'error':
+            return lead_resp
+        cadastro.refresh_from_db()
+    if not (cadastro.ixc_prospect_id or '').strip():
+        logs.append('[IXC] completo: encadeando prospecção...')
+        return _send_ixc_prospect_body(request, cadastro, logs)
+    return JsonResponse(
+        {
+            'status': 'success',
+            'message': 'Nada pendente: lead e prospecção já vinculados a esta ficha.',
+            'ixc_etapa': 'completo',
+            'logs': logs + ['[IXC] completo: sem etapas pendentes (prospecção já local).'],
         }
     )
 
@@ -528,36 +545,7 @@ def _send_ixc_candidatos_body(request, cadastro, logs):
                 'logs': logs,
                 'ixc_etapa': 'candidatos',
             },
-<<<<<<< Updated upstream
             status=400,
-=======
-            status=404,
-        )
-    head_logs = [f'[TESTE cliente_contrato] cadastro_id={cadastro.pk}']
-    try:
-        ixc = IXCIntegration()
-        out = ixc.create_cliente_contrato_test(cadastro)
-        merged_logs = head_logs + out.get('logs', [])
-        if out.get('status') == 'success':
-            logger.info('IXC cliente_contrato teste ok cadastro=%s', cadastro.pk)
-        else:
-            logger.warning('IXC cliente_contrato teste falhou cadastro=%s', cadastro.pk)
-        resp = {
-            'status': out.get('status', 'error'),
-            'message': out.get('message', ''),
-            'contrato_id': out.get('contrato_id'),
-            'logs': merged_logs,
-        }
-        if 'radusuarios' in out:
-            resp['radusuarios'] = out['radusuarios']
-        return JsonResponse(resp)
-    except Exception as e:
-        logger.exception('IXC cliente_contrato teste excecao cadastro=%s', pk)
-        head_logs.append(str(e))
-        return JsonResponse(
-            {'status': 'error', 'message': str(e), 'logs': head_logs},
-            status=500,
->>>>>>> Stashed changes
         )
 
     lr = _infer_ixc_lead_resource_for_prospect(cadastro, ixc)
@@ -888,7 +876,6 @@ def export_cadastro_json(request, pk):
 
     payload = {
         'cadastro_id': cadastro.pk,
-<<<<<<< Updated upstream
         'documentacao_integracao': {
             'aba_vendas_ixc': (
                 'No IXCSoft, a aba «Vendas» do cliente mostra o histórico de movimentos de venda/nota '
@@ -902,47 +889,36 @@ def export_cadastro_json(request, pk):
                 'O log da tela de envio mostra `[DEBUG] JSON gerado em: …` com o caminho completo.'
             ),
         },
-        'ixc_vinculos_locais': {
-            'ixc_lead_id': cadastro.ixc_lead_id or None,
-            'ixc_candidato_id': cadastro.ixc_candidato_id or None,
-            'ixc_prospect_id': cadastro.ixc_prospect_id or None,
-        },
-        'lead_resources': [ixc.lead_resource_override] if ixc.lead_resource_override else ixc.crm_lead_resources_for_export(),
-        'lead_payload': ixc.build_crm_lead_payload(cadastro),
-        'crm_prospect_resource': getattr(settings, 'IXC_CRM_PROSPECT_RESOURCE', '').strip()
-        or 'crm_prospect (+ IXC_CRM_PROSPECT_FALLBACK_RESOURCES se configurado)',
-        'crm_prospect_payload': ixc.build_crm_prospect_payload(cadastro, link_contato_id=None),
-        'crm_candidatos_resource': getattr(settings, 'IXC_CRM_CANDIDATOS_RESOURCE', '').strip()
-        or 'crm_candidatos (+ IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES se configurado)',
-        'crm_candidatos_payload': ixc.build_crm_candidatos_payload(cadastro, link_contato_id=None),
-=======
         'documento_digits': ''.join(c for c in str(cadastro.documento or '') if c.isdigit()),
         'radusuarios_pppoe': rad_pppoe,
-        'ixc_local': {
-            'ixc_lead_id': cadastro.ixc_lead_id,
+        'ixc_vinculos_locais': {
+            'ixc_lead_id': cadastro.ixc_lead_id or None,
             'ixc_lead_enviado_em': cadastro.ixc_lead_enviado_em.isoformat()
             if cadastro.ixc_lead_enviado_em
             else None,
-            'ixc_prospect_id': cadastro.ixc_prospect_id,
+            'ixc_candidato_id': cadastro.ixc_candidato_id or None,
+            'ixc_prospect_id': cadastro.ixc_prospect_id or None,
             'ixc_contrato_id': getattr(cadastro, 'ixc_contrato_id', None),
             'ixc_envio_status': cadastro.ixc_envio_status,
             'ixc_lead_resource_gravado': (log_dict.get('ixc_lead_resource') or '').strip() or None,
             'ixc_lead_resource_inferido_etapa2': lr or None,
         },
-        'lead_resources': ixc.crm_lead_resources_for_export(),
+        'lead_resources': [ixc.lead_resource_override]
+        if ixc.lead_resource_override
+        else ixc.crm_lead_resources_for_export(),
         'lead_payload': ixc.build_crm_lead_payload(cadastro),
         'crm_prospect_resource': getattr(settings, 'IXC_CRM_PROSPECT_RESOURCE', '').strip()
         or 'crm_prospect (+ IXC_CRM_PROSPECT_FALLBACK_RESOURCES se configurado)',
-        'crm_prospect_payload_sem_vinculo_etapa1': ixc.build_crm_prospect_payload(
-            cadastro, link_contato_id=None
-        ),
+        'crm_prospect_payload': ixc.build_crm_prospect_payload(cadastro, link_contato_id=None),
         'crm_prospect_payload_etapa2_como_enviado': prospect_etapa2,
+        'crm_candidatos_resource': getattr(settings, 'IXC_CRM_CANDIDATOS_RESOURCE', '').strip()
+        or 'crm_candidatos (+ IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES se configurado)',
+        'crm_candidatos_payload': ixc.build_crm_candidatos_payload(cadastro, link_contato_id=None),
         'nota': (
             'crm_prospect_payload_etapa2_como_enviado reflete o POST de prospecção após lead local '
             '(id_contato / id_lead conforme recurso da etapa 1). Se ixc_lead_id estiver vazio, vem null. '
             'radusuarios_pppoe: login PPPoE gerado, montagem do POST de teste (senha mascarada) e logs de lookup IXC.'
         ),
->>>>>>> Stashed changes
     }
 
     response = HttpResponse(
@@ -990,6 +966,57 @@ def delete_cadastro(request, pk):
         cadastro.delete()
         return JsonResponse({'status': 'success'})
     return JsonResponse({'status': 'error'}, status=400)
+
+
+@login_required
+def ixc_test_cliente_contrato(request, pk):
+    """Teste (superusuário): POST ``cliente_contrato`` e, se configurado, ``radusuarios``."""
+    if not request.user.is_superuser:
+        return JsonResponse(
+            {'status': 'error', 'message': 'Acesso restrito a superusuário.', 'logs': []},
+            status=403,
+        )
+    if request.method != 'POST':
+        return JsonResponse(
+            {'status': 'error', 'message': 'Use POST.', 'logs': []},
+            status=405,
+        )
+    try:
+        cadastro = _cadastro_for_user(request, pk)
+    except Http404:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Cadastro não encontrado ou você não tem permissão para este envio.',
+                'logs': [],
+            },
+            status=404,
+        )
+    head_logs = [f'[TESTE cliente_contrato] cadastro_id={cadastro.pk}']
+    try:
+        ixc = IXCIntegration()
+        out = ixc.create_cliente_contrato_test(cadastro)
+        merged_logs = head_logs + out.get('logs', [])
+        if out.get('status') == 'success':
+            logger.info('IXC cliente_contrato teste ok cadastro=%s', cadastro.pk)
+        else:
+            logger.warning('IXC cliente_contrato teste falhou cadastro=%s', cadastro.pk)
+        resp = {
+            'status': out.get('status', 'error'),
+            'message': out.get('message', ''),
+            'contrato_id': out.get('contrato_id'),
+            'logs': merged_logs,
+        }
+        if 'radusuarios' in out:
+            resp['radusuarios'] = out['radusuarios']
+        return JsonResponse(resp)
+    except Exception as e:
+        logger.exception('IXC cliente_contrato teste excecao cadastro=%s', cadastro.pk)
+        head_logs.append(str(e))
+        return JsonResponse(
+            {'status': 'error', 'message': str(e), 'logs': head_logs},
+            status=500,
+        )
 
 
 @login_required
