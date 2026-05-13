@@ -243,6 +243,9 @@ IXC_API_TOKEN = config('IXC_API_TOKEN', default='')
 IXC_LEAD_RESOURCE = config('IXC_LEAD_RESOURCE', default='')
 # True = se o WS de ``contato`` falhar, tenta crm_leads / crm_sp_leads / crm_lead (senão etapa 1 é só contato).
 IXC_LEAD_AFTER_CONTATO_TRY_CRM = config('IXC_LEAD_AFTER_CONTATO_TRY_CRM', default=False, cast=bool)
+# True (padrão) = etapa 1 usa só o WS ``contato``; nunca cai em crm_leads (evita pipeline comercial/venda/login variável no IXC).
+# False = permite o fallback acima (IXC_LEAD_AFTER_CONTATO_TRY_CRM) quando não houver IXC_LEAD_RESOURCE fixo.
+IXC_LEAD_CONTATO_ONLY = config('IXC_LEAD_CONTATO_ONLY', default=True, cast=bool)
 # Opcional: força id_plano_venda / id_origem no payload do lead (útil em IXC demo ou homolog).
 IXC_FORCE_PLANO_VENDA_ID = config('IXC_FORCE_PLANO_VENDA_ID', default='').strip()
 IXC_FORCE_CANAL_VENDA_ID = config('IXC_FORCE_CANAL_VENDA_ID', default='').strip()
@@ -269,6 +272,8 @@ IXC_CHAIN_CRM_CANDIDATOS_AFTER_LEAD = config('IXC_CHAIN_CRM_CANDIDATOS_AFTER_LEA
 IXC_CRM_CANDIDATOS_RESOURCE = config('IXC_CRM_CANDIDATOS_RESOURCE', default='').strip()
 IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES = config('IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES', default='').strip()
 IXC_CREATE_CRM_CANDIDATOS = config('IXC_CREATE_CRM_CANDIDATOS', default=True, cast=bool)
+# FK ``cidade`` obrigatória no ``crm_canditados`` (Postman). Se o slug não tiver ``ixc_cidade_id`` na Operação, use este ID.
+IXC_CRM_CANDIDATOS_CIDADE_FALLBACK = config('IXC_CRM_CANDIDATOS_CIDADE_FALLBACK', default='1').strip()
 # Opcional: FKs de contrato (homolog); o payload atual do ``contato``/prospect não mescla estes campos — reservado para evoluções.
 IXC_CONTRATO_PLANO_VENDA_ID = config('IXC_CONTRATO_PLANO_VENDA_ID', default='').strip()
 IXC_CONTRATO_TIPO_COBRANCA_ID = config('IXC_CONTRATO_TIPO_COBRANCA_ID', default='').strip()
@@ -279,7 +284,7 @@ IXC_CONTRATO_VENDEDOR_ID = config('IXC_CONTRATO_VENDEDOR_ID', default='').strip(
 # --- Teste WS cliente_contrato (POST incluir) — botão só para superusuário
 IXC_CLIENTE_CONTRATO_RESOURCE = config('IXC_CLIENTE_CONTRATO_RESOURCE', default='cliente_contrato').strip()
 IXC_CONTRATO_TEST_ID_CLIENTE = config('IXC_CONTRATO_TEST_ID_CLIENTE', default='').strip()
-# Contrato já existente no IXC (homologação / PPPoE): usado se ixc_contrato_id e IXC_RADUSUARIOS_TEST_ID_CONTRATO estiverem vazios.
+# Contrato já existente no IXC (homologação de testes WS, se reativar cliente_contrato).
 IXC_CONTRATO_TEST_ID_CONTRATO = config('IXC_CONTRATO_TEST_ID_CONTRATO', default='').strip()
 IXC_CONTRATO_TEST_ID_VD_CONTRATO = config('IXC_CONTRATO_TEST_ID_VD_CONTRATO', default='').strip()
 IXC_CONTRATO_TEST_ID_FILIAL = config('IXC_CONTRATO_TEST_ID_FILIAL', default='').strip()
@@ -298,27 +303,6 @@ IXC_CONTRATO_TEST_AVISO_ATRASO = config('IXC_CONTRATO_TEST_AVISO_ATRASO', defaul
 IXC_CONTRATO_TEST_ENDERECO_PADRAO_CLIENTE = config(
     'IXC_CONTRATO_TEST_ENDERECO_PADRAO_CLIENTE', default='S'
 ).strip()
-
-# --- Teste POST radusuarios (login PPPoE) — botão só para superusuário
-IXC_RADUSUARIOS_RESOURCE = config('IXC_RADUSUARIOS_RESOURCE', default='radusuarios').strip()
-IXC_RADUSUARIOS_TEST_ID_CONTRATO = config('IXC_RADUSUARIOS_TEST_ID_CONTRATO', default='').strip()
-# Se True e id_contrato vazio, tenta POST cliente_contrato com ixcsoft=listar (id_cliente) antes de falhar.
-IXC_RADUSUARIOS_LOOKUP_CONTRATO_LISTAR = config(
-    'IXC_RADUSUARIOS_LOOKUP_CONTRATO_LISTAR', default=True, cast=bool
-)
-IXC_RADUSUARIOS_AUTENTICACAO = config('IXC_RADUSUARIOS_AUTENTICACAO', default='L').strip()
-IXC_RADUSUARIOS_TIPO_CONEXAO_MAPA = config('IXC_RADUSUARIOS_TIPO_CONEXAO_MAPA', default='58').strip()
-IXC_RADUSUARIOS_ID_GRUPO = config('IXC_RADUSUARIOS_ID_GRUPO', default='9').strip()
-IXC_RADUSUARIOS_SENHA_MD5 = config('IXC_RADUSUARIOS_SENHA_MD5', default='N').strip()
-IXC_RADUSUARIOS_LOGIN_SIMULTANEO = config('IXC_RADUSUARIOS_LOGIN_SIMULTANEO', default='1').strip()
-IXC_RADUSUARIOS_ATIVO = config('IXC_RADUSUARIOS_ATIVO', default='S').strip()
-IXC_RADUSUARIOS_AUTO_PREENCHER_IP = config('IXC_RADUSUARIOS_AUTO_PREENCHER_IP', default='S').strip()
-IXC_RADUSUARIOS_FIXAR_IP = config('IXC_RADUSUARIOS_FIXAR_IP', default='N').strip()
-IXC_RADUSUARIOS_RELACIONAR_IP_AO_LOGIN = config('IXC_RADUSUARIOS_RELACIONAR_IP_AO_LOGIN', default='N').strip()
-IXC_RADUSUARIOS_AUTENTICACAO_POR_MAC = config('IXC_RADUSUARIOS_AUTENTICACAO_POR_MAC', default='N').strip()
-IXC_RADUSUARIOS_AUTO_PREENCHER_MAC = config('IXC_RADUSUARIOS_AUTO_PREENCHER_MAC', default='S').strip()
-IXC_RADUSUARIOS_RELACIONAR_MAC_AO_LOGIN = config('IXC_RADUSUARIOS_RELACIONAR_MAC_AO_LOGIN', default='S').strip()
-IXC_RADUSUARIOS_TIPO_VINCULO_PLANO = config('IXC_RADUSUARIOS_TIPO_VINCULO_PLANO', default='D').strip()
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

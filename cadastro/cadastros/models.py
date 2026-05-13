@@ -155,6 +155,12 @@ class Cadastro(models.Model):
         null=True,
         help_text='ID do registro crm_prospect (prospecção) no IXC, quando criado pelo envio da ficha.',
     )
+    ixc_candidato_id = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text='ID do registro crm_canditados/crm_candidatos no IXC, quando criado encadeado após o lead.',
+    )
     ixc_contrato_id = models.CharField(
         max_length=50,
         blank=True,
@@ -507,6 +513,7 @@ class Cadastro(models.Model):
         self.ixc_lead_id = None
         self.ixc_lead_enviado_em = None
         self.ixc_prospect_id = None
+        self.ixc_candidato_id = None
         self.ixc_contrato_id = None
         self.ixc_envio_status = 'pendente'
         self.ixc_envio_mensagem = ''

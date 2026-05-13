@@ -101,6 +101,8 @@ def _infer_ixc_lead_resource_for_prospect(cadastro, ixc):
                 return val
     if ixc._is_demo_ixc_host():
         return 'contato'
+    if getattr(settings, 'IXC_LEAD_CONTATO_ONLY', True):
+        return 'contato'
     return ''
 
 
@@ -751,7 +753,7 @@ def export_cadastro_json(request, pk):
             'ixc_candidato_id': cadastro.ixc_candidato_id or None,
             'ixc_prospect_id': cadastro.ixc_prospect_id or None,
         },
-        'lead_resources': [ixc.lead_resource_override] if ixc.lead_resource_override else ixc.CRM_LEAD_RESOURCES,
+        'lead_resources': [ixc.lead_resource_override] if ixc.lead_resource_override else ixc.crm_lead_resources_for_export(),
         'lead_payload': ixc.build_crm_lead_payload(cadastro),
         'crm_prospect_resource': getattr(settings, 'IXC_CRM_PROSPECT_RESOURCE', '').strip()
         or 'crm_prospect (+ IXC_CRM_PROSPECT_FALLBACK_RESOURCES se configurado)',
