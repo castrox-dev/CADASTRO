@@ -11,7 +11,7 @@ from io import BytesIO
 from django.core.files.base import ContentFile
 
 def only_digits_br(value):
-    """Apenas dígitos (CPF/CNPJ/CEP/telefone): remove pontos, traços, espaços e qualquer caractere não numérico."""
+    """Apenas dígitos (CPF/CNPJ/CEP/telefone vindos do formulário)."""
     return ''.join(c for c in str(value or '') if c.isdigit())
 
 
@@ -155,11 +155,11 @@ class Cadastro(models.Model):
         null=True,
         help_text='ID do registro crm_prospect (prospecção) no IXC, quando criado pelo envio da ficha.',
     )
-    ixc_candidato_id = models.CharField(
+    ixc_contrato_id = models.CharField(
         max_length=50,
         blank=True,
         null=True,
-        help_text='ID do registro crm_candidatos no IXC, quando criado encadeado após o lead.',
+        help_text='ID do contrato (cliente_contrato) no IXC, quando criado pelo teste ou integração.',
     )
     ixc_envio_status = models.CharField(
         max_length=20,
@@ -507,7 +507,7 @@ class Cadastro(models.Model):
         self.ixc_lead_id = None
         self.ixc_lead_enviado_em = None
         self.ixc_prospect_id = None
-        self.ixc_candidato_id = None
+        self.ixc_contrato_id = None
         self.ixc_envio_status = 'pendente'
         self.ixc_envio_mensagem = ''
         self.ixc_envio_logs = {}

@@ -1,8 +1,9 @@
-import re
 import requests
 import base64
 import json
 import os
+import re
+import unicodedata
 from django.conf import settings
 from django.utils import timezone
 
@@ -69,47 +70,46 @@ class IXCIntegration:
         'WhatsApp': '1',
         'TikTok': '13',
     }
-    CRM_LEAD_RESOURCES = ['crm_leads', 'crm_sp_leads', 'crm_lead', 'contato']
-    # Prospecção: padrão só `crm_prospect` (exemplos públicos IXC/SDK). Nomes extras = Postman do provedor
-    # em IXC_CRM_PROSPECT_FALLBACK_RESOURCES (vírgula), não lista “chutada” no código.
+    # Recursos CRM usados só se ``contato`` falhar e IXC_LEAD_AFTER_CONTATO_TRY_CRM=True.
+    CRM_LEAD_ORDER_CRM = ['crm_leads', 'crm_sp_leads', 'crm_lead']
 
     def _crm_lead_resources_to_try(self):
-        """Ordem de recursos para criar lead. No demo público só `contato` responde — 1 POST por vez, sem fila em crm_* inexistentes."""
+        """Etapa 1 (WS) antes da prospecção em ``crm_canditados``:
+
+        Fluxo por etapas (padrão): **1º** ``contato`` → grava ``ixc_lead_id`` + recurso
+        ``contato`` nos logs → **2º** ``crm_canditados`` com ``id_contato_principal`` /
+        ``id_contato`` (ver ``create_crm_prospect`` / ``build_crm_prospect_payload``).
+
+        ``IXC_LEAD_RESOURCE``: força um único recurso na etapa 1.
+
+        ``IXC_LEAD_AFTER_CONTATO_TRY_CRM=True``: se ``contato`` não existir ou falhar no WS,
+        tenta ``crm_leads`` / ``crm_sp_leads`` / ``crm_lead`` (etapa 2 passa a usar ``id_lead``).
+        """
         if self.lead_resource_override:
             return [self.lead_resource_override]
         if self._is_demo_ixc_host():
             return ['contato']
-        return list(self.CRM_LEAD_RESOURCES)
+        out = ['contato']
+        if getattr(settings, 'IXC_LEAD_AFTER_CONTATO_TRY_CRM', False):
+            for r in self.CRM_LEAD_ORDER_CRM:
+                if r not in out:
+                    out.append(r)
+        return out
+
+    def crm_lead_resources_for_export(self):
+        """Nomes WS da etapa 1 (debug / export JSON)."""
+        return self._crm_lead_resources_to_try()
 
     def _crm_prospect_resources_to_try(self):
         """Recursos WS para incluir prospecção. Ordem: IXC_CRM_PROSPECT_RESOURCE (um só) senão
-        `crm_prospect` + opcionais em IXC_CRM_PROSPECT_FALLBACK_RESOURCES (conforme doc Postman do provedor).
+        `crm_canditados` (doc IXC Provedor) + `crm_prospect` + IXC_CRM_PROSPECT_FALLBACK_RESOURCES.
         """
         override = (getattr(settings, 'IXC_CRM_PROSPECT_RESOURCE', None) or '').strip()
         if override:
             return [override]
         fallbacks_raw = (getattr(settings, 'IXC_CRM_PROSPECT_FALLBACK_RESOURCES', '') or '').strip()
         extra = [x.strip() for x in fallbacks_raw.split(',') if x.strip()]
-        base = ['crm_prospect']
-        seen = set()
-        out = []
-        for name in base + extra:
-            if name not in seen:
-                seen.add(name)
-                out.append(name)
-        return out
-
-    def _crm_candidatos_resources_to_try(self):
-        """Recursos WS para CRM candidatos. Ordem: IXC_CRM_CANDIDATOS_RESOURCE senão
-        ``crm_canditados`` (nome com typo na API IXC em várias bases) + ``crm_candidatos`` +
-        IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES (Postman do provedor).
-        """
-        override = (getattr(settings, 'IXC_CRM_CANDIDATOS_RESOURCE', None) or '').strip()
-        if override:
-            return [override]
-        fallbacks_raw = (getattr(settings, 'IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES', '') or '').strip()
-        extra = [x.strip() for x in fallbacks_raw.split(',') if x.strip()]
-        base = ['crm_canditados', 'crm_candidatos']
+        base = ['crm_canditados', 'crm_prospect']
         seen = set()
         out = []
         for name in base + extra:
@@ -180,29 +180,6 @@ class IXCIntegration:
         elif getattr(settings, 'IXC_SEND_CANAL_AS_ID_CAMPANHA', False) and ic is not None:
             payload['id_campanha'] = ic
         return payload
-
-    def _merge_ixc_contrato_fks(self, payload):
-        """Anexa FKs opcionais de contrato/comercial ao JSON (lead e prospect). Só envia o que estiver no .env.
-
-        Nomes `id_*` seguem o padrão comum do webservice IXC; se o seu Postman usar outro nome, ajuste aqui
-        ou peça alinhamento com a doc do provedor.
-        """
-        plano_raw = (getattr(settings, 'IXC_CONTRATO_PLANO_VENDA_ID', '') or '').strip()
-        p = self._ixc_fk_value(plano_raw) if plano_raw else None
-        if p is not None:
-            payload['id_plano_venda'] = p
-            payload['id_prospeccao'] = p
-            payload['id_vd_contrato'] = p
-        for setting_name, json_key in (
-            ('IXC_CONTRATO_TIPO_COBRANCA_ID', 'id_tipo_cobranca'),
-            ('IXC_CONTRATO_MODELO_IMPRESSAO_ID', 'id_modelo_impressao'),
-            ('IXC_CONTRATO_CARTEIRA_COBRANCA_ID', 'id_carteira_cobranca'),
-            ('IXC_CONTRATO_VENDEDOR_ID', 'id_vendedor'),
-        ):
-            raw = (getattr(settings, setting_name, '') or '').strip()
-            v = self._ixc_fk_value(raw) if raw else None
-            if v is not None:
-                payload[json_key] = v
 
     @classmethod
     def _origens_map_lookup(cls, label):
@@ -282,17 +259,6 @@ class IXCIntegration:
             return None
 
     def _post_ixc(self, endpoint, payload, etapa, extra_headers=None):
-        # Garantia explícita: o portal não integra PPPoE/RADIUS por este cliente HTTP.
-        ep_low = (endpoint or '').lower()
-        if 'radusuario' in ep_low:
-            return {
-                'status': 'error',
-                'message': 'Chamadas a radusuarios estão desativadas neste portal.',
-                'logs': [
-                    f'[{etapa}] BLOQUEADO (política): não enviar PPPoE/radusuarios — {endpoint}',
-                ],
-                'endpoint': endpoint,
-            }
         logs = [
             f"[{etapa}] endpoint: {endpoint}",
             f"[{etapa}] auth: {'ok' if bool(self.token) else 'ausente'}",
@@ -303,6 +269,14 @@ class IXCIntegration:
             logs.append(f"[{etapa}] status_http: {response.status_code}")
 
             if response.status_code in [200, 201]:
+                raw_text = (response.text or '').strip()
+                if not raw_text:
+                    return {
+                        'status': 'success',
+                        'data': {},
+                        'logs': logs + [f'[{etapa}] corpo_vazio: IXC aceitou sem JSON (comum em alguns POST).'],
+                        'http_status': response.status_code,
+                    }
                 try:
                     body = response.json()
                 except ValueError:
@@ -351,11 +325,10 @@ class IXCIntegration:
                 'id_prospect',
                 'idcrm_prospect',
                 'id_crm_prospect',
-                'idcrm_canditados',
-                'id_crm_canditados',
-                'idcrm_candidatos',
-                'id_crm_candidatos',
-                'id_candidato',
+                'id_contrato',
+                'id_cliente_contrato',
+                'id_radusuarios',
+                'id_radusuario',
             ):
                 value = data.get(key)
                 if value not in (None, '', 0, '0'):
@@ -368,6 +341,30 @@ class IXCIntegration:
             for item in data:
                 found = IXCIntegration._extract_id(item)
                 if found not in (None, '', 0, '0'):
+                    return found
+        return None
+
+    @staticmethod
+    def _extract_cliente_contrato_id(body):
+        """ID do contrato recém-incluído — evita confundir com ``id_cliente`` na mesma resposta."""
+        if not isinstance(body, dict):
+            return None
+        for key in ('id_cliente_contrato', 'id_contrato'):
+            v = body.get(key)
+            if v not in (None, '', 0, '0'):
+                return str(v).strip()
+        v = body.get('id')
+        if v not in (None, '', 0, '0'):
+            return str(v).strip()
+        for nest in ('registro', 'data', 'dados', 'rows', 'result'):
+            sub = body.get(nest)
+            if isinstance(sub, dict):
+                found = IXCIntegration._extract_cliente_contrato_id(sub)
+                if found:
+                    return found
+            if isinstance(sub, list) and sub and isinstance(sub[0], dict):
+                found = IXCIntegration._extract_cliente_contrato_id(sub[0])
+                if found:
                     return found
         return None
 
@@ -458,6 +455,81 @@ class IXCIntegration:
             pass
         return self.FILIAIS_MAP.get(cidade_slug, '2')
 
+    def _fetch_first_contrato_id_for_id_cliente(self, id_cliente):
+        """Lista contratos no IXC por id_cliente (``ixcsoft: listar``). Retorna (id_contrato ou None, logs)."""
+        logs = []
+        qid = str(id_cliente or '').strip()
+        if not qid or not self.url or not self.token:
+            return None, logs
+
+        resource = (settings.IXC_CLIENTE_CONTRATO_RESOURCE or 'cliente_contrato').strip()
+        endpoint = f'{self.url}/webservice/v1/{resource}'
+        qtypes = (
+            'id_cliente',
+            'cliente_contrato.id_cliente',
+            'contrato.id_cliente',
+            'cliente_id',
+        )
+
+        for qtype in qtypes:
+            payload = {
+                'qtype': qtype,
+                'query': qid,
+                'oper': '=',
+                'page': '1',
+                'rp': '15',
+                'sortname': 'id',
+                'sortorder': 'desc',
+            }
+            result = self._post_ixc(
+                endpoint,
+                payload,
+                'CLIENTE_CONTRATO_LIST',
+                extra_headers={'ixcsoft': 'listar'},
+            )
+            if result.get('status') != 'success':
+                logs.append(
+                    f'[RADUSUARIOS] listar_contrato qtype={qtype} http_falha: {result.get("message", "")[:120]}'
+                )
+                continue
+
+            data = result.get('data')
+            if not isinstance(data, dict):
+                continue
+            if str(data.get('type', '')).lower() == 'error':
+                msg = str(data.get('message', ''))[:200]
+                logs.append(f'[RADUSUARIOS] listar_contrato qtype={qtype} erro_api: {msg}')
+                continue
+
+            rows = data.get('registros')
+            if not isinstance(rows, list):
+                rows = data.get('records')
+            if not isinstance(rows, list) or not rows:
+                logs.append(f'[RADUSUARIOS] listar_contrato qtype={qtype} sem_registros total={data.get("total")!r}')
+                continue
+
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                cid = (
+                    str(row.get('id') or row.get('id_contrato') or row.get('id_cliente_contrato') or '')
+                    .strip()
+                )
+                row_cliente = str(row.get('id_cliente') or row.get('cliente_id') or '').strip()
+                if row_cliente and row_cliente != qid:
+                    continue
+                if cid and cid not in ('0', 'null'):
+                    logs.append(
+                        f'[RADUSUARIOS] id_contrato obtido via listar (qtype={qtype}): {cid}'
+                    )
+                    return cid, logs
+
+        logs.append(
+            '[RADUSUARIOS] listar_contrato: nenhum contrato encontrado para este id_cliente '
+            '(confira permissão do token e nomes de campo no IXC).'
+        )
+        return None, logs
+
     def resolve_cidade_ixc_id(self, cidade_slug):
         try:
             from .operacao_models import CidadeOperacao
@@ -531,22 +603,8 @@ class IXCIntegration:
 
         return doc_display, cep_display, tel_display
 
-    def _ixc_fantasia_display(self, cadastro, ixc_data):
-        """Nome fantasia no IXC; se vazio, replica a razão social (tela costuma exigir preenchimento)."""
-        nf = (cadastro.nome_fantasia or '').strip()
-        if nf:
-            return nf.upper()
-        return (ixc_data.get('nome_razao') or '').strip().upper()
-
-    def _ixc_ie_identidade_display(self, cadastro):
-        """Campo ``ie_identidade`` do IXC: IE (PJ) ou RG (PF), texto limpo."""
-        if getattr(cadastro, 'tipo_pessoa', 'pf') == 'pj':
-            ie = (cadastro.inscricao_estadual or '').strip()
-            return ie.upper() if ie else ''
-        rg = (cadastro.rg or '').strip()
-        return str(rg).upper() if rg else ''
-
     def build_crm_lead_payload(self, cadastro):
+        id_plano, id_origem, id_canal = self._resolve_plano_e_canal_venda(cadastro)
         id_filial = self.resolve_filial_id(cadastro.cidade)
         id_cidade = self.resolve_cidade_ixc_id(cadastro.cidade)
         ixc_data = cadastro.get_ixc_data()
@@ -558,8 +616,6 @@ class IXCIntegration:
             'contato': ixc_data['nome_razao'].upper(),
             'nome': ixc_data['nome_razao'].upper(),
             'razao': ixc_data['nome_razao'].upper(),
-            'fantasia': self._ixc_fantasia_display(cadastro, ixc_data),
-            'ie_identidade': self._ixc_ie_identidade_display(cadastro),
             'ativo': 'S',
             'principal': 'S',
             'tipo_contato': 'L',
@@ -569,7 +625,6 @@ class IXCIntegration:
             'cnpj_cpf': doc_display,
             'fone_residencial': tel_display,
             'fone_comercial': tel_display,
-            'telefone_comercial': tel_display,
             'fone_movel': tel_display,
             'telefone_celular': tel_display,
             'fone_celular': tel_display,
@@ -589,7 +644,7 @@ class IXCIntegration:
             'uf': (cadastro.uf or '').upper(),
             'referencia': ixc_data['referencia'].upper(),
         }
-        # Sem FKs plano/canal/campanha/contrato; sem login/central/RADIUS no ``contato`` — só ficha CRM.
+        self._merge_crm_venda_fks(payload, id_plano, id_origem, id_canal)
         return payload
 
     def build_crm_prospect_payload(self, cadastro, *, link_contato_id=None, ixc_lead_resource=None):
@@ -598,9 +653,8 @@ class IXCIntegration:
         `link_contato_id`: ID retornado na etapa 1 no IXC (mesmo valor de `ixc_lead_id` local).
         `ixc_lead_resource`: recurso usado na etapa 1 (`contato`, `crm_leads`, …) — define vínculo
         (`id_contato` vs `id_lead`).
-
-        Não envia ``id_plano_venda`` / ``id_vd_contrato`` / campanha etc. — só ficha + vínculo (evita atrelar venda).
         """
+        id_plano, id_origem, id_canal = self._resolve_plano_e_canal_venda(cadastro)
         id_filial = self.resolve_filial_id(cadastro.cidade)
         id_cidade = self.resolve_cidade_ixc_id(cadastro.cidade)
         ixc_data = cadastro.get_ixc_data()
@@ -609,90 +663,10 @@ class IXCIntegration:
         idf = self._ixc_fk_value(id_filial) if str(id_filial).strip().isdigit() else id_filial
 
         payload = {
-            'razao': ixc_data['nome_razao'].upper(),
-            'fantasia': self._ixc_fantasia_display(cadastro, ixc_data),
-            'ie_identidade': self._ixc_ie_identidade_display(cadastro),
-            'nome': ixc_data['nome_razao'].upper(),
-            # Campo «Contato» na prospecção: vazio (vínculo via id_contato / id_lead).
-            'contato': None,
-            'tipo_pessoa': tipo_ixc,
-            'id_filial': idf,
-            'ativo': 'S',
-            'data_cadastro': (
-                cadastro.data_cadastro.strftime('%d/%m/%Y %H:%M:%S')
-                if cadastro.data_cadastro
-                else timezone.now().strftime('%d/%m/%Y %H:%M:%S')
-            ),
-            'cnpj_cpf': doc_display,
-            'email': cadastro.email.lower(),
-            'fone': tel_display,
-            'fone_celular': tel_display,
-            'fone_residencial': tel_display,
-            'fone_comercial': tel_display,
-            'telefone_comercial': tel_display,
-            'fone_movel': tel_display,
-            'telefone_celular': tel_display,
-            'whatsapp': tel_display,
-            'fone_whatsapp': tel_display,
-            'celular_whatsapp': tel_display,
-            'cep': cep_display,
-            'endereco': ixc_data['endereco'].upper(),
-            'numero': ixc_data['numero'].upper(),
-            'bairro': ixc_data['bairro'].upper(),
-            'complemento': ixc_data['complemento'].upper(),
-            'cidade': id_cidade or str(cadastro.cidade or '').upper(),
-            'uf': (cadastro.uf or '').upper(),
-            'referencia': ixc_data['referencia'].upper(),
-            'descricao': (
-                f"Ficha web cadastro_id={cadastro.pk} | Plano: {cadastro.plano_velocidade} | "
-                f"Origem: {cadastro.origem}"
-            ).upper(),
-        }
-        if cadastro.data_nascimento:
-            payload['data_nascimento'] = cadastro.data_nascimento.strftime('%d/%m/%Y')
-            payload['nascimento'] = cadastro.data_nascimento.strftime('%d/%m/%Y')
-
-        lid = None
-        if link_contato_id not in (None, '', 0, '0'):
-            lid = self._ixc_fk_value(str(link_contato_id).strip())
-        res = (ixc_lead_resource or '').strip().lower()
-        if lid is not None:
-            if res in ('contato', 'local', ''):
-                payload['id_contato'] = lid
-            elif res in ('crm_leads', 'crm_sp_leads', 'crm_lead'):
-                payload['id_lead'] = lid
-            else:
-                payload['id_contato'] = lid
-        return payload
-
-    def build_crm_candidatos_payload(self, cadastro, *, link_contato_id=None, ixc_lead_resource=None):
-        """JSON para inclusão em ``crm_canditados`` / ``crm_candidatos`` (Postman IXC).
-
-        Campos alinhados ao exemplo oficial: ``razao``, ``status_prospeccao`` (N), ``tipo_pessoa``, ``ativo`` (S),
-        ``crm`` (S), ``cidade`` (FK), telefone e/ou e-mail, ``id_contato_principal`` após lead em ``contato``.
-        O recurso costuma ser ``crm_canditados`` (typo na URL IXC), com fallback ``crm_candidatos``.
-        Sem FKs de plano de venda / contrato / campanha — não amarrar comercial ou vendas.
-        """
-        id_filial = self.resolve_filial_id(cadastro.cidade)
-        id_cidade = self.resolve_cidade_ixc_id(cadastro.cidade)
-        ixc_data = cadastro.get_ixc_data()
-        doc_display, cep_display, tel_display = self._ixc_display_pii(cadastro)
-        tipo_ixc = 'J' if getattr(cadastro, 'tipo_pessoa', 'pf') == 'pj' else 'F'
-        idf = self._ixc_fk_value(id_filial) if str(id_filial).strip().isdigit() else id_filial
-
-        cidade_val = id_cidade or str(cadastro.cidade or '').strip()
-        if str(cidade_val).isdigit():
-            cidade_val = self._ixc_fk_value(str(cidade_val).strip())
-        else:
-            cidade_val = str(cidade_val).upper()
-
-        payload = {
-            'razao': ixc_data['nome_razao'].upper(),
-            'fantasia': self._ixc_fantasia_display(cadastro, ixc_data),
-            'ie_identidade': self._ixc_ie_identidade_display(cadastro),
+            'razao': (ixc_data.get('nome_razao') or '').upper(),
+            'fantasia': (ixc_data.get('nome_razao') or '').upper(),
             'status_prospeccao': 'N',
             'tipo_pessoa': tipo_ixc,
-            'cnpj_cpf': doc_display,
             'ativo': 'S',
             'crm': 'S',
             'data_cadastro': (
@@ -700,37 +674,58 @@ class IXCIntegration:
                 if cadastro.data_cadastro
                 else timezone.now().strftime('%d/%m/%Y %H:%M:%S')
             ),
+            'cnpj_cpf': doc_display,
+            'ie_identidade': (cadastro.rg or '').strip(),
+            'filial_id': idf,
+            'id_filial': idf,
             'telefone_celular': tel_display,
-            'telefone_comercial': tel_display,
+            'email': (cadastro.email or '').lower(),
+            'contato': (ixc_data.get('nome_razao') or '').upper(),
             'fone': tel_display,
+            'fone_celular': tel_display,
+            'fone_residencial': tel_display,
+            'fone_comercial': tel_display,
+            'fone_movel': tel_display,
             'whatsapp': tel_display,
-            'email': cadastro.email.lower(),
-            # Tela IXC: campo «Contato» vazio — vínculo por id_contato_principal.
-            'contato': None,
+            'fone_whatsapp': tel_display,
+            'celular_whatsapp': tel_display,
             'cep': cep_display,
-            'endereco': ixc_data['endereco'].upper(),
-            'numero': ixc_data['numero'].upper(),
-            'bairro': ixc_data['bairro'].upper(),
-            'complemento': ixc_data['complemento'].upper(),
-            'referencia': ixc_data['referencia'].upper(),
+            'endereco': (ixc_data.get('endereco') or '').upper(),
+            'numero': (ixc_data.get('numero') or '').upper(),
+            'bairro': (ixc_data.get('bairro') or '').upper(),
+            'complemento': (ixc_data.get('complemento') or '').upper(),
             'uf': (cadastro.uf or '').upper(),
-            'cidade': cidade_val,
+            'referencia': (ixc_data.get('referencia') or '').upper(),
             'obs': (
                 f"Ficha web cadastro_id={cadastro.pk} | Plano: {cadastro.plano_velocidade} | "
                 f"Origem: {cadastro.origem}"
-            ).upper()[:500],
+            )[:2000],
         }
-        if idf is not None:
-            payload['filial_id'] = idf
+        cid_raw = (id_cidade or '').strip()
+        if cid_raw:
+            payload['cidade'] = self._ixc_fk_value(cid_raw) if cid_raw.isdigit() else cid_raw
+        else:
+            payload['cidade'] = str(cadastro.cidade or '').strip() or '1'
         if cadastro.data_nascimento:
             payload['data_nascimento'] = cadastro.data_nascimento.strftime('%d/%m/%Y')
+        self._merge_crm_venda_fks(payload, id_plano, id_origem, id_canal)
+        ip = payload.get('id_vd_contrato')
+        if ip is not None and 'id_vd_contrato_desejado' not in payload:
+            payload['id_vd_contrato_desejado'] = ip
 
         lid = None
         if link_contato_id not in (None, '', 0, '0'):
             lid = self._ixc_fk_value(str(link_contato_id).strip())
+        res = (ixc_lead_resource or '').strip().lower()
         if lid is not None:
-            payload['id_contato_principal'] = lid
-
+            if res in ('contato', 'local', ''):
+                payload['id_contato_principal'] = lid
+                payload['id_contato'] = lid
+            elif res in ('crm_leads', 'crm_sp_leads', 'crm_lead'):
+                payload['id_lead'] = lid
+            else:
+                payload['id_contato_principal'] = lid
+                payload['id_contato'] = lid
         return payload
 
     def create_crm_prospect(self, cadastro, *, link_contato_id=None, ixc_lead_resource=None, force=False):
@@ -815,6 +810,18 @@ class IXCIntegration:
 
             prospect_id = self._extract_id(response_data)
             if prospect_id in (None, '', 0, '0'):
+                if isinstance(response_data, dict) and len(response_data) == 0:
+                    all_logs.append(
+                        '[CRM_PROSPECT] IXC retornou 200 com JSON vazio (doc: sem corpo). '
+                        'Confira no CRM se a prospecção foi criada.'
+                    )
+                    return {
+                        'status': 'warning',
+                        'prospect_id': None,
+                        'prospect_resource': resource,
+                        'message': 'IXC aceitou o cadastro da prospecção sem retornar ID no JSON. Verifique no IXC.',
+                        'logs': all_logs,
+                    }
                 return {
                     'status': 'error',
                     'message': 'IXC não retornou ID da prospecção.',
@@ -846,115 +853,6 @@ class IXCIntegration:
             'logs': all_logs or (last_error.get('logs', []) if last_error else []),
         }
 
-    def create_crm_candidatos(self, cadastro, *, link_contato_id=None, ixc_lead_resource=None, force=False):
-        """Cria registro em ``crm_candidatos`` no IXC após o lead. `force=True` ignora IXC_CREATE_CRM_CANDIDATOS."""
-        if not force and not getattr(settings, 'IXC_CREATE_CRM_CANDIDATOS', True):
-            return {
-                'status': 'skipped',
-                'message': 'IXC_CREATE_CRM_CANDIDATOS=False',
-                'logs': ['[CRM_CANDIDATOS] desativado nas configurações.'],
-            }
-        if not self.url or not self.token:
-            return {
-                'status': 'error',
-                'message': 'API do IXC não configurada.',
-                'logs': ['[CRM_CANDIDATOS] IXC_API_URL/IXC_API_TOKEN ausentes.'],
-            }
-        payload = self.build_crm_candidatos_payload(
-            cadastro,
-            link_contato_id=link_contato_id,
-            ixc_lead_resource=ixc_lead_resource,
-        )
-        debug_path = self._save_debug_json(cadastro.pk, payload, 'CRM_CANDIDATOS')
-        all_logs = []
-        if debug_path:
-            all_logs.append(f'[CRM_CANDIDATOS] debug_json={debug_path}')
-        if link_contato_id:
-            all_logs.append(
-                f'[CRM_CANDIDATOS] vinculo_ixc_id={link_contato_id} recurso_etapa1={ixc_lead_resource or "(vazio)"}'
-            )
-
-        resources_to_try = self._crm_candidatos_resources_to_try()
-        last_error = None
-        for idx, resource in enumerate(resources_to_try):
-            endpoint = f"{self.url}/webservice/v1/{resource}"
-            result = self._post_ixc(
-                endpoint,
-                payload,
-                'CRM_CANDIDATOS',
-                extra_headers={'ixcsoft': 'incluir'},
-            )
-            all_logs.extend(result.get('logs', []))
-
-            response_data = result.get('data') if result.get('status') == 'success' else None
-            response_message = ''
-            response_type = ''
-            if isinstance(response_data, dict):
-                response_message = str(response_data.get('message', ''))
-                response_type = str(response_data.get('type', '')).lower()
-
-            if self._is_resource_unavailable(result) or (
-                response_type == 'error' and 'recurso' in response_message.lower()
-            ):
-                nxt = resources_to_try[idx + 1] if idx + 1 < len(resources_to_try) else None
-                if nxt:
-                    all_logs.append(
-                        f'[CRM_CANDIDATOS] recurso `{resource}` indisponível no IXC; tentando `{nxt}`.'
-                    )
-                else:
-                    all_logs.append(
-                        f'[CRM_CANDIDATOS] recurso `{resource}` indisponível no IXC (sem mais recursos na fila).'
-                    )
-                last_error = result
-                continue
-
-            if result.get('status') != 'success':
-                return {
-                    'status': 'error',
-                    'message': result.get('message') or 'Falha HTTP ao criar CRM candidatos.',
-                    'logs': all_logs,
-                }
-
-            if response_type == 'error':
-                return {
-                    'status': 'error',
-                    'message': response_message or 'IXC retornou erro ao criar CRM candidatos.',
-                    'logs': all_logs + [f'[CRM_CANDIDATOS] erro_api: {response_message}'],
-                }
-
-            candidato_id = self._extract_id(response_data)
-            if candidato_id in (None, '', 0, '0'):
-                return {
-                    'status': 'error',
-                    'message': 'IXC não retornou ID do CRM candidatos.',
-                    'logs': all_logs + ['[CRM_CANDIDATOS] id ausente na resposta'],
-                }
-            all_logs.append(f'[CRM_CANDIDATOS] recurso_ativo={resource} id={candidato_id}')
-            return {
-                'status': 'success',
-                'candidato_id': candidato_id,
-                'candidato_resource': resource,
-                'message': '',
-                'logs': all_logs,
-            }
-
-        msg_tail = ''
-        if last_error and isinstance(last_error.get('data'), dict):
-            msg_tail = str(last_error['data'].get('message', '') or '')
-        base_msg = msg_tail or 'Nenhum recurso de CRM candidatos disponível neste IXC.'
-        if self._is_demo_ixc_host() and last_error and self._is_resource_unavailable(last_error):
-            base_msg = (
-                f'{base_msg} '
-                'No IXC demo os webservices ``crm_canditados`` / ``crm_candidatos`` costumam não existir. '
-                'No provedor real use o Postman (path ex.: /webservice/v1/crm_canditados) e '
-                'IXC_CRM_CANDIDATOS_RESOURCE / IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES.'
-            )
-        return {
-            'status': 'error',
-            'message': base_msg,
-            'logs': all_logs or (last_error.get('logs', []) if last_error else []),
-        }
-
     def create_crm_lead(self, cadastro):
         """
         Passo 1: Cria um Lead no CRM do IXC.
@@ -973,9 +871,23 @@ class IXCIntegration:
 
         try:
             all_logs = []
+            id_plano_chk, id_origem_chk, id_canal_chk = self._resolve_plano_e_canal_venda(cadastro)
             all_logs.append(
-                '[CRM_LEAD] payload sem plano/canal/campanha/contrato nem login — só ficha CRM.'
+                '[CRM_LEAD] resolvido '
+                f"plano={id_plano_chk or '(vazio)'} origem={id_origem_chk or '(vazio)'} "
+                f"canal_venda={id_canal_chk or '(vazio)'} cidade_slug={cadastro.cidade!r} "
+                f"plano_codigo={cadastro.plano!r} origem_label={cadastro.origem!r} demo={self._is_demo_ixc_host()}"
             )
+            if self._ixc_fk_value(id_plano_chk) is None:
+                all_logs.append(
+                    '[CRM_LEAD] aviso: id_plano_venda vazio — configure ixc_plano_venda_id no plano '
+                    '(Operação) ou IXC_FORCE_PLANO_VENDA_ID / IXC_DEFAULT_PLANO_VENDA_ID no .env'
+                )
+            if self._ixc_fk_value(id_canal_chk) is None:
+                all_logs.append(
+                    '[CRM_LEAD] aviso: id_canal_venda vazio — use IXC_FORCE_CANAL_VENDA_ID / '
+                    'IXC_DEFAULT_CANAL_VENDA_ID (ID da tela CRM > Canal de vendas), não só Origens.'
+                )
             if debug_path:
                 all_logs.append(f"[DEBUG] JSON gerado em: {debug_path}")
             
@@ -1065,6 +977,329 @@ class IXCIntegration:
             }
         except Exception as e:
             return {'status': 'error', 'message': str(e), 'logs': [f"[CRM_LEAD] excecao: {str(e)}"]}
+
+    def _load_cliente_contrato_template(self):
+        path = os.path.join(os.path.dirname(__file__), 'data', 'ixc_cliente_contrato_incluir_template.json')
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+
+    def _ixc_id_cliente_for_cadastro(self, cadastro):
+        """id_cliente IXC: .env > prospecção (crm_canditados) > contato (lead)."""
+        ex = (settings.IXC_CONTRATO_TEST_ID_CLIENTE or '').strip()
+        if ex:
+            return ex
+        pid = (cadastro.ixc_prospect_id or '').strip()
+        if pid:
+            return pid
+        return (cadastro.ixc_lead_id or '').strip()
+
+    @staticmethod
+    def _slug_pppoe_login_part(text, max_len=48):
+        """Apenas [a-z0-9], minúsculo, sem acentos (trecho login PPPoE)."""
+        if not text:
+            return ''
+        nfd = unicodedata.normalize('NFD', str(text))
+        ascii_v = ''.join(c for c in nfd if unicodedata.category(c) != 'Mn')
+        buf = []
+        for c in ascii_v.lower():
+            if c.isalnum():
+                buf.append(c)
+        return ''.join(buf)[:max_len]
+
+    def build_pppoe_login_for_cadastro(self, cadastro):
+        """Login no formato nomedarua.nomedocliente (minúsculo, só letras/números e um ponto)."""
+        rua = self._slug_pppoe_login_part(cadastro.endereco, 44)
+        nome = self._slug_pppoe_login_part(cadastro.nome_razao, 44)
+        if not nome:
+            nome = 'cliente'
+        if not rua:
+            rua = self._slug_pppoe_login_part(cadastro.bairro, 24) or 'rua'
+        login = f'{rua}.{nome}'.lower()
+        login = re.sub(r'[^a-z0-9.]', '', login)
+        login = re.sub(r'\.{2,}', '.', login).strip('.')
+        if len(login) > 64:
+            login = login[:64].rstrip('.')
+        return login or f'cli{cadastro.pk}'
+
+    def build_radusuarios_pppoe_payload(self, cadastro):
+        """POST ``radusuarios`` — login PPPoE + senha = CPF (dígitos). Retorna (payload, erro_msg, lookup_logs)."""
+        from .models import only_digits_br
+
+        lookup_logs = []
+
+        id_cliente = self._ixc_id_cliente_for_cadastro(cadastro)
+        if not id_cliente:
+            return None, (
+                'id_cliente ausente: defina IXC_CONTRATO_TEST_ID_CLIENTE ou envie ao IXC (prospecção/contato).'
+            ), lookup_logs
+
+        id_contrato = (getattr(cadastro, 'ixc_contrato_id', None) or '').strip()
+        if not id_contrato:
+            id_contrato = (settings.IXC_RADUSUARIOS_TEST_ID_CONTRATO or '').strip()
+        if not id_contrato:
+            id_contrato = (settings.IXC_CONTRATO_TEST_ID_CONTRATO or '').strip()
+        if not id_contrato and getattr(settings, 'IXC_RADUSUARIOS_LOOKUP_CONTRATO_LISTAR', True):
+            fetched, flogs = self._fetch_first_contrato_id_for_id_cliente(id_cliente)
+            lookup_logs.extend(flogs)
+            if fetched:
+                id_contrato = fetched
+        if not id_contrato:
+            return None, (
+                'id_contrato ausente. O IXC exige o contrato. Opções: '
+                '(1) botão «TESTE: CRIAR CONTRATO» com sucesso — grava ixc_contrato_id; '
+                '(2) IXC_RADUSUARIOS_TEST_ID_CONTRATO ou IXC_CONTRATO_TEST_ID_CONTRATO no .env; '
+                '(3) contrato já existente no IXC para o mesmo id_cliente — com '
+                'IXC_RADUSUARIOS_LOOKUP_CONTRATO_LISTAR=True (padrão) tentamos listar automaticamente. '
+                'Confira logs acima e logs/ixc_debug/.'
+            ), lookup_logs
+
+        senha = only_digits_br(cadastro.documento)
+        if not senha:
+            return None, 'Documento (CPF/CNPJ) ausente para senha PPPoE.', lookup_logs
+        if getattr(cadastro, 'tipo_pessoa', 'pf') == 'pf':
+            if len(senha) != 11:
+                return None, f'CPF deve ter 11 dígitos para senha PPPoE (encontrado {len(senha)}).', lookup_logs
+        elif len(senha) != 14:
+            return None, f'CNPJ deve ter 14 dígitos para senha PPPoE (encontrado {len(senha)}).', lookup_logs
+
+        login = self.build_pppoe_login_for_cadastro(cadastro)
+
+        payload = {
+            'autenticacao': (settings.IXC_RADUSUARIOS_AUTENTICACAO or 'L').strip(),
+            'tipo_conexao_mapa': (settings.IXC_RADUSUARIOS_TIPO_CONEXAO_MAPA or '58').strip(),
+            'id_cliente': str(id_cliente),
+            'id_contrato': str(id_contrato),
+            'id_grupo': (settings.IXC_RADUSUARIOS_ID_GRUPO or '9').strip(),
+            'login': login,
+            'senha_md5': (settings.IXC_RADUSUARIOS_SENHA_MD5 or 'N').strip(),
+            'senha': senha,
+            'login_simultaneo': (settings.IXC_RADUSUARIOS_LOGIN_SIMULTANEO or '1').strip(),
+            'ativo': (settings.IXC_RADUSUARIOS_ATIVO or 'S').strip(),
+            'auto_preencher_ip': (settings.IXC_RADUSUARIOS_AUTO_PREENCHER_IP or 'S').strip(),
+            'fixar_ip': (settings.IXC_RADUSUARIOS_FIXAR_IP or 'N').strip(),
+            'relacionar_ip_ao_login': (settings.IXC_RADUSUARIOS_RELACIONAR_IP_AO_LOGIN or 'N').strip(),
+            'autenticacao_por_mac': (settings.IXC_RADUSUARIOS_AUTENTICACAO_POR_MAC or 'N').strip(),
+            'auto_preencher_mac': (settings.IXC_RADUSUARIOS_AUTO_PREENCHER_MAC or 'S').strip(),
+            'relacionar_mac_ao_login': (settings.IXC_RADUSUARIOS_RELACIONAR_MAC_AO_LOGIN or 'S').strip(),
+            'tipo_vinculo_plano': (settings.IXC_RADUSUARIOS_TIPO_VINCULO_PLANO or 'D').strip(),
+        }
+        return payload, None, lookup_logs
+
+    def create_radusuarios_pppoe_test(self, cadastro):
+        """POST ``webservice/v1/radusuarios`` com ``ixcsoft: incluir`` (teste PPPoE)."""
+        if not self.url or not self.token:
+            return {
+                'status': 'error',
+                'message': 'API do IXC não configurada (IXC_API_URL / IXC_API_TOKEN).',
+                'logs': ['[RADUSUARIOS] IXC ausente.'],
+            }
+        prev_contrato = (getattr(cadastro, 'ixc_contrato_id', None) or '').strip()
+        payload, err, lookup_logs = self.build_radusuarios_pppoe_payload(cadastro)
+        logs = list(lookup_logs)
+        if err:
+            return {'status': 'error', 'message': err, 'logs': logs + [f'[RADUSUARIOS] {err}']}
+
+        if not prev_contrato and any('obtido via listar' in line for line in lookup_logs):
+            cid = str(payload.get('id_contrato', '')).strip()
+            if cid:
+                from .models import Cadastro
+
+                Cadastro.objects.filter(pk=cadastro.pk).update(ixc_contrato_id=cid)
+                logs.append('[RADUSUARIOS] ixc_contrato_id gravado no cadastro (listagem IXC).')
+
+        resource = (settings.IXC_RADUSUARIOS_RESOURCE or 'radusuarios').strip()
+        endpoint = f'{self.url}/webservice/v1/{resource}'
+        debug_path = self._save_debug_json(cadastro.pk, payload, 'RADUSUARIOS_TEST')
+        if debug_path:
+            logs.append(f'[RADUSUARIOS] debug_json={debug_path}')
+        logs.append(f'[RADUSUARIOS] login={payload.get("login")!r}')
+
+        result = self._post_ixc(
+            endpoint,
+            payload,
+            'RADUSUARIOS',
+            extra_headers={'ixcsoft': 'incluir'},
+        )
+        logs.extend(result.get('logs', []))
+
+        if result.get('status') != 'success':
+            return {
+                'status': 'error',
+                'message': result.get('message') or 'Falha HTTP ao criar login PPPoE.',
+                'logs': logs,
+            }
+
+        body = result.get('data') if isinstance(result.get('data'), dict) else {}
+        response_type = str(body.get('type', '')).lower()
+        response_message = str(body.get('message', ''))
+        if response_type == 'error':
+            return {
+                'status': 'error',
+                'message': response_message or 'IXC retornou erro ao incluir radusuarios.',
+                'logs': logs + [f'[RADUSUARIOS] erro_api: {response_message}'],
+            }
+
+        rad_id = self._extract_id(body)
+        msg_ok = f'Login PPPoE criado: {payload.get("login")}.'
+        if rad_id not in (None, '', 0, '0'):
+            msg_ok = f'Login PPPoE criado: {payload.get("login")} (ID: {rad_id}).'
+        return {
+            'status': 'success',
+            'message': msg_ok,
+            'radusuario_id': rad_id,
+            'pppoe_login': payload.get('login'),
+            'logs': logs,
+        }
+
+    def build_cliente_contrato_test_payload(self, cadastro):
+        """Monta JSON para POST ``cliente_contrato`` (teste). Retorna (payload, erro_msg)."""
+        try:
+            payload = self._load_cliente_contrato_template()
+        except (OSError, json.JSONDecodeError) as e:
+            return None, f'Arquivo template data/ixc_cliente_contrato_incluir_template.json: {e}'
+
+        id_cliente = self._ixc_id_cliente_for_cadastro(cadastro)
+        if not id_cliente:
+            return None, (
+                'id_cliente ausente: defina IXC_CONTRATO_TEST_ID_CLIENTE no .env ou conclua «Enviar para IXC» '
+                'para gravar ixc_prospect_id (crm_canditados), de preferência; senão ixc_lead_id (contato).'
+            )
+
+        id_plano, _, _ = self._resolve_plano_e_canal_venda(cadastro)
+        id_vd = (settings.IXC_CONTRATO_TEST_ID_VD_CONTRATO or '').strip()
+        if not id_vd:
+            v = self._ixc_fk_value(id_plano)
+            id_vd = str(v).strip() if v is not None else ''
+        if not id_vd and self._is_demo_ixc_host():
+            id_vd = '19'
+        if not id_vd:
+            return None, (
+                'id_vd_contrato vazio: IXC_CONTRATO_TEST_ID_VD_CONTRATO no .env ou plano com ixc_plano_venda_id '
+                '(Operação). No demo IXC o padrão de teste é 19.'
+            )
+
+        id_filial = (settings.IXC_CONTRATO_TEST_ID_FILIAL or '').strip()
+        if not id_filial:
+            if self._is_demo_ixc_host():
+                id_filial = '1'
+            else:
+                id_filial = (self.resolve_filial_id(cadastro.cidade) or '').strip() or '1'
+
+        payload['tipo'] = (settings.IXC_CONTRATO_TEST_TIPO or 'I').strip() or 'I'
+        payload['id_cliente'] = str(id_cliente)
+        # Plano de venda (IXC): continua vindo do cadastro / Operação ou IXC_CONTRATO_TEST_ID_VD_CONTRATO.
+        payload['id_vd_contrato'] = str(id_vd)
+        payload['id_filial'] = str(id_filial)
+        payload['contrato'] = str(cadastro.plano_velocidade or cadastro.plano or 'Contrato teste')[:200]
+        payload['data'] = timezone.now().strftime('%d/%m/%Y')
+        payload['id_tipo_contrato'] = (settings.IXC_CONTRATO_TEST_ID_TIPO_CONTRATO or '10').strip()
+        # Plano 19, modelo 4, tipo doc 501, tipo cobrança ID 10, vendedor 9, filial 1 — demo IXC (telas de referência).
+        payload['id_modelo'] = (settings.IXC_CONTRATO_TEST_ID_MODELO or '4').strip()
+        payload['id_tipo_documento'] = (settings.IXC_CONTRATO_TEST_ID_TIPO_DOCUMENTO or '501').strip()
+        payload['id_carteira_cobranca'] = (settings.IXC_CONTRATO_TEST_ID_CARTEIRA_COBRANCA or '1').strip()
+        payload['id_vendedor'] = (settings.IXC_CONTRATO_TEST_ID_VENDEDOR or '9').strip()
+        payload['cc_previsao'] = (settings.IXC_CONTRATO_TEST_CC_PREVISAO or 'M').strip()
+        payload['tipo_cobranca'] = (settings.IXC_CONTRATO_TEST_TIPO_COBRANCA_ID or '10').strip()
+        # Fidelidade em meses: 12 se o cliente marcou fidelidade na ficha, senão 0.
+        payload['fidelidade'] = '12' if getattr(cadastro, 'fidelidade', True) else '0'
+        payload['renovacao_automatica'] = (settings.IXC_CONTRATO_TEST_RENOVACAO_AUTOMATICA or 'S').strip()
+        payload['base_geracao_tipo_doc'] = (settings.IXC_CONTRATO_TEST_BASE_GERACAO_TIPO_DOC or 'P').strip()
+        payload['bloqueio_automatico'] = (settings.IXC_CONTRATO_TEST_BLOQUEIO_AUTOMATICO or 'S').strip()
+        payload['aviso_atraso'] = (settings.IXC_CONTRATO_TEST_AVISO_ATRASO or 'S').strip()
+        payload['endereco_padrao_cliente'] = (settings.IXC_CONTRATO_TEST_ENDERECO_PADRAO_CLIENTE or 'S').strip()
+        payload['obs'] = f'[CADASTRO_WEB] cadastro_id={cadastro.pk} teste cliente_contrato.'[:2000]
+        return payload, None
+
+    def create_cliente_contrato_test(self, cadastro):
+        """POST ``webservice/v1/cliente_contrato`` com ``ixcsoft: incluir`` (somente teste operado pelo painel)."""
+        if not self.url or not self.token:
+            return {
+                'status': 'error',
+                'message': 'API do IXC não configurada (IXC_API_URL / IXC_API_TOKEN).',
+                'logs': ['[CLIENTE_CONTRATO] IXC ausente.'],
+            }
+        payload, err = self.build_cliente_contrato_test_payload(cadastro)
+        if err:
+            return {'status': 'error', 'message': err, 'logs': [f'[CLIENTE_CONTRATO] {err}']}
+
+        resource = (settings.IXC_CLIENTE_CONTRATO_RESOURCE or 'cliente_contrato').strip()
+        endpoint = f'{self.url}/webservice/v1/{resource}'
+        debug_path = self._save_debug_json(cadastro.pk, payload, 'CLIENTE_CONTRATO_TEST')
+        logs = []
+        if debug_path:
+            logs.append(f'[CLIENTE_CONTRATO] debug_json={debug_path}')
+
+        result = self._post_ixc(
+            endpoint,
+            payload,
+            'CLIENTE_CONTRATO',
+            extra_headers={'ixcsoft': 'incluir'},
+        )
+        logs.extend(result.get('logs', []))
+
+        if result.get('status') != 'success':
+            return {
+                'status': 'error',
+                'message': result.get('message') or 'Falha HTTP ao criar contrato.',
+                'logs': logs,
+            }
+
+        body = result.get('data') if isinstance(result.get('data'), dict) else {}
+        response_type = str(body.get('type', '')).lower()
+        response_message = str(body.get('message', ''))
+        if response_type == 'error':
+            return {
+                'status': 'error',
+                'message': response_message or 'IXC retornou erro ao incluir contrato.',
+                'logs': logs + [f'[CLIENTE_CONTRATO] erro_api: {response_message}'],
+            }
+
+        contrato_id = self._extract_cliente_contrato_id(body)
+        if contrato_id in (None, '', 0, '0'):
+            logs.append(
+                f'[CLIENTE_CONTRATO] id_contrato_nao_extraido; chaves_resposta={list(body.keys())[:25]}'
+            )
+        id_sent = str(payload.get('id_cliente', '')).strip()
+        lead_only = (
+            id_sent
+            and id_sent == str(cadastro.ixc_lead_id or '').strip()
+            and not str(cadastro.ixc_prospect_id or '').strip()
+        )
+
+        if contrato_id not in (None, '', 0, '0'):
+            msg_ok = f'Contrato criado no IXC (teste). ID: {contrato_id}.'
+            from .models import Cadastro
+
+            cid = str(contrato_id).strip()
+            Cadastro.objects.filter(pk=cadastro.pk).update(ixc_contrato_id=cid)
+            logs.append(f'[CLIENTE_CONTRATO] ixc_contrato_id={cid} gravado no cadastro pk={cadastro.pk}.')
+            return {
+                'status': 'success',
+                'message': msg_ok,
+                'contrato_id': contrato_id,
+                'logs': logs,
+            }
+
+        if lead_only:
+            return {
+                'status': 'warning',
+                'message': (
+                    'IXC respondeu 200 sem ID de contrato. O id_cliente veio só do contato (ixc_lead_id). '
+                    'Conclua a prospecção (crm_canditados) para gravar ixc_prospect_id e teste de novo com esse ID.'
+                ),
+                'contrato_id': None,
+                'logs': logs + ['[CLIENTE_CONTRATO] id_cliente=contato; prefira ixc_prospect_id após crm_canditados.'],
+            }
+
+        msg_ok = 'Contrato enviado ao IXC (teste).'
+        if not body:
+            msg_ok = 'IXC aceitou o POST sem corpo JSON; confira o contrato no IXC.'
+        return {
+            'status': 'success',
+            'message': msg_ok,
+            'contrato_id': contrato_id,
+            'logs': logs,
+        }
 
     def create_os(self, cadastro, ixc_id):
         pass
