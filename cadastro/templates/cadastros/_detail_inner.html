@@ -73,6 +73,7 @@
                             <button id="btnSendIXC" type="button" class="btn-action-premium btn-action-ixc" onclick="sendToIXCLead({{ cadastro.pk }})">
                                 <i class="bi bi-send-check-fill"></i> 1 — LEAD + CRM CANDIDATOS (IXC)
                             </button>
+<<<<<<< Updated upstream
                             {% if cadastro.ixc_lead_id and not cadastro.ixc_candidato_id and not ixc_demo_host %}
                             <button id="btnSendIXCCandidatos" type="button" class="btn-action-premium btn-action-ixc mt-2" style="--bs-btn-bg:#2d5a27;" onclick="sendIXCCandidatosConfirm({{ cadastro.pk }})">
                                 <i class="bi bi-person-badge"></i> CRM CANDIDATOS (somente IXC)
@@ -86,6 +87,21 @@
                             {% if user.is_superuser and cadastro.ixc_candidato_id %}
                             <button id="btnClearIXCCandidatoLocal" type="button" class="btn-action-premium mt-2" style="--bs-btn-bg:#6b4423;" title="Só banco local; não remove linha no IXC" onclick="confirmClearIXCCandidatoLocal({{ cadastro.pk }})">
                                 <i class="bi bi-unlink" aria-hidden="true"></i> ADMIN — limpar vínculo IXC candidato (local)
+=======
+                            <div class="mt-3 pt-3 border-top border-secondary border-opacity-25">
+                                <p class="small text-muted mb-2 text-uppercase fw-bold">Vínculo IXC (só neste sistema)</p>
+                                <p class="small text-muted mb-2">Remove IDs gravados aqui para poder enviar de novo. <strong>Não apaga</strong> contato/prospecção no servidor IXC.</p>
+                                <button id="btnLimparIXCProspect" type="button" class="btn btn-sm btn-outline-secondary w-100 mb-2" onclick="limparVinculoIXCLocal({{ cadastro.pk }}, 'prospecto')">
+                                    <i class="bi bi-link-45deg"></i> Limpar prospecção local
+                                </button>
+                                <button id="btnLimparIXCTudo" type="button" class="btn btn-sm btn-outline-danger w-100" onclick="limparVinculoIXCLocal({{ cadastro.pk }}, 'tudo')">
+                                    <i class="bi bi-x-octagon"></i> Limpar todo vínculo IXC local
+                                </button>
+                            </div>
+                            {% if user.is_superuser %}
+                            <button id="btnIXCClienteContratoTest" type="button" class="btn-action-premium btn-action-ixc mt-2" style="--bs-btn-bg:#5c4d00;border-color:#8a7500;" onclick="sendIXCClienteContratoTest({{ cadastro.pk }})">
+                                <i class="bi bi-file-earmark-plus"></i> TESTE: CONTRATO + LOGIN PPPoE (IXC)
+>>>>>>> Stashed changes
                             </button>
                             {% endif %}
                             
@@ -418,8 +434,106 @@ function _ixcShowLogModal(logLines, title) {
     showInfo(title, contentHtml);
 }
 
+<<<<<<< Updated upstream
 /** Etapa 1: lead/contato IXC. Após sucesso, pergunta se deseja etapa 2 (prospecção). */
 function sendToIXCLead(pk) {
+=======
+function sendIXCClienteContratoTest(pk) {
+    showConfirm(
+        'Teste IXC — contrato + PPPoE',
+        'Primeiro: POST em webservice/v1/cliente_contrato (incluir). Se o IXC devolver o ID do contrato, o sistema grava ixc_contrato_id e, em seguida, '
+            + 'tenta o POST em webservice/v1/radusuarios (login PPPoE) já com esse id_contrato e dados do contrato. '
+            + 'Para desativar só o PPPoE, defina IXC_CLIENTE_CONTRATO_CRIAR_RADUSUARIOS_APOS_INCLUIR=False no .env. Continuar?',
+        function () {
+            const btn = document.getElementById('btnIXCClienteContratoTest');
+            const logLines = [];
+            const pushLog = (line) => {
+                const now = new Date().toLocaleTimeString('pt-BR');
+                logLines.push(`[${now}] ${line}`);
+            };
+            pushLog('POST cliente_contrato (teste); em seguida radusuarios se contrato OK...');
+            fetchJson(`/cadastro/${pk}/ixc-test-cliente-contrato/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: '',
+            }, {
+                busyButton: btn,
+                busyLabel: 'ENVIANDO...',
+                silentSuccess: true,
+                onSuccess: (data) => {
+                    _ixcAppendLogs(logLines, data);
+                    if (data.radusuarios) {
+                        const r = data.radusuarios;
+                        const now = new Date().toLocaleTimeString('pt-BR');
+                        logLines.push(`[${now}] radusuarios_após_contrato status=${r.status || ''} login=${r.pppoe_login || ''} msg=${(r.message || '').slice(0, 200)}`);
+                    }
+                    if (data.status === 'warning') {
+                        showNotify(data.message || 'Aviso.', 'warning');
+                        _ixcShowLogModal(logLines, 'IXC — contrato + PPPoE (aviso)');
+                    } else if (data.radusuarios && data.radusuarios.status === 'error') {
+                        showNotify(data.message || 'Contrato criado; PPPoE falhou — veja o log.', 'warning');
+                        _ixcShowLogModal(logLines, 'IXC — contrato OK / PPPoE com aviso');
+                    } else {
+                        showNotify(data.message || 'Contrato e PPPoE (teste) processados.', 'success');
+                        _ixcShowLogModal(logLines, 'IXC — contrato + PPPoE (sucesso)');
+                    }
+                },
+                onError: (err, data) => {
+                    const msg = (data && data.message) ? data.message : 'Erro de conexão com o servidor.';
+                    _ixcAppendLogs(logLines, data);
+                    pushLog(`Falha: ${msg}`);
+                    _ixcShowLogModal(logLines, 'IXC — contrato + PPPoE (erro)');
+                },
+            });
+        },
+        false
+    );
+}
+
+/** Apaga vínculos IXC gravados só no Django (`ixc_etapa=limpar`). */
+function limparVinculoIXCLocal(pk, escopo) {
+    const isTudo = escopo === 'tudo';
+    const btnId = isTudo ? 'btnLimparIXCTudo' : 'btnLimparIXCProspect';
+    const btn = document.getElementById(btnId);
+    const titulo = isTudo ? 'Limpar todo vínculo IXC (local)' : 'Limpar prospecção (local)';
+    const texto = isTudo
+        ? 'Serão apagados neste cadastro: ID do lead, da prospecção, do contrato de teste e os logs de envio. O IXC não é alterado. Deseja continuar?'
+        : 'Será apagado só o ID da prospecção neste cadastro (o lead permanece). Assim você pode usar «Enviar para IXC» para criar outra prospecção. Continuar?';
+    showConfirm(titulo, texto, function () {
+        const logLines = [];
+        const pushLog = (line) => {
+            const now = new Date().toLocaleTimeString('pt-BR');
+            logLines.push(`[${now}] ${line}`);
+        };
+        pushLog(`Limpar vínculo IXC local (escopo=${escopo})...`);
+        const body = new URLSearchParams({ ixc_etapa: 'limpar', ixc_limpar_escopo: escopo }).toString();
+        fetchJson(`/cadastro/${pk}/send-ixc/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body,
+        }, {
+            busyButton: btn,
+            busyLabel: 'LIMPANDO...',
+            silentSuccess: true,
+            onSuccess: (data) => {
+                _ixcAppendLogs(logLines, data);
+                showNotify(data.message || 'Vínculo atualizado.', 'success');
+                _ixcShowLogModal(logLines, 'IXC — limpar vínculo local');
+                setTimeout(function () { window.location.reload(); }, 1200);
+            },
+            onError: (err, data) => {
+                const msg = (data && data.message) ? data.message : 'Erro de conexão com o servidor.';
+                _ixcAppendLogs(logLines, data);
+                pushLog(`Falha: ${msg}`);
+                _ixcShowLogModal(logLines, 'IXC — limpar (erro)');
+            },
+        });
+    }, false);
+}
+
+/** Um clique: lead (se necessário) + prospecção no servidor (`ixc_etapa=completo`). */
+function sendToIXCCompleto(pk) {
+>>>>>>> Stashed changes
     const btn = document.getElementById('btnSendIXC');
     const logLines = [];
     const pushLog = (line) => {

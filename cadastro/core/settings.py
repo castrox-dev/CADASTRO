@@ -281,8 +281,23 @@ IXC_CONTRATO_MODELO_IMPRESSAO_ID = config('IXC_CONTRATO_MODELO_IMPRESSAO_ID', de
 IXC_CONTRATO_CARTEIRA_COBRANCA_ID = config('IXC_CONTRATO_CARTEIRA_COBRANCA_ID', default='').strip()
 IXC_CONTRATO_VENDEDOR_ID = config('IXC_CONTRATO_VENDEDOR_ID', default='').strip()
 
-# --- Teste WS cliente_contrato (POST incluir) — botão só para superusuário
+# --- Teste WS cliente_contrato (+ PPPoE após sucesso) — painel superusuário
 IXC_CLIENTE_CONTRATO_RESOURCE = config('IXC_CLIENTE_CONTRATO_RESOURCE', default='cliente_contrato').strip()
+# Opcional: após criar o contrato, POST em ``/webservice/v1/<recurso>`` com JSON ``{"id_contrato": "<id>"}`` para «aguardando assinatura» (número varia por instalação IXC, ex.: cliente_contrato_23529).
+IXC_CLIENTE_CONTRATO_ASSINATURA_RESOURCE = config(
+    'IXC_CLIENTE_CONTRATO_ASSINATURA_RESOURCE', default=''
+).strip()
+IXC_CLIENTE_CONTRATO_ASSINATURA_JSON_KEY = config(
+    'IXC_CLIENTE_CONTRATO_ASSINATURA_JSON_KEY', default='id_contrato'
+).strip()
+# Se vazio, não envia cabeçalho ``ixcsoft`` neste POST (como no Postman do provedor). Preencha se o IXC exigir.
+IXC_CLIENTE_CONTRATO_ASSINATURA_IXCSOFT = config(
+    'IXC_CLIENTE_CONTRATO_ASSINATURA_IXCSOFT', default=''
+).strip()
+# Se True (padrão), após sucesso do incluir cliente_contrato tenta criar login PPPoE (radusuarios) com o id_contrato retornado. False = só contrato.
+IXC_CLIENTE_CONTRATO_CRIAR_RADUSUARIOS_APOS_INCLUIR = config(
+    'IXC_CLIENTE_CONTRATO_CRIAR_RADUSUARIOS_APOS_INCLUIR', default=True, cast=bool
+)
 IXC_CONTRATO_TEST_ID_CLIENTE = config('IXC_CONTRATO_TEST_ID_CLIENTE', default='').strip()
 # Contrato já existente no IXC (homologação de testes WS, se reativar cliente_contrato).
 IXC_CONTRATO_TEST_ID_CONTRATO = config('IXC_CONTRATO_TEST_ID_CONTRATO', default='').strip()
@@ -303,7 +318,94 @@ IXC_CONTRATO_TEST_AVISO_ATRASO = config('IXC_CONTRATO_TEST_AVISO_ATRASO', defaul
 IXC_CONTRATO_TEST_ENDERECO_PADRAO_CLIENTE = config(
     'IXC_CONTRATO_TEST_ENDERECO_PADRAO_CLIENTE', default='S'
 ).strip()
+# No mesmo POST ``incluir``: marcar contrato para fluxo de assinatura (tela IXC «Status»).
+IXC_CONTRATO_AGUARDANDO_ASSINATURA_INCLUIR = config(
+    'IXC_CONTRATO_AGUARDANDO_ASSINATURA_INCLUIR', default=True, cast=bool
+)
+IXC_CONTRATO_TEST_ASSINATURA_DIGITAL = config(
+    'IXC_CONTRATO_TEST_ASSINATURA_DIGITAL', default='S'
+).strip()
+IXC_CONTRATO_TEST_INTEGRACAO_ASSINATURA_DIGITAL = config(
+    'IXC_CONTRATO_TEST_INTEGRACAO_ASSINATURA_DIGITAL', default=''
+).strip()
+IXC_CONTRATO_TEST_GERAR_FINAN_ASSIN_DIGITAL = config(
+    'IXC_CONTRATO_TEST_GERAR_FINAN_ASSIN_DIGITAL', default=''
+).strip()
+# Código de status no IXC (varia por instalação). Vazio = não envia ``status`` no incluir.
+IXC_CONTRATO_TEST_STATUS = config('IXC_CONTRATO_TEST_STATUS', default='').strip()
 
+<<<<<<< Updated upstream
+=======
+# --- POST radusuarios (login PPPoE) — URL de teste isolado ainda disponível; fluxo principal junto ao cliente_contrato acima.
+IXC_RADUSUARIOS_RESOURCE = config('IXC_RADUSUARIOS_RESOURCE', default='radusuarios').strip()
+IXC_RADUSUARIOS_TEST_ID_CONTRATO = config('IXC_RADUSUARIOS_TEST_ID_CONTRATO', default='').strip()
+# Se True e id_contrato vazio, tenta POST cliente_contrato com ixcsoft=listar (id_cliente) antes de falhar.
+IXC_RADUSUARIOS_LOOKUP_CONTRATO_LISTAR = config(
+    'IXC_RADUSUARIOS_LOOKUP_CONTRATO_LISTAR', default=True, cast=bool
+)
+# Listar ``vd_contrato`` pelo id_vd para preencher id_grupo/tipo_conexao_mapa alinhados ao plano (evita «Preencha Plano» sem 9/58 genéricos).
+IXC_RADUSUARIOS_LOOKUP_VD_CONTRATO_LISTAR = config(
+    'IXC_RADUSUARIOS_LOOKUP_VD_CONTRATO_LISTAR', default=True, cast=bool
+)
+# CSV: tenta listar cada recurso pelo id do plano de venda (vd) até obter id_grupo/tipo. Demo costuma não ter ``vd_contrato`` — inclua ``cliente_contrato``.
+IXC_RADUSUARIOS_VD_LOOKUP_RESOURCES = config(
+    'IXC_RADUSUARIOS_VD_LOOKUP_RESOURCES', default='vd_contrato,cliente_contrato'
+).strip()
+# Se True, antes de omitir 9/58 do .env tenta listar ``radusuarios`` (mesmo id_contrato ou mesmo cliente+id_vd) e copia só id_grupo/tipo_conexao_mapa.
+IXC_RADUSUARIOS_LISTAR_MODELO_RADIUS = config(
+    'IXC_RADUSUARIOS_LISTAR_MODELO_RADIUS', default=True, cast=bool
+)
+# Se não houver radusuarios modelo: tenta id_tipo_conexao_mapa / id_mapa / id_tipo_contrato e colunas *grupo* na linha listar cliente_contrato.
+IXC_RADUSUARIOS_FALLBACK_CC_LINHA_PARA_MAPA = config(
+    'IXC_RADUSUARIOS_FALLBACK_CC_LINHA_PARA_MAPA', default=True, cast=bool
+)
+IXC_VD_CONTRATO_RESOURCE = config('IXC_VD_CONTRATO_RESOURCE', default='vd_contrato').strip()
+IXC_RADUSUARIOS_AUTENTICACAO = config('IXC_RADUSUARIOS_AUTENTICACAO', default='L').strip()
+IXC_RADUSUARIOS_TIPO_CONEXAO_MAPA = config('IXC_RADUSUARIOS_TIPO_CONEXAO_MAPA', default='58').strip()
+IXC_RADUSUARIOS_ID_GRUPO = config('IXC_RADUSUARIOS_ID_GRUPO', default='9').strip()
+IXC_RADUSUARIOS_SENHA_MD5 = config('IXC_RADUSUARIOS_SENHA_MD5', default='N').strip()
+IXC_RADUSUARIOS_LOGIN_SIMULTANEO = config('IXC_RADUSUARIOS_LOGIN_SIMULTANEO', default='1').strip()
+IXC_RADUSUARIOS_ATIVO = config('IXC_RADUSUARIOS_ATIVO', default='S').strip()
+IXC_RADUSUARIOS_AUTO_PREENCHER_IP = config('IXC_RADUSUARIOS_AUTO_PREENCHER_IP', default='S').strip()
+IXC_RADUSUARIOS_FIXAR_IP = config('IXC_RADUSUARIOS_FIXAR_IP', default='N').strip()
+IXC_RADUSUARIOS_RELACIONAR_IP_AO_LOGIN = config('IXC_RADUSUARIOS_RELACIONAR_IP_AO_LOGIN', default='N').strip()
+IXC_RADUSUARIOS_AUTENTICACAO_POR_MAC = config('IXC_RADUSUARIOS_AUTENTICACAO_POR_MAC', default='N').strip()
+IXC_RADUSUARIOS_AUTO_PREENCHER_MAC = config('IXC_RADUSUARIOS_AUTO_PREENCHER_MAC', default='S').strip()
+IXC_RADUSUARIOS_RELACIONAR_MAC_AO_LOGIN = config('IXC_RADUSUARIOS_RELACIONAR_MAC_AO_LOGIN', default='S').strip()
+IXC_RADUSUARIOS_TIPO_VINCULO_PLANO = config('IXC_RADUSUARIOS_TIPO_VINCULO_PLANO', default='D').strip()
+# S/N — alguns IXC exigem «usar endereço do cliente» no login (equivalente ao contrato). Vazio = não envia a chave.
+IXC_RADUSUARIOS_ENDERECO_PADRAO_CLIENTE = config(
+    'IXC_RADUSUARIOS_ENDERECO_PADRAO_CLIENTE', default='S'
+).strip()
+# Se True, após montar endereço da ficha, sobrepõe com campos do cliente_contrato listado por id_contrato (quando existir).
+IXC_RADUSUARIOS_MERGE_ENDERECO_CONTRATO = config(
+    'IXC_RADUSUARIOS_MERGE_ENDERECO_CONTRATO', default=True, cast=bool
+)
+# Se True e a listagem do contrato não trouxer id_grupo/tipo_conexao reconhecidos, reenvia os do .env (pode gerar «plano não existe»).
+IXC_RADUSUARIOS_USAR_GRUPO_MAPA_ENV_SE_CONTRATO_SEM_FK = config(
+    'IXC_RADUSUARIOS_USAR_GRUPO_MAPA_ENV_SE_CONTRATO_SEM_FK', default=False, cast=bool
+)
+# Se True, sobrescreve tipo_conexao_mapa/id_grupo com o .env após merge/listagens (debug; pode gerar «plano não existe»).
+IXC_RADUSUARIOS_FORCAR_GRUPO_MAPA_COM_VD_CONTRATO = config(
+    'IXC_RADUSUARIOS_FORCAR_GRUPO_MAPA_COM_VD_CONTRATO', default=False, cast=bool
+)
+# False = não envia id_vd_contrato no POST (plano implícito no id_contrato — doc de alguns provedores).
+IXC_RADUSUARIOS_ENVIAR_ID_VD_CONTRATO = config(
+    'IXC_RADUSUARIOS_ENVIAR_ID_VD_CONTRATO', default=False, cast=bool
+)
+# True = se o merge do ``cliente_contrato`` trouxe ``id_vd_contrato``, envia no POST (coerente com o contrato; evita «plano não existe» com só id_contrato+58+9).
+IXC_RADUSUARIOS_ENVIAR_ID_VD_SE_MERGE_CONTRATO = config(
+    'IXC_RADUSUARIOS_ENVIAR_ID_VD_SE_MERGE_CONTRATO', default=True, cast=bool
+)
+# Se True e o merge só trouxe id_vd (sem id_grupo/tipo na linha), remove grupo/mapa do .env antes do POST (evita 9/58 errados; pode gerar «Preencha tipo/plano» no IXC).
+IXC_RADUSUARIOS_OMITIR_GRUPO_MAPA_ENV_COM_VD_MERGE = config(
+    'IXC_RADUSUARIOS_OMITIR_GRUPO_MAPA_ENV_COM_VD_MERGE', default=True, cast=bool
+)
+# Para radusuarios: ``lead`` = ixc_lead_id (contato) antes da prospecção — costuma ser o id_cliente esperado pelo IXC.
+# ``prospect`` = ixc_prospect_id primeiro (comportamento antigo; em alguns IXC o id da prospecção não é id_cliente).
+IXC_RADUSUARIOS_ID_CLIENTE_FONTE = config('IXC_RADUSUARIOS_ID_CLIENTE_FONTE', default='lead').strip().lower()
+
+>>>>>>> Stashed changes
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
