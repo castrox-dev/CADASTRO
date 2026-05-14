@@ -7,6 +7,7 @@ IDs IXC aqui (ex.: ``ixc_filial_id``, ``ixc_cidade_id``, ``ixc_plano_venda_id`` 
 substituem mapas legados no código. Enquanto não estiverem todos preenchidos, o ``.env`` de
 homologação pode ainda conter IDs de teste — ver ``INTELIGENCIA_DO_PROJETO.md`` seção 1.1.
 """
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -116,6 +117,21 @@ class CidadeOperacao(models.Model):
 
     ixc_filial_id = models.CharField(max_length=32, blank=True)
     ixc_cidade_id = models.CharField(max_length=32, blank=True)
+    ixc_setor_id = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text='ID do setor no IXC (id_setor). Vazio usa o default por filial.',
+    )
+    ixc_carteira_cobranca_id = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text='ID da carteira de cobrança no IXC (id_carteira_cobranca, padrão «COM DESCONTO»).',
+    )
+    ixc_tipo_doc_ativ_id = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text='ID do tipo de documento opcional/ativação (id_tipo_doc_ativ). Vazio usa o default por filial.',
+    )
 
     exigir_fotos_documentacao = models.BooleanField(
         null=True,
@@ -200,6 +216,26 @@ class AppConfigOperacao(models.Model):
         help_text='Padrão quando a cidade não define override.',
     )
 
+    # --- IDs globais do IXC -------------------------------------------------
+    # Estes três valores são usados em todos os contratos. Podem ser
+    # sobrescritos por cidade, mas geralmente são fixos no provedor.
+    ixc_tipo_documento_fatura_id = models.CharField(
+        max_length=32,
+        blank=True,
+        default='501',
+        help_text='id_tipo_documento da fatura mensal (padrão 501).',
+    )
+    ixc_produto_instalacao_id = models.CharField(
+        max_length=32,
+        blank=True,
+        default='146',
+        help_text='id_produto_ativ enviado quando o cliente paga taxa de instalação (padrão 146 = R$ 100,00).',
+    )
+    ixc_fidelidade_meses = models.PositiveSmallIntegerField(
+        default=12,
+        help_text='Quantidade de meses para o campo `fidelidade` do contrato quando o cliente aceita fidelidade.',
+    )
+
     class Meta:
         verbose_name = 'Configuração geral da ficha'
         verbose_name_plural = 'Configuração geral da ficha'
@@ -242,6 +278,79 @@ class OrigemCanalVenda(models.Model):
 
     def __str__(self):
         return f'{self.label} → {self.ixc_id}'
+
+
+class VendedorIXC(models.Model):
+    """Vendedor / responsável que aparece no IXC (CRM e Contratos).
+
+    No IXC um mesmo «funcionário» pode ser usado em três campos do contrato:
+    `id_vendedor` (quem fez a venda), `id_responsavel` (responsável pela conta)
+    e `id_vendedor_ativ` (vendedor de ativação). Mantemos um único cadastro
+    aqui — o `ixc_id` alimenta os três no payload da integração.
+    """
+
+    nome = models.CharField(
+        max_length=120,
+        help_text='Nome do vendedor (exibido no painel; não vai para o IXC).',
+    )
+    usuario = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='vendedor_ixc',
+        help_text='Consultor (usuário do sistema) vinculado a este vendedor IXC. '
+                  'Quando preenchido, os cadastros criados por esse consultor herdam '
+                  'automaticamente seus IDs no payload IXC.',
+    )
+    ixc_id = models.CharField(
+        max_length=32,
+        unique=True,
+        help_text='ID do funcionário / vendedor no IXC (ex.: 242). Vai para id_vendedor e id_vendedor_ativ.',
+    )
+    ixc_id_responsavel = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text='ID do responsável pela conta no IXC (id_responsavel). Vazio = usa o mesmo ID do vendedor.',
+    )
+    email = models.EmailField(
+        blank=True,
+        help_text='Opcional: contato interno (não enviado ao IXC).',
+    )
+    telefone = models.CharField(
+        max_length=40,
+        blank=True,
+        help_text='Opcional: contato interno (não enviado ao IXC).',
+    )
+    ordem = models.PositiveSmallIntegerField(default=0)
+    ativo = models.BooleanField(
+        default=True,
+        help_text='Vendedores inativos não aparecem no select de novos cadastros.',
+    )
+    padrao = models.BooleanField(
+        default=False,
+        help_text='Pré-selecionado em cadastros novos quando o admin não escolher um explicitamente.',
+    )
+    observacao = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        verbose_name = 'Vendedor / responsável IXC'
+        verbose_name_plural = 'Vendedores / responsáveis IXC'
+        ordering = ['ordem', 'nome']
+
+    def __str__(self):
+        return f'{self.nome} (IXC #{self.ixc_id})'
+
+    @property
+    def responsavel_ixc_id(self):
+        """ID que vai para id_responsavel — usa override se houver, senão `ixc_id`."""
+        return (self.ixc_id_responsavel or '').strip() or (self.ixc_id or '').strip()
+
+    def save(self, *args, **kwargs):
+        # Apenas 1 vendedor pode ser «padrão» — se este for marcado, desmarca os outros.
+        if self.padrao:
+            type(self).objects.exclude(pk=self.pk).filter(padrao=True).update(padrao=False)
+        super().save(*args, **kwargs)
 
 
 class VagaInstalacao(models.Model):

@@ -71,6 +71,19 @@
                             </button>
                             <p class="small text-muted mt-2 mb-0">Abre as opções: criar lead, prospecção (CRM) ou contrato no ERP.</p>
 
+                            {% if cadastro.vendedor_responsavel %}
+                            <div class="mt-3 p-2 rounded" style="background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.25);">
+                                <p class="small mb-1"><i class="bi bi-person-badge-fill me-1" style="color:#8b5cf6;"></i><strong>Vendedor responsável</strong></p>
+                                <div class="small">{{ cadastro.vendedor_responsavel.nome }}</div>
+                                <div class="small text-muted">IXC #<code class="user-select-all">{{ cadastro.vendedor_responsavel.ixc_id }}</code> — enviado em id_vendedor / id_responsavel / id_vendedor_ativ</div>
+                            </div>
+                            {% else %}
+                            <div class="mt-3 p-2 rounded text-center" style="background: rgba(255, 193, 7, 0.08); border: 1px dashed rgba(255, 193, 7, 0.4);">
+                                <p class="small mb-1"><i class="bi bi-exclamation-circle me-1 text-warning-emphasis"></i>Sem vendedor responsável</p>
+                                <a href="{% url 'edit_cadastro' cadastro.pk %}" class="small">Definir vendedor</a>
+                            </div>
+                            {% endif %}
+
                             <div class="mt-3 pt-3 border-top border-secondary border-opacity-25">
                                 <p class="small text-muted mb-2 text-uppercase fw-bold">Vínculo IXC (só neste sistema)</p>
                                 <p class="small text-muted mb-2">Remove IDs gravados aqui para poder enviar de novo. <strong>Não apaga</strong> contato/prospecção no servidor IXC.</p>
@@ -86,11 +99,7 @@
                                 <i class="bi bi-trash3-fill"></i> EXCLUIR CADASTRO
                             </button>
 
-                            {% if user.is_superuser and not cadastro.is_anonimizado %}
-                            <button id="btnAnonimizar" type="button" class="btn-action-premium btn-action-delete" onclick="confirmAnonimizar({{ cadastro.pk }})">
-                                <i class="bi bi-shield-lock-fill" aria-hidden="true"></i> ANONIMIZAR (LGPD)
-                            </button>
-                            {% elif cadastro.is_anonimizado %}
+                            {% if cadastro.is_anonimizado %}
                             <div class="alert alert-info small mt-3 mb-0" role="status">
                                 <i class="bi bi-shield-check me-1" aria-hidden="true"></i>
                                 Cadastro anonimizado em {{ cadastro.anonimizado_em|date:"d/m/Y H:i" }}.
@@ -131,7 +140,10 @@
                                                         <p class="text-muted mb-0" style="font-size: 0.65rem;">Documentação PJ</p>
                                                     </div>
                                                 </div>
-                                                <a href="{{ cadastro.contrato_social.url }}" target="_blank" class="btn btn-fibramar btn-sm p-1 px-2" aria-label="Visualizar contrato social"><i class="bi bi-eye" aria-hidden="true"></i></a>
+                                                <div class="btn-group btn-group-sm" role="group" aria-label="Ações do contrato social">
+                                                    <a href="{% url 'cadastro_documento_download' cadastro.pk 'contrato_social' %}" class="btn btn-fibramar p-1 px-2" title="Baixar arquivo" aria-label="Baixar contrato social"><i class="bi bi-download" aria-hidden="true"></i></a>
+                                                    <a href="{{ cadastro.contrato_social.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary p-1 px-2" title="Abrir em nova aba" aria-label="Visualizar contrato social em nova aba"><i class="bi bi-eye" aria-hidden="true"></i></a>
+                                                </div>
                                             </div>
                                         </div>
                                         {% endif %}
@@ -146,7 +158,10 @@
                                                         <p class="text-muted mb-0" style="font-size: 0.65rem;">Titularidade</p>
                                                     </div>
                                                 </div>
-                                                <a href="{{ cadastro.comprovante_residencia.url }}" target="_blank" class="btn btn-fibramar btn-sm p-1 px-2" aria-label="Visualizar comprovante de residência"><i class="bi bi-eye" aria-hidden="true"></i></a>
+                                                <div class="btn-group btn-group-sm" role="group" aria-label="Ações do comprovante">
+                                                    <a href="{% url 'cadastro_documento_download' cadastro.pk 'comprovante_residencia' %}" class="btn btn-fibramar p-1 px-2" title="Baixar arquivo" aria-label="Baixar comprovante de residência"><i class="bi bi-download" aria-hidden="true"></i></a>
+                                                    <a href="{{ cadastro.comprovante_residencia.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary p-1 px-2" title="Abrir em nova aba" aria-label="Visualizar comprovante em nova aba"><i class="bi bi-eye" aria-hidden="true"></i></a>
+                                                </div>
                                             </div>
                                         </div>
                                         {% elif cadastro.levar_termo %}
@@ -171,7 +186,10 @@
                                                         <p class="text-muted mb-0" style="font-size: 0.65rem;">RG / CNH</p>
                                                     </div>
                                                 </div>
-                                                <a href="{{ cadastro.foto_documento_frente.url }}" target="_blank" class="btn btn-fibramar btn-sm p-1 px-2" aria-label="Visualizar documento (frente)"><i class="bi bi-eye" aria-hidden="true"></i></a>
+                                                <div class="btn-group btn-group-sm" role="group" aria-label="Ações do documento frente">
+                                                    <a href="{% url 'cadastro_documento_download' cadastro.pk 'foto_documento_frente' %}" class="btn btn-fibramar p-1 px-2" title="Baixar arquivo" aria-label="Baixar documento frente"><i class="bi bi-download" aria-hidden="true"></i></a>
+                                                    <a href="{{ cadastro.foto_documento_frente.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary p-1 px-2" title="Abrir em nova aba" aria-label="Visualizar documento frente em nova aba"><i class="bi bi-eye" aria-hidden="true"></i></a>
+                                                </div>
                                             </div>
                                         </div>
                                         {% endif %}
@@ -186,7 +204,10 @@
                                                         <p class="text-muted mb-0" style="font-size: 0.65rem;">RG / CNH</p>
                                                     </div>
                                                 </div>
-                                                <a href="{{ cadastro.foto_documento_verso.url }}" target="_blank" class="btn btn-fibramar btn-sm p-1 px-2" aria-label="Visualizar documento (verso)"><i class="bi bi-eye" aria-hidden="true"></i></a>
+                                                <div class="btn-group btn-group-sm" role="group" aria-label="Ações do documento verso">
+                                                    <a href="{% url 'cadastro_documento_download' cadastro.pk 'foto_documento_verso' %}" class="btn btn-fibramar p-1 px-2" title="Baixar arquivo" aria-label="Baixar documento verso"><i class="bi bi-download" aria-hidden="true"></i></a>
+                                                    <a href="{{ cadastro.foto_documento_verso.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary p-1 px-2" title="Abrir em nova aba" aria-label="Visualizar documento verso em nova aba"><i class="bi bi-eye" aria-hidden="true"></i></a>
+                                                </div>
                                             </div>
                                         </div>
                                         {% endif %}
@@ -201,7 +222,10 @@
                                                         <p class="text-muted mb-0" style="font-size: 0.65rem;">Validação Facial</p>
                                                     </div>
                                                 </div>
-                                                <a href="{{ cadastro.selfie_documento.url }}" target="_blank" class="btn btn-fibramar btn-sm p-1 px-2" aria-label="Visualizar selfie com documento"><i class="bi bi-eye" aria-hidden="true"></i></a>
+                                                <div class="btn-group btn-group-sm" role="group" aria-label="Ações da selfie">
+                                                    <a href="{% url 'cadastro_documento_download' cadastro.pk 'selfie_documento' %}" class="btn btn-fibramar p-1 px-2" title="Baixar arquivo" aria-label="Baixar selfie com documento"><i class="bi bi-download" aria-hidden="true"></i></a>
+                                                    <a href="{{ cadastro.selfie_documento.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary p-1 px-2" title="Abrir em nova aba" aria-label="Visualizar selfie em nova aba"><i class="bi bi-eye" aria-hidden="true"></i></a>
+                                                </div>
                                             </div>
                                         </div>
                                         {% endif %}
@@ -352,6 +376,24 @@
                         A opção <strong>Contrato</strong> fica disponível apenas para superusuários.
                     </p>
                     {% endif %}
+
+                    {% with arquivos_log=cadastro.ixc_envio_logs.arquivos %}
+                    <button type="button" id="btnIxcModalArquivos"
+                        class="ixc-step-btn ixc-step-btn--arquivos"
+                        data-bs-dismiss="modal"
+                        onclick="sendIXCArquivosConfirm({{ cadastro.pk }})"
+                        {% if not cadastro.ixc_lead_id and not cadastro.ixc_prospect_id and not cadastro.ixc_candidato_id %}disabled title="Envie o lead ou a prospecção antes de anexar os documentos."{% endif %}>
+                        <span class="ixc-step-btn__num">4</span>
+                        <span class="ixc-step-btn__body">
+                            <span class="ixc-step-btn__title"><i class="bi bi-paperclip"></i>Anexar documentos</span>
+                            <span class="ixc-step-btn__desc">
+                                Sobe SELFIE, RG (frente/verso) e Comprovante para o cliente no IXC ({% if cadastro.tipo_pessoa == 'pj' %}+ Contrato Social, {% endif %}<code>cliente_arquivos</code>).
+                                {% if arquivos_log and arquivos_log.ultimo_envio_em %}<br><span class="text-muted">Último envio em {{ arquivos_log.ultimo_envio_em|slice:":16" }} (ID IXC: {{ arquivos_log.id_cliente_ixc }}).</span>{% endif %}
+                            </span>
+                        </span>
+                        <i class="bi bi-arrow-right-circle ixc-step-btn__chev" aria-hidden="true"></i>
+                    </button>
+                    {% endwith %}
                 </div>
             </div>
         </div>
@@ -517,6 +559,81 @@ function sendIXCClienteContratoTest(pk) {
         },
         false
     );
+}
+
+/** Etapa 4: envia os arquivos do cadastro (selfie, RG, comprovante) ao IXC via `cliente_arquivos`. */
+function sendIXCArquivosConfirm(pk) {
+    showConfirm(
+        'Anexar documentos no IXC',
+        'Os arquivos deste cadastro (SELFIE, RG frente/verso, comprovante de residência e, se PJ, contrato social) '
+            + 'serão enviados ao cliente no IXC via webservice <code>cliente_arquivos</code>. '
+            + 'O ID do cliente é resolvido na ordem: prospecção (CRM) → candidato → lead/contato. '
+            + 'Cada arquivo gera um POST separado. Continuar?',
+        function () { sendIXCArquivos(pk); },
+        false
+    );
+}
+
+function sendIXCArquivos(pk) {
+    const btn = document.getElementById('btnIxcModalArquivos');
+    const logLines = [];
+    const pushLog = (line) => {
+        const now = new Date().toLocaleTimeString('pt-BR');
+        logLines.push(`[${now}] ${line}`);
+    };
+    pushLog('Etapa 4: upload de arquivos (cliente_arquivos)...');
+
+    showLoader('Enviando documentos ao IXC', 'Preparando arquivos do cadastro...', {
+        icon: 'bi-paperclip',
+        steps: ['Preparando arquivos', 'Resolvendo cliente IXC', 'Subindo arquivos', 'Confirmando envio'],
+    });
+    setLoaderStep('Resolvendo cliente IXC...', { advance: true });
+    setTimeout(function () { setLoaderStep('Subindo arquivos um a um...', { advance: true }); }, 350);
+
+    fetchJson(`/cadastro/${pk}/ixc-upload-arquivos/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: '',
+    }, {
+        busyButton: btn,
+        busyLabel: 'ENVIANDO...',
+        silentSuccess: true,
+        onSuccess: (data) => {
+            _ixcAppendLogs(logLines, data);
+            const uploads = Array.isArray(data.uploads) ? data.uploads : [];
+            const okCount = uploads.filter(u => u.status === 'success').length;
+            const skipCount = uploads.filter(u => u.status === 'skipped').length;
+            const errCount = uploads.filter(u => u.status === 'error').length;
+            pushLog(`Resumo: ok=${okCount} pulados=${skipCount} erros=${errCount}`);
+            uploads.forEach((u) => {
+                const tag = u.status === 'success'
+                    ? `OK id=${u.id || '?'}`
+                    : (u.status === 'skipped' ? 'PULADO' : `ERRO: ${u.message || ''}`);
+                pushLog(`  • ${u.campo} (${u.filename || 's/arquivo'}) — ${tag}`);
+            });
+            setLoaderStep('Confirmando envio...', { advance: true });
+            setTimeout(hideLoader, 350);
+
+            const status = data.status || 'error';
+            if (status === 'success') {
+                showNotify(data.message || 'Documentos enviados ao IXC.', 'success');
+                _ixcShowLogModal(logLines, 'IXC — documentos (sucesso)');
+            } else if (status === 'warning') {
+                showNotify(data.message || 'Envio parcial.', 'warning');
+                _ixcShowLogModal(logLines, 'IXC — documentos (aviso)');
+            } else {
+                showNotify(data.message || 'Falha ao enviar documentos.', 'danger');
+                _ixcShowLogModal(logLines, 'IXC — documentos (erro)');
+            }
+        },
+        onError: (err, data) => {
+            const msg = (data && data.message) ? data.message : 'Erro de conexão com o servidor.';
+            _ixcAppendLogs(logLines, data);
+            pushLog(`Falha: ${msg}`);
+            hideLoader();
+            _ixcShowLogModal(logLines, 'IXC — documentos (erro)');
+        },
+    });
 }
 
 /** Apaga vínculos IXC gravados só no Django (`ixc_etapa=limpar`). */
@@ -697,27 +814,6 @@ function confirmDelete(pk) {
                     setTimeout(() => { window.location.href = "{% url 'dashboard' %}"; }, 1200);
                 },
                 errorMessage: 'Erro ao excluir cadastro.',
-            });
-        },
-        true
-    );
-}
-
-function confirmAnonimizar(pk) {
-    showConfirm(
-        'Anonimizar cadastro (LGPD)',
-        'Esta ação remove permanentemente os dados pessoais (nome, CPF/CNPJ, RG, contato, fotos) e mantém apenas estatísticas. NÃO pode ser desfeita. Use apenas para atender a pedido do titular ou retenção concluída. Continuar?',
-        function() {
-            const btn = document.getElementById('btnAnonimizar');
-            fetchJson(`/cadastro/${pk}/anonimizar/`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            }, {
-                busyButton: btn,
-                busyLabel: 'ANONIMIZANDO...',
-                onSuccess: () => {
-                    setTimeout(() => window.location.reload(), 1200);
-                },
             });
         },
         true

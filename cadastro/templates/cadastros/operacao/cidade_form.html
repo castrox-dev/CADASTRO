@@ -64,16 +64,42 @@
             </div>
 
             <div class="border rounded p-3 mb-4">
-                <div class="small fw-bold text-uppercase text-muted mb-2">IXC (opcional)</div>
-                <div class="mb-3">
-                    <label class="form-label">ID filial IXC</label>
-                    {{ form.ixc_filial_id }}
+                <div class="small fw-bold text-uppercase text-muted mb-2">
+                    Integração IXC — IDs por cidade
                 </div>
-                <div class="mb-0">
-                    <label class="form-label">ID cidade IXC</label>
-                    {{ form.ixc_cidade_id }}
+                <p class="small text-muted mb-3">
+                    Estes IDs vão direto no payload de <code>crm_canditados</code>,
+                    <code>cliente_contrato</code> e <code>cliente_arquivos</code>.
+                    Em branco, o sistema usa os defaults documentados em
+                    <code>cadastros/ixc_ids.py</code>.
+                </p>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">ID filial</label>
+                        {{ form.ixc_filial_id }}
+                        <div class="form-text">Ex.: <code>2</code> Maricá, <code>7</code> Saquarema.</div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">ID cidade</label>
+                        {{ form.ixc_cidade_id }}
+                        <div class="form-text">Cidade no banco IXC (ex.: <code>3214</code>).</div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">ID setor</label>
+                        {{ form.ixc_setor_id }}
+                        <div class="form-text">Setor comercial (id_setor).</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">ID carteira de cobrança</label>
+                        {{ form.ixc_carteira_cobranca_id }}
+                        <div class="form-text">Padrão «COM DESCONTO» (ex.: <code>108</code> Maricá).</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">ID tipo documento de ativação</label>
+                        {{ form.ixc_tipo_doc_ativ_id }}
+                        <div class="form-text">id_tipo_doc_ativ — varia por filial (ex.: <code>702</code> F02).</div>
+                    </div>
                 </div>
-                <div class="form-text">Deixe em branco para usar o mapa fixo do sistema.</div>
             </div>
 
             <button type="submit" class="btn btn-fibramar">Salvar</button>

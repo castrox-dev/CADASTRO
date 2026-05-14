@@ -2,7 +2,12 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse, HttpResponse, Http404
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
-from .models import Cadastro, AcessoDadoSensivel
+from .document_security import (
+    build_cliente_document_filename,
+    guess_doc_extension_from_bytes,
+    mimetype_for_doc_extension,
+)
+from .models import Cadastro, AcessoDadoSensivel, only_digits_br
 from .forms_cadastro import CadastroForm
 from .form_config import get_form_config_dict
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -15,6 +20,8 @@ from django.conf import settings
 from datetime import timedelta
 import logging
 import json
+import os
+import mimetypes
 
 def is_admin(user):
     return user.is_superuser
@@ -221,7 +228,6 @@ def _limpar_vinculo_ixc_local(request, cadastro, logs):
             else 'Não havia prospecção vinculada localmente; nada foi alterado.'
         )
         logs.append(f'[LIMPAR] concluído cleared={cleared or ["(nada)"]}')
-        logger.info("IXC limpar local cadastro=%s escopo=prospecto had=%s", cadastro.pk, had)
         return JsonResponse(
             {
                 'status': 'success',
@@ -260,7 +266,6 @@ def _limpar_vinculo_ixc_local(request, cadastro, logs):
         ]
     )
     logs.append(f'[LIMPAR] concluído escopo=tudo cleared={cleared or ["(ids já vazios)"]} + auditoria IXC')
-    logger.info("IXC limpar local cadastro=%s escopo=tudo cleared=%s", cadastro.pk, cleared)
     return JsonResponse(
         {
             'status': 'success',
@@ -408,7 +413,6 @@ def _send_ixc_lead_body(request, cadastro, logs):
             ]
         )
         logs.append(f"[FIM] lead enviado id={crm_lead_id}")
-        logger.info("IXC lead success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
         prospect_pendente = not ja_tinha_prospect
         msg_parts = [f"Lead IXC (ID: {crm_lead_id})"]
         if cand_status == 'success' and cand_id:
@@ -510,7 +514,6 @@ def _send_ixc_prospect_body(request, cadastro, logs):
         cadastro.ixc_envio_logs = log_block
         cadastro.save(update_fields=save_fields)
         logs.append(f'[FIM] etapa 2 recurso={res_name or "?"} id={pr_id}')
-        logger.info("IXC prospect/etapa2 success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
         if res_name in ('crm_canditados', 'crm_candidatos'):
             msg_ok = (
                 f'Candidato CRM criado no IXC via `{res_name}` (ID: {pr_id}). '
@@ -616,7 +619,6 @@ def _send_ixc_candidatos_body(request, cadastro, logs):
         cadastro.ixc_envio_logs = log_block
         cadastro.save(update_fields=['ixc_candidato_id', 'ixc_envio_mensagem', 'ixc_envio_logs'])
         logs.append(f'[FIM] crm_candidatos id={c_id}')
-        logger.info("IXC candidatos success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
         return JsonResponse({
             'status': 'success',
             'message': f'CRM candidatos criado no IXC (ID: {c_id}).',
@@ -651,7 +653,6 @@ def _send_ixc_candidatos_body(request, cadastro, logs):
             log_block = {**log_block, 'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX)}
             cadastro.ixc_envio_logs = log_block
             cadastro.save(update_fields=['ixc_envio_logs'])
-            logger.info("IXC candidatos indisponível no demo cadastro=%s", cadastro.pk)
             return JsonResponse({
                 'status': 'warning',
                 'message': (
@@ -685,11 +686,12 @@ def _send_ixc_candidatos_body(request, cadastro, logs):
 @user_passes_test(is_admin)
 def admin_dashboard(request):
     today = timezone.now().date()
-    consultores = User.objects.filter(is_superuser=False).annotate(
+    # Mostra TODOS os usuários (consultores + admins). A coluna "admin" diferencia.
+    consultores = User.objects.select_related('vendedor_ixc').annotate(
         total_cadastros=Count('cadastro'),
         pendentes=Count('cadastro', filter=Q(cadastro__status='pendente')),
-        realizados=Count('cadastro', filter=Q(cadastro__status='realizado'))
-    )
+        realizados=Count('cadastro', filter=Q(cadastro__status='realizado')),
+    ).order_by('-is_superuser', 'first_name', 'username')
 
     # Agrega total_geral + total_hoje numa única query (3.2)
     totais = Cadastro.objects.aggregate(
@@ -743,42 +745,151 @@ def reports_page(request):
         'total_geral': total_geral
     })
 
+def _bool_post(request, name, default=False):
+    """Lê um boolean «1/0/true/false/on» do POST sem quebrar com valores ausentes."""
+    raw = request.POST.get(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in ('1', 'true', 'on', 'yes', 'sim')
+
+
+def _digits_only(value):
+    return ''.join(ch for ch in (value or '') if ch.isdigit())
+
+
+def _save_vendedor_ixc_from_post(user, request, *, force_unlink=False):
+    """Cria / atualiza / desvincula o ``VendedorIXC`` deste usuário a partir do POST.
+
+    Espera os campos opcionais ``ixc_id_vendedor`` e ``ixc_id_responsavel``.
+    Quando ambos vierem vazios e ``force_unlink=True``, remove o link.
+    Devolve ``(vendedor, error_msg)``.
+    """
+    from .operacao_models import VendedorIXC
+
+    ixc_id_vend = _digits_only(request.POST.get('ixc_id_vendedor'))
+    ixc_id_resp = _digits_only(request.POST.get('ixc_id_responsavel'))
+
+    vendedor = getattr(user, 'vendedor_ixc', None)
+
+    if not ixc_id_vend:
+        if force_unlink and vendedor:
+            vendedor.usuario = None
+            vendedor.save(update_fields=['usuario'])
+        return vendedor, None
+
+    # Já existe um vendedor com este ixc_id? Reutiliza (e vincula ao usuário).
+    existente = VendedorIXC.objects.filter(ixc_id=ixc_id_vend).first()
+    if existente and existente.pk != getattr(vendedor, 'pk', None):
+        # Se o registro existente já está atrelado a outro user, recusa.
+        if existente.usuario_id and existente.usuario_id != user.pk:
+            return None, f'O ID IXC «{ixc_id_vend}» já está vinculado a outro consultor.'
+        if vendedor:
+            vendedor.usuario = None
+            vendedor.save(update_fields=['usuario'])
+        vendedor = existente
+
+    nome_painel = (user.get_full_name() or user.username).strip()
+    if vendedor:
+        vendedor.nome = nome_painel
+        vendedor.ixc_id = ixc_id_vend
+        vendedor.ixc_id_responsavel = ixc_id_resp
+        vendedor.email = (user.email or '').strip()
+        vendedor.usuario = user
+        if not vendedor.ativo:
+            vendedor.ativo = True
+        vendedor.save()
+    else:
+        vendedor = VendedorIXC.objects.create(
+            usuario=user,
+            nome=nome_painel,
+            ixc_id=ixc_id_vend,
+            ixc_id_responsavel=ixc_id_resp,
+            email=(user.email or '').strip(),
+            ativo=True,
+        )
+    return vendedor, None
+
+
 @login_required
 @user_passes_test(is_admin)
 def manage_consultor(request, pk=None):
-    if request.method == 'POST':
-        action = request.POST.get('action')
-        
-        if action == 'create':
-            username = request.POST.get('username')
-            email = request.POST.get('email')
-            password = request.POST.get('password')
-            first_name = request.POST.get('first_name')
-            
-            if User.objects.filter(username=username).exists():
-                return JsonResponse({'status': 'error', 'message': 'Usuário já existe.'}, status=400)
-            
-            user = User.objects.create_user(username=username, email=email, password=password, first_name=first_name)
-            return JsonResponse({'status': 'success'})
-            
-        elif action == 'edit' and pk:
-            user = get_object_or_404(User, pk=pk)
-            user.first_name = request.POST.get('first_name')
-            user.email = request.POST.get('email')
-            user.save()
-            return JsonResponse({'status': 'success'})
-            
-        elif action == 'delete' and pk:
-            user = get_object_or_404(User, pk=pk)
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error'}, status=400)
+
+    action = request.POST.get('action')
+
+    if action == 'create':
+        username = (request.POST.get('username') or '').strip()
+        email = (request.POST.get('email') or '').strip()
+        password = request.POST.get('password') or ''
+        first_name = (request.POST.get('first_name') or '').strip()
+        is_admin_flag = _bool_post(request, 'is_admin')
+        ixc_id_vend = _digits_only(request.POST.get('ixc_id_vendedor'))
+
+        if not username or not password:
+            return JsonResponse({'status': 'error', 'message': 'Usuário e senha são obrigatórios.'}, status=400)
+        if not ixc_id_vend:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Informe o ID do vendedor no IXC. Consultor = Vendedor no IXC.',
+            }, status=400)
+        if User.objects.filter(username=username).exists():
+            return JsonResponse({'status': 'error', 'message': 'Usuário já existe.'}, status=400)
+
+        user = User.objects.create_user(
+            username=username, email=email, password=password, first_name=first_name
+        )
+        if is_admin_flag:
+            user.is_staff = True
+            user.is_superuser = True
+            user.save(update_fields=['is_staff', 'is_superuser'])
+
+        _, err = _save_vendedor_ixc_from_post(user, request)
+        if err:
+            # Reverte a criação do User para evitar consultor sem vendedor.
             user.delete()
-            return JsonResponse({'status': 'success'})
-            
-        elif action == 'password' and pk:
-            user = get_object_or_404(User, pk=pk)
-            user.set_password(request.POST.get('password'))
-            user.save()
-            return JsonResponse({'status': 'success'})
-            
+            return JsonResponse({'status': 'error', 'message': err}, status=400)
+
+        return JsonResponse({'status': 'success'})
+
+    if action == 'edit' and pk:
+        user = get_object_or_404(User, pk=pk)
+        user.first_name = (request.POST.get('first_name') or '').strip()
+        user.email = (request.POST.get('email') or '').strip()
+        if 'is_admin' in request.POST:
+            is_admin_flag = _bool_post(request, 'is_admin')
+            # Defesa: nunca rebaixar o próprio super-admin que está editando.
+            if user.pk == request.user.pk and not is_admin_flag:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Você não pode remover seu próprio acesso de administrador.',
+                }, status=400)
+            user.is_staff = is_admin_flag
+            user.is_superuser = is_admin_flag
+        user.save()
+
+        _, err = _save_vendedor_ixc_from_post(user, request, force_unlink=True)
+        if err:
+            return JsonResponse({'status': 'error', 'message': err}, status=400)
+
+        return JsonResponse({'status': 'success'})
+
+    if action == 'delete' and pk:
+        user = get_object_or_404(User, pk=pk)
+        if user.pk == request.user.pk:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Você não pode excluir seu próprio usuário.',
+            }, status=400)
+        user.delete()
+        return JsonResponse({'status': 'success'})
+
+    if action == 'password' and pk:
+        user = get_object_or_404(User, pk=pk)
+        user.set_password(request.POST.get('password'))
+        user.save()
+        return JsonResponse({'status': 'success'})
+
     return JsonResponse({'status': 'error'}, status=400)
 
 def client_form(request):
@@ -870,6 +981,73 @@ def update_ficha(request, pk):
         cadastro.save(update_fields=['ficha_manual'])
         return JsonResponse({'status': 'success'})
     return JsonResponse({'status': 'error'}, status=400)
+
+_CADASTRO_DOC_DOWNLOAD_FIELDS = frozenset({
+    'contrato_social',
+    'comprovante_residencia',
+    'foto_documento_frente',
+    'foto_documento_verso',
+    'selfie_documento',
+})
+
+
+@login_required
+def download_cadastro_documento(request, pk, campo):
+    """Envia o arquivo do cadastro como anexo (download), com mesma permissão do detalhe."""
+    if campo not in _CADASTRO_DOC_DOWNLOAD_FIELDS:
+        raise Http404()
+    cadastro = _cadastro_for_user(request, pk)
+    field = getattr(cadastro, campo, None)
+    if not field:
+        raise Http404()
+    name = getattr(field, 'name', '') or ''
+    if not name:
+        raise Http404()
+
+    # FileResponse + alguns backends (ex.: Cloudinary) não combinam bem; lemos em buffer.
+    data = b''
+    read_errors: list[str] = []
+    try:
+        field.open('rb')
+        try:
+            data = field.read() or b''
+        finally:
+            field.close()
+    except Exception as exc:
+        read_errors.append(f'field.open/read: {exc}')
+    if not data:
+        try:
+            fh = field.storage.open(name, 'rb')
+            try:
+                data = fh.read() or b''
+            finally:
+                if hasattr(fh, 'close'):
+                    fh.close()
+        except Exception as exc:
+            read_errors.append(f'storage.open: {exc}')
+    if not data:
+        logger.error(
+            'download_cadastro_documento: sem dados pk=%s campo=%s name=%r storage=%s causas=%s',
+            pk,
+            campo,
+            name,
+            type(field.storage).__name__,
+            ' | '.join(read_errors) if read_errors else 'bytes vazios após leitura',
+        )
+        raise Http404()
+
+    ext = guess_doc_extension_from_bytes(data, campo)
+    doc_digits = only_digits_br(cadastro.documento)
+    safe_name = build_cliente_document_filename(doc_digits, campo, ext)
+    safe_name = safe_name.replace('"', '').replace("'", '')
+
+    ctype = mimetype_for_doc_extension(ext)
+
+    resp = HttpResponse(data, content_type=ctype)
+    resp['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+    resp['Cache-Control'] = 'private, no-store'
+    return resp
+
 
 @login_required
 def cadastro_detail(request, pk):
@@ -1020,7 +1198,12 @@ def edit_cadastro(request, pk):
         return JsonResponse({'status': 'success', 'message': 'Cadastro atualizado com sucesso!'})
 
     template = 'cadastros/edit_admin.html' if request.user.is_superuser else 'cadastros/edit.html'
-    return render(request, template, {'cadastro': cadastro})
+    from .operacao_models import VendedorIXC
+    vendedores_ixc = VendedorIXC.objects.filter(ativo=True).order_by('ordem', 'nome')
+    return render(request, template, {
+        'cadastro': cadastro,
+        'vendedores_ixc': vendedores_ixc,
+    })
 
 @login_required
 def delete_cadastro(request, pk):
@@ -1055,15 +1238,16 @@ def ixc_test_cliente_contrato(request, pk):
             },
             status=404,
         )
-    head_logs = [f'[TESTE cliente_contrato] cadastro_id={cadastro.pk}']
     try:
         ixc = IXCIntegration()
         out = ixc.create_cliente_contrato_test(cadastro)
-        merged_logs = head_logs + out.get('logs', [])
-        if out.get('status') == 'success':
-            logger.info('IXC cliente_contrato teste ok cadastro=%s', cadastro.pk)
-        else:
-            logger.warning('IXC cliente_contrato teste falhou cadastro=%s', cadastro.pk)
+        merged_logs = out.get('logs', [])
+        if out.get('status') != 'success':
+            logger.warning(
+                'IXC cliente_contrato teste falhou cadastro=%s: %s',
+                cadastro.pk,
+                (out.get('message') or '')[:400],
+            )
         resp = {
             'status': out.get('status', 'error'),
             'message': out.get('message', ''),
@@ -1073,9 +1257,65 @@ def ixc_test_cliente_contrato(request, pk):
         return JsonResponse(resp)
     except Exception as e:
         logger.exception('IXC cliente_contrato teste excecao cadastro=%s', cadastro.pk)
-        head_logs.append(str(e))
         return JsonResponse(
-            {'status': 'error', 'message': str(e), 'logs': head_logs},
+            {'status': 'error', 'message': str(e), 'logs': [str(e)]},
+            status=500,
+        )
+
+
+@login_required
+def ixc_upload_arquivos(request, pk):
+    """POST `webservice/v1/cliente_arquivos` (multipart) com os arquivos do cadastro.
+
+    Aceita `id_cliente` opcional no POST. Quando omitido, o `IXCIntegration`
+    resolve a partir de `ixc_prospect_id` > `ixc_candidato_id` > `ixc_lead_id`.
+    """
+    if request.method != 'POST':
+        return JsonResponse(
+            {'status': 'error', 'message': 'Use POST.', 'logs': []},
+            status=405,
+        )
+    try:
+        cadastro = _cadastro_for_user(request, pk)
+    except Http404:
+        return JsonResponse(
+            {
+                'status': 'error',
+                'message': 'Cadastro não encontrado ou você não tem permissão para este envio.',
+                'logs': [],
+            },
+            status=404,
+        )
+    try:
+        ixc = IXCIntegration()
+        id_cliente = (request.POST.get('id_cliente') or '').strip() or None
+        out = ixc.upload_cliente_arquivos(cadastro, id_cliente=id_cliente)
+        merged_logs = out.get('logs', [])
+        st = out.get('status', 'error')
+        if st == 'error':
+            logger.error(
+                'IXC cliente_arquivos cadastro=%s: %s',
+                cadastro.pk,
+                (out.get('message') or '')[:500],
+            )
+        elif st == 'warning':
+            logger.warning(
+                'IXC cliente_arquivos cadastro=%s (aviso): %s',
+                cadastro.pk,
+                (out.get('message') or '')[:500],
+            )
+        return JsonResponse({
+            'status': st,
+            'message': out.get('message', ''),
+            'uploads': out.get('uploads', []),
+            'id_cliente': out.get('id_cliente'),
+            'origem_id_cliente': out.get('origem_id_cliente'),
+            'logs': merged_logs,
+        })
+    except Exception as e:
+        logger.exception('IXC cliente_arquivos exceção cadastro=%s', cadastro.pk)
+        return JsonResponse(
+            {'status': 'error', 'message': str(e), 'logs': [str(e)]},
             status=500,
         )
 
@@ -1104,12 +1344,6 @@ def clear_ixc_candidato_local(request, pk):
         cadastro.ixc_envio_logs = logs_dict
 
     cadastro.save(update_fields=['ixc_candidato_id', 'ixc_envio_logs'])
-    logger.info(
-        'IXC candidato local cleared cadastro=%s old_id=%s user=%s',
-        pk,
-        old,
-        request.user.pk,
-    )
     return JsonResponse({
         'status': 'success',
         'message': (

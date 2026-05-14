@@ -38,6 +38,32 @@
                 <div class="form-text">Aparece ao final da ficha automática gerada para consultores.</div>
             </div>
 
+            <hr class="my-4">
+            <h6 class="fw-bold text-uppercase small text-muted mb-3">
+                <i class="bi bi-link-45deg me-1"></i>Integração IXC — IDs globais
+            </h6>
+            <p class="small text-muted mb-3">
+                Valores enviados em todos os contratos. Sobrescrevíveis por cidade quando precisar
+                de exceção. Os defaults documentados ficam em <code>cadastros/ixc_ids.py</code>.
+            </p>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label fw-semibold">{{ form.ixc_tipo_documento_fatura_id.label }}</label>
+                    {{ form.ixc_tipo_documento_fatura_id }}
+                    <div class="form-text">{{ form.ixc_tipo_documento_fatura_id.help_text }}</div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label fw-semibold">{{ form.ixc_produto_instalacao_id.label }}</label>
+                    {{ form.ixc_produto_instalacao_id }}
+                    <div class="form-text">{{ form.ixc_produto_instalacao_id.help_text }}</div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label fw-semibold">{{ form.ixc_fidelidade_meses.label }}</label>
+                    {{ form.ixc_fidelidade_meses }}
+                    <div class="form-text">{{ form.ixc_fidelidade_meses.help_text }}</div>
+                </div>
+            </div>
+
             <button type="submit" class="btn btn-fibramar">Salvar</button>
             <a href="{% url 'admin_operacao_hub' %}" class="btn btn-light ms-2">Voltar</a>
         </form>

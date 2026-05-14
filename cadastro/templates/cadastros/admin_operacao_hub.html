@@ -80,6 +80,29 @@
             </div>
         </div>
 
+        <div class="row g-3 mb-4">
+            <div class="col-md-12">
+                <div class="card-premium h-100 p-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <span class="rounded-circle bg-info-subtle text-info-emphasis d-inline-flex align-items-center justify-content-center me-3" style="width:48px;height:48px;">
+                            <i class="bi bi-person-badge-fill fs-5"></i>
+                        </span>
+                        <div>
+                            <div class="fw-bold">Vendedores avulsos (IXC)</div>
+                            <div class="small text-muted">{{ n_vendedores }} no IXC — cada <strong>consultor</strong> do sistema é um vendedor IXC.</div>
+                        </div>
+                    </div>
+                    <p class="small text-muted mb-3">
+                        O caminho normal é cadastrar pelo painel <strong>Gestão de Consultores</strong>:
+                        criou o consultor, já cria o vendedor IXC vinculado. Esta tela serve só para
+                        casos especiais (parceiros, terceirizados, ex-funcionários sem login no sistema).
+                    </p>
+                    <a class="btn btn-fibramar btn-sm" href="{% url 'admin_dashboard' %}"><i class="bi bi-people-fill me-1"></i>Gestão de consultores</a>
+                    <a class="btn btn-outline-secondary btn-sm" href="{% url 'operacao_vendedores_list' %}">Vendedores avulsos</a>
+                </div>
+            </div>
+        </div>
+
         <div class="card-premium p-4">
             <h6 class="fw-bold mb-2">Atalhos rápidos</h6>
             <div class="d-flex flex-wrap gap-2">
@@ -87,6 +110,7 @@
                 <a href="{% url 'operacao_cidades_list' %}" class="btn btn-sm btn-light border">Cidades</a>
                 <a href="{% url 'operacao_grupos_list' %}" class="btn btn-sm btn-light border">Planos</a>
                 <a href="{% url 'operacao_vagas_list' %}" class="btn btn-sm btn-light border">Vagas</a>
+                <a href="{% url 'operacao_vendedores_list' %}" class="btn btn-sm btn-light border">Vendedores</a>
             </div>
         </div>
 

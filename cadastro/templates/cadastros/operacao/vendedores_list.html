@@ -1,0 +1,104 @@
+{% extends "cadastros/base_admin.html" %}
+
+{% block admin_page_title %}{{ page_title }}{% endblock %}
+
+{% block admin_content %}
+<div class="dashboard-wrapper">
+    <div class="container-fluid py-4">
+        {% include "cadastros/operacao/_messages.html" %}
+
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+            <div>
+                <h4 class="fw-bold mb-1">{{ page_title }}</h4>
+                <p class="text-muted small mb-0">
+                    Lista única de <strong>vendedores IXC</strong>. Cada <strong>consultor</strong>
+                    do sistema é um vendedor IXC — o ID é registrado automaticamente quando você
+                    cria o consultor em <a href="{% url 'admin_dashboard' %}">Gestão de Consultores</a>.
+                </p>
+            </div>
+            <a href="{% url 'operacao_vendedor_create' %}" class="btn btn-outline-fibramar btn-sm">
+                <i class="bi bi-person-plus-fill me-1"></i>Novo vendedor avulso
+            </a>
+        </div>
+
+        <div class="alert alert-info py-2 px-3 small mb-3" role="alert">
+            <i class="bi bi-info-circle me-1"></i>
+            <strong>Caminho normal:</strong> crie o consultor em
+            <a href="{% url 'admin_dashboard' %}" class="alert-link">Gestão de Consultores</a> e o vendedor IXC fica
+            vinculado automaticamente. Use esta tela só para
+            <strong>vendedores avulsos</strong> (terceirizados, parceiros, ex-funcionários) que
+            não têm login no sistema.
+        </div>
+
+        <div class="card-premium overflow-hidden">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="px-4">Nome</th>
+                        <th>ID vendedor</th>
+                        <th>ID responsável</th>
+                        <th>Consultor vinculado</th>
+                        <th>Contato</th>
+                        <th class="text-center">Padrão</th>
+                        <th class="text-center">Ativo</th>
+                        <th class="px-4 text-end">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in vendedores %}
+                    <tr>
+                        <td class="px-4">
+                            <div class="fw-semibold">{{ v.nome }}</div>
+                            {% if v.observacao %}<div class="small text-muted">{{ v.observacao }}</div>{% endif %}
+                        </td>
+                        <td><code class="user-select-all">{{ v.ixc_id }}</code></td>
+                        <td>
+                            {% if v.ixc_id_responsavel %}<code class="user-select-all">{{ v.ixc_id_responsavel }}</code>{% else %}<span class="text-muted">= {{ v.ixc_id }}</span>{% endif %}
+                        </td>
+                        <td class="small">
+                            {% if v.usuario %}
+                                <i class="bi bi-person-check-fill text-primary me-1"></i>{{ v.usuario.get_full_name|default:v.usuario.username }}
+                                {% if v.usuario.is_superuser %}<span class="badge bg-primary-subtle text-primary-emphasis ms-1">admin</span>{% endif %}
+                            {% else %}
+                                <span class="text-muted fst-italic">— avulso —</span>
+                            {% endif %}
+                        </td>
+                        <td class="small">
+                            {% if v.email %}<div><i class="bi bi-envelope me-1"></i>{{ v.email }}</div>{% endif %}
+                            {% if v.telefone %}<div><i class="bi bi-telephone me-1"></i>{{ v.telefone }}</div>{% endif %}
+                            {% if not v.email and not v.telefone %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if v.padrao %}<span class="badge bg-warning-subtle text-warning-emphasis">Padrão</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if v.ativo %}<span class="badge bg-success-subtle text-success-emphasis">Ativo</span>{% else %}<span class="badge bg-secondary-subtle text-secondary-emphasis">Inativo</span>{% endif %}
+                        </td>
+                        <td class="px-4 text-end">
+                            {% if v.usuario %}
+                                <a href="{% url 'admin_dashboard' %}" class="btn btn-sm btn-outline-secondary" title="Editar via Gestão de Consultores">
+                                    <i class="bi bi-pencil"></i> via Consultor
+                                </a>
+                            {% else %}
+                                <a href="{% url 'operacao_vendedor_edit' v.pk %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                                <form action="{% url 'operacao_vendedor_delete' v.pk %}" method="post" class="d-inline"
+                                    onsubmit="return confirm('Remover «{{ v.nome|escapejs }}»? Cadastros vinculados ficam sem vendedor.');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Excluir</button>
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="8" class="text-center py-5 text-muted">
+                        Nenhum vendedor cadastrado ainda. Crie um consultor em
+                        <a href="{% url 'admin_dashboard' %}" class="ms-1">Gestão de Consultores</a>
+                        ou um <a href="{% url 'operacao_vendedor_create' %}" class="ms-1">vendedor avulso</a>.
+                    </td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

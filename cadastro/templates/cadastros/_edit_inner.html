@@ -203,26 +203,89 @@
                     </div>
                 </div>
 
+                {# Vendedor responsável: usado em id_vendedor / id_responsavel / id_vendedor_ativ na integração IXC. #}
+                <div class="mb-3">
+                    <label class="small fw-bold d-block mb-2" for="vendedor_responsavel">
+                        VENDEDOR RESPONSÁVEL (IXC)
+                    </label>
+                    <select id="vendedor_responsavel" name="vendedor_responsavel"
+                            class="form-select form-control-premium">
+                        <option value="">— Sem vendedor vinculado —</option>
+                        {% for v in vendedores_ixc %}
+                        <option value="{{ v.pk }}"
+                            {% if cadastro.vendedor_responsavel_id == v.pk %}selected{% endif %}>
+                            {{ v.nome }} (IXC #{{ v.ixc_id }}){% if v.padrao %} — padrão{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">
+                        Esse vendedor é vinculado ao cadastro e seu ID IXC é enviado nas etapas
+                        de integração (lead, prospecção, contrato).
+                        <a href="{% url 'operacao_vendedores_list' %}" class="ms-1">Gerenciar vendedores</a>.
+                    </div>
+                </div>
+
                 <input type="hidden" name="aluguel_roteador_wifi" value="{% if cadastro.aluguel_roteador_wifi %}1{% else %}0{% endif %}">
                 <input type="hidden" name="aluguel_repetidor_mesh" value="{% if cadastro.aluguel_repetidor_mesh %}1{% else %}0{% endif %}">
             </div>
 
             <!-- Documentação -->
             <div class="mb-5">
-                <h6 class="text-uppercase small fw-bold text-primary mb-3">4. Documentação (Upload apenas para alterar)</h6>
+                <h6 class="text-uppercase small fw-bold text-primary mb-2">4. Documentação (Upload apenas para alterar)</h6>
+                <p class="text-muted small mb-3">Selecione um novo arquivo apenas para substituir o atual. Formatos: JPEG, PNG, WebP ou PDF (onde aplicável). A selfie aceita só imagem.</p>
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="small fw-bold mb-2">DOC. FRENTE</label>
+                        {% if cadastro.foto_documento_frente %}
+                        <div class="mb-1"><a href="{% url 'cadastro_documento_download' cadastro.pk 'foto_documento_frente' %}" class="small text-decoration-none">Baixar arquivo atual</a></div>
+                        {% endif %}
                         <div class="file-upload-wrapper">
-                            <input type="file" name="foto_documento_frente" accept="image/*">
-                            <div class="file-upload-info">{% if cadastro.foto_documento_frente %}Já possui arquivo{% else %}Clique para anexar{% endif %}</div>
+                            <input type="file" name="foto_documento_frente" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf,.jpg,.jpeg,.jfif,.png,.webp">
+                            <div class="file-upload-info">{% if cadastro.foto_documento_frente %}Já possui arquivo — envie outro para substituir{% else %}Clique para anexar{% endif %}</div>
                         </div>
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="small fw-bold mb-2">DOC. VERSO</label>
+                        {% if cadastro.foto_documento_verso %}
+                        <div class="mb-1"><a href="{% url 'cadastro_documento_download' cadastro.pk 'foto_documento_verso' %}" class="small text-decoration-none">Baixar arquivo atual</a></div>
+                        {% endif %}
                         <div class="file-upload-wrapper">
-                            <input type="file" name="foto_documento_verso" accept="image/*">
-                            <div class="file-upload-info">{% if cadastro.foto_documento_verso %}Já possui arquivo{% else %}Clique para anexar{% endif %}</div>
+                            <input type="file" name="foto_documento_verso" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf,.jpg,.jpeg,.jfif,.png,.webp">
+                            <div class="file-upload-info">{% if cadastro.foto_documento_verso %}Já possui arquivo — envie outro para substituir{% else %}Clique para anexar{% endif %}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="small fw-bold mb-2">COMPROVANTE DE RESIDÊNCIA</label>
+                        {% if cadastro.comprovante_residencia %}
+                        <div class="mb-1"><a href="{% url 'cadastro_documento_download' cadastro.pk 'comprovante_residencia' %}" class="small text-decoration-none">Baixar arquivo atual</a></div>
+                        {% endif %}
+                        <div class="file-upload-wrapper">
+                            <input type="file" name="comprovante_residencia" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf,.jpg,.jpeg,.jfif,.png,.webp">
+                            <div class="file-upload-info">{% if cadastro.comprovante_residencia %}Já possui arquivo — envie outro para substituir{% else %}Clique para anexar{% endif %}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="small fw-bold mb-2">SELFIE COM DOCUMENTO</label>
+                        {% if cadastro.selfie_documento %}
+                        <div class="mb-1"><a href="{% url 'cadastro_documento_download' cadastro.pk 'selfie_documento' %}" class="small text-decoration-none">Baixar arquivo atual</a></div>
+                        {% endif %}
+                        <div class="file-upload-wrapper">
+                            <input type="file" name="selfie_documento" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.jfif,.png,.webp">
+                            <div class="file-upload-info">{% if cadastro.selfie_documento %}Já possui arquivo — envie outro para substituir{% else %}Clique para anexar{% endif %}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row pj-only" style="{% if cadastro.tipo_pessoa == 'pf' %}display:none;{% endif %}">
+                    <div class="col-md-12 mb-3">
+                        <label class="small fw-bold mb-2">CONTRATO SOCIAL (PJ)</label>
+                        {% if cadastro.contrato_social %}
+                        <div class="mb-1"><a href="{% url 'cadastro_documento_download' cadastro.pk 'contrato_social' %}" class="small text-decoration-none">Baixar arquivo atual</a></div>
+                        {% endif %}
+                        <div class="file-upload-wrapper">
+                            <input type="file" name="contrato_social" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf,.jpg,.jpeg,.jfif,.png,.webp">
+                            <div class="file-upload-info">{% if cadastro.contrato_social %}Já possui arquivo — envie outro para substituir{% else %}Clique para anexar{% endif %}</div>
                         </div>
                     </div>
                 </div>

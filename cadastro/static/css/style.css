@@ -687,6 +687,22 @@ button:focus-visible,
     color: #fff !important;
     box-shadow: var(--shadow-orange);
 }
+/* Estado selecionado dos botões-radio do Bootstrap (btn-check + label). */
+/* Sem isso, o botão "checked" herda --bs-btn-active-* do Bootstrap e */
+/* o texto fica branco em fundo branco (invisível) no nosso outline. */
+.btn-check:checked + .btn-outline-fibramar,
+.btn-check:active + .btn-outline-fibramar,
+.btn-outline-fibramar.active,
+.btn-outline-fibramar:active {
+    background-color: var(--secondary-color) !important;
+    border-color: var(--secondary-color) !important;
+    color: #fff !important;
+    box-shadow: var(--shadow-orange);
+}
+.btn-check:focus-visible + .btn-outline-fibramar {
+    outline: 3px solid rgba(255, 107, 0, 0.35);
+    outline-offset: 2px;
+}
 
 .btn-light {
     background-color: var(--table-header);
@@ -1452,6 +1468,22 @@ textarea#fichaTextarea.ficha-textarea:focus {
     }
 }
 
+/* Exceção: spinner do loader global — feedback de “aguarde” precisa girar mesmo com “reduzir animações” do SO */
+@media (prefers-reduced-motion: reduce) {
+    .fibramar-loader.is-active .fibramar-loader__spinner > .fibramar-loader__ring:first-child {
+        animation: fibramarLoaderSpin 1.05s linear infinite !important;
+    }
+    .fibramar-loader.is-active .fibramar-loader__spinner > .fibramar-loader__ring--2 {
+        animation: fibramarLoaderSpin 1.35s linear infinite reverse !important;
+    }
+    .fibramar-loader.is-active .fibramar-loader__progress-item.is-current .fibramar-loader__dot {
+        animation: fibramarLoaderPulse 1.1s ease-in-out infinite !important;
+    }
+    .fibramar-loader.is-active .fibramar-loader__icon {
+        animation: fibramarLoaderIconFloat 2s ease-in-out infinite !important;
+    }
+}
+
 /* --------------------------------------------------------------------------
    21. AJUSTES MOBILE
    -------------------------------------------------------------------------- */
@@ -1837,6 +1869,8 @@ textarea#fichaTextarea.ficha-textarea:focus {
 .ixc-step-btn--prospect { --step-color: #1aa6a0; }
 .ixc-step-btn--contract { --step-color: #f4a212; }
 .ixc-step-btn--contract .ixc-step-btn__title i { color: #ffd56b; }
+.ixc-step-btn--arquivos { --step-color: #8b5cf6; }
+.ixc-step-btn--arquivos .ixc-step-btn__title i { color: #c4b5fd; }
 
 /* Mensagem de fallback (sem permissão p/ contrato) */
 .ixc-step-hint {
@@ -1915,6 +1949,7 @@ body.fibramar-loader-open { overflow: hidden; }
     border: 3px solid transparent;
     border-top-color: var(--secondary-color);
     border-right-color: var(--secondary-color-300);
+    will-change: transform;
     animation: fibramarLoaderSpin 1.05s linear infinite;
 }
 .fibramar-loader__ring--2 {
@@ -1930,11 +1965,17 @@ body.fibramar-loader-open { overflow: hidden; }
     color: #fff;
     font-size: 1.7rem;
     text-shadow: 0 4px 14px rgba(255, 107, 0, 0.5);
+    animation: fibramarLoaderIconFloat 2s ease-in-out infinite;
 }
 @keyframes fibramarLoaderSpin {
+    from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
 }
 
+@keyframes fibramarLoaderIconFloat {
+    0%, 100% { transform: translateY(0); opacity: 1; }
+    50% { transform: translateY(-3px); opacity: 0.92; }
+}
 .fibramar-loader__title {
     font-size: 1.05rem;
     font-weight: 700;

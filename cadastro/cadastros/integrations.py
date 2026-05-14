@@ -1,63 +1,32 @@
 import requests
 import base64
 import json
+import mimetypes
 import os
 import re
 import unicodedata
+from io import BytesIO
 from django.conf import settings
 from django.utils import timezone
+
+from . import ixc_ids
+from .document_security import (
+    build_cliente_document_filename,
+    mimetype_for_doc_extension,
+    prepare_bytes_for_ixc_upload,
+)
+from .models import only_digits_br
 
 
 class IXCIntegration:
     """
     Integração outbound com o webservice IXCSoft (IXC Provedor).
 
-    **Sobre IDs «fixos»:** constantes de classe como ``FILIAIS_MAP``, ``CIDADES_MAP``,
-    ``PLANOS_MAP`` e ``ORIGENS_MAP`` são *fallbacks* de homologação / legado. Não
-    representam os IDs de produção da Fibramar. Os valores definitivos por cidade
-    (filial, plano de venda, canal, carteira, tipo de documento, etc.) virão do painel
-    Operação (``operacao_models``) e/ou variáveis ``IXC_*`` no ``.env`` por ambiente —
-    tudo que hoje parece «fixo» no ``.env`` de teste será substituído quando o mapeamento
-    estiver fechado.
+    **IDs IXC:** o sistema usa o hub central ``cadastros/ixc_ids.py``, que
+    consulta primeiro o painel ``/admin-dash/operacao/`` (banco) e depois cai
+    nos DEFAULTS documentados nesse mesmo arquivo (IDs reais de produção
+    fornecidos pela operação Fibramar). Nada de IDs hardcoded aqui.
     """
-
-    # Mapeamento de Filiais
-    FILIAIS_MAP = {
-        'marica': '2',
-        'minas_gerais': '6',
-        'jacone': '7',
-        'araruama': '7',
-        'saquarema': '7',
-        'unamar': '7',
-        'muqui': '8',
-        'mimoso': '8',
-        'piuma': '9',
-        'sao_paulo': '11',
-    }
-
-    # Mapeamento de Cidades (IDs reais do banco do IXC)
-    CIDADES_MAP = {
-        'marica': '3214',
-        'minas_gerais': '2949', # Santos Dumont
-        'araruama': '3176',
-        'jacone': '3176',
-        'unamar': '3176',
-        'saquarema': '3254',
-        'cabo_frio': '3185',
-        'muqui': '3147',
-        'mimoso': '3143',
-        'sao_paulo': '3828',
-    }
-
-    # Mapeamento de Planos de Venda
-    PLANOS_MAP = {
-        'essencial': '174', # 240 MEGA
-        'rapido': '175',    # 400 MEGA
-        'turbo': '176',     # 500 MEGA
-        'ultra': '124',     # 600 MEGA
-        'prime': '',        # 700 MEGA — preencher id IXC em Operação ou .env se aplicável
-        '1giga': '560',     # 1 GIGA
-    }
 
     # Fallback do mapeamento de Canais de Venda (Origens). Use OrigemCanalVenda
     # no painel /admin-dash/ para gerenciar — este dict só roda se o cadastro
@@ -228,14 +197,14 @@ class IXCIntegration:
             return None
 
     def _post_ixc(self, endpoint, payload, etapa, extra_headers=None):
-        logs = [
-            f"[{etapa}] endpoint: {endpoint}",
-            f"[{etapa}] auth: {'ok' if bool(self.token) else 'ausente'}",
+        err_logs = [
+            f'[{etapa}] endpoint={endpoint}',
+            f'[{etapa}] auth={"ok" if bool(self.token) else "ausente"}',
         ]
         headers = {**self.headers, **(extra_headers or {})}
         try:
             response = requests.post(endpoint, json=payload, headers=headers, verify=False, timeout=30)
-            logs.append(f"[{etapa}] status_http: {response.status_code}")
+            err_logs.append(f'[{etapa}] status_http={response.status_code}')
 
             if response.status_code in [200, 201]:
                 raw_text = (response.text or '').strip()
@@ -243,43 +212,43 @@ class IXCIntegration:
                     return {
                         'status': 'success',
                         'data': {},
-                        'logs': logs + [f'[{etapa}] corpo_vazio: IXC aceitou sem JSON (comum em alguns POST).'],
+                        'logs': [],
                         'http_status': response.status_code,
                     }
                 try:
                     body = response.json()
                 except ValueError:
                     preview = (response.text or '').strip()[:500]
-                    logs.append(f"[{etapa}] resposta_nao_json: {preview}")
+                    err_logs.append(f'[{etapa}] resposta_nao_json: {preview}')
                     return {
                         'status': 'error',
                         'message': 'Resposta HTTP 200/201 sem JSON válido (IXC ou proxy).',
-                        'logs': logs,
+                        'logs': err_logs,
                         'http_status': response.status_code,
                         'endpoint': endpoint,
                     }
                 return {
                     'status': 'success',
                     'data': body,
-                    'logs': logs,
+                    'logs': [],
                     'http_status': response.status_code,
                 }
 
             error_preview = (response.text or '').strip()[:500]
-            logs.append(f"[{etapa}] erro: {error_preview}")
+            err_logs.append(f'[{etapa}] erro: {error_preview}')
             return {
                 'status': 'error',
                 'message': error_preview or f'Falha HTTP {response.status_code}',
-                'logs': logs,
+                'logs': err_logs,
                 'http_status': response.status_code,
                 'endpoint': endpoint,
             }
         except requests.RequestException as e:
-            logs.append(f"[{etapa}] excecao: {str(e)}")
+            err_logs.append(f'[{etapa}] excecao: {str(e)}')
             return {
                 'status': 'error',
-                'message': f"Falha na conexão: {str(e)}",
-                'logs': logs,
+                'message': f'Falha na conexão: {str(e)}',
+                'logs': err_logs,
                 'endpoint': endpoint,
             }
 
@@ -396,12 +365,14 @@ class IXCIntegration:
             return {'status': 'ok', 'message': 'Documento ausente para checagem.'}
 
         resources = ['contato', 'cliente']
-        logs = [f"[DUPLICIDADE] documento={documento}"]
         for resource in resources:
             found, qtype = self._search_ixc_by_document(resource, documento)
             if found:
                 found_id = self._extract_id(found)
-                logs.append(f"[DUPLICIDADE] encontrado em {resource} qtype={qtype} id={found_id}")
+                logs = [
+                    f'[DUPLICIDADE] documento={documento}',
+                    f'[DUPLICIDADE] encontrado em {resource} qtype={qtype} id={found_id}',
+                ]
                 return {
                     'status': 'duplicate',
                     'message': f'Duplicidade no IXC: documento já existe em {resource}.',
@@ -409,20 +380,34 @@ class IXCIntegration:
                     'found_id': found_id,
                     'logs': logs,
                 }
-            logs.append(f"[DUPLICIDADE] sem registro em {resource}")
 
-        return {'status': 'ok', 'message': 'Sem duplicidade no IXC.', 'logs': logs}
+        return {'status': 'ok', 'message': 'Sem duplicidade no IXC.', 'logs': []}
 
     def resolve_filial_id(self, cidade_slug):
-        try:
-            from .operacao_models import CidadeOperacao
+        """Filial IXC pela cidade: painel Operação > defaults `ixc_ids.FILIAIS`."""
+        return ixc_ids.get_filial_id(cidade_slug) or '2'
 
-            c = CidadeOperacao.objects.get(slug=cidade_slug)
-            if (c.ixc_filial_id or '').strip():
-                return c.ixc_filial_id.strip()
+    def _resolve_vendedor_ixc(self, cadastro):
+        """Resolve o VendedorIXC efetivo para o cadastro.
+
+        Prioridade:
+            1) `cadastro.vendedor_responsavel` (FK manual no Cadastro — override).
+            2) `cadastro.consultor.vendedor_ixc` (consultor logado tem vínculo IXC).
+            3) `VendedorIXC` marcado como `padrao=True` no painel.
+            4) None (cai no fallback do .env nas integrações).
+        """
+        vend = getattr(cadastro, 'vendedor_responsavel', None)
+        if vend and getattr(vend, 'ixc_id', '').strip():
+            return vend
+        consultor = getattr(cadastro, 'consultor', None)
+        vend = getattr(consultor, 'vendedor_ixc', None) if consultor else None
+        if vend and getattr(vend, 'ixc_id', '').strip() and getattr(vend, 'ativo', True):
+            return vend
+        try:
+            from .operacao_models import VendedorIXC
+            return VendedorIXC.objects.filter(ativo=True, padrao=True).first()
         except Exception:
-            pass
-        return self.FILIAIS_MAP.get(cidade_slug, '2')
+            return None
 
     @staticmethod
     def _tipo_letra_ixc_from_valor_bruto(v):
@@ -584,7 +569,7 @@ class IXCIntegration:
                     sv = str(v).strip()
                     if sv.isdigit():
                         id_tc = sv
-                        break
+                    break
         if id_tc:
             payload['id_tipo_contrato'] = id_tc
         tpm = vd_row.get('tipo_produtos_plano')
@@ -613,39 +598,34 @@ class IXCIntegration:
         return fb, None
 
     def resolve_cidade_ixc_id(self, cidade_slug):
-        try:
-            from .operacao_models import CidadeOperacao
+        """Cidade IXC: painel Operação > defaults `ixc_ids.CIDADES_IXC`."""
+        return ixc_ids.get_cidade_ixc_id(cidade_slug) or ''
 
-            c = CidadeOperacao.objects.get(slug=cidade_slug)
-            if (c.ixc_cidade_id or '').strip():
-                return c.ixc_cidade_id.strip()
-        except Exception:
-            pass
-        return self.CIDADES_MAP.get(cidade_slug, '') or ''
+    def resolve_setor_id(self, cidade_slug):
+        """Setor IXC (id_setor): painel Operação > defaults `ixc_ids.SETORES`."""
+        return ixc_ids.get_setor_id(cidade_slug) or ''
+
+    def resolve_carteira_cobranca_id(self, cidade_slug):
+        """Carteira de cobrança IXC: painel Operação > defaults `ixc_ids.CARTEIRAS_POR_CIDADE`."""
+        return ixc_ids.get_carteira_cobranca_id(cidade_slug) or ''
+
+    def resolve_tipo_doc_ativ_id(self, cidade_slug):
+        """Tipo de doc opcional (ativação) IXC: painel Operação > defaults por filial."""
+        return ixc_ids.get_tipo_doc_ativ_id(cidade_slug) or ''
+
+    def resolve_vencimento_id(self, cidade_slug, dia_str):
+        """ID da cobrança (id_carencia) por dia: painel Operação > defaults por filial."""
+        return ixc_ids.get_vencimento_id(cidade_slug, dia_str) or ''
 
     def resolve_plano_venda_id(self, cidade_slug, plano_codigo):
-        """ID do plano de venda (vd) no IXC: Operação (PlanoDefinicao) > .env > mapa legado."""
+        """ID do plano de venda (vd): Operação > defaults `ixc_ids.PLANOS_POR_FILIAL`.
+
+        Mantém compatibilidade com ``IXC_FORCE_PLANO_VENDA_ID`` (override de emergência por ambiente).
+        """
         force = (getattr(settings, 'IXC_FORCE_PLANO_VENDA_ID', None) or '').strip()
         if force:
             return force
-        slug = (cidade_slug or '').strip()
-        codigo = (plano_codigo or '').strip()
-        if slug and codigo:
-            try:
-                from .operacao_models import CidadeOperacao, PlanoDefinicao
-
-                cidade = CidadeOperacao.objects.select_related('grupo_planos').get(slug=slug)
-                definicao = PlanoDefinicao.objects.filter(
-                    grupo=cidade.grupo_planos, codigo=codigo
-                ).first()
-                if definicao and (definicao.ixc_plano_venda_id or '').strip():
-                    return definicao.ixc_plano_venda_id.strip()
-            except Exception:
-                pass
-        default_env = (getattr(settings, 'IXC_DEFAULT_PLANO_VENDA_ID', None) or '').strip()
-        if default_env:
-            return default_env
-        return (self.PLANOS_MAP.get(codigo) or '').strip()
+        return ixc_ids.get_plano_venda_id(cidade_slug, plano_codigo) or ''
 
     def resolve_canal_venda_id(self, origem_label):
         """Canal de venda no IXC a partir da origem da ficha: Operação (OrigemCanalVenda) > .env > mapa legado."""
@@ -861,8 +841,14 @@ class IXCIntegration:
             cidade_str = (getattr(settings, 'IXC_CRM_CANDIDATOS_CIDADE_FALLBACK', None) or '1').strip() or '1'
 
         filial_str = str(id_filial).strip() if str(id_filial).strip() else ''
+        setor_str = (self.resolve_setor_id(cadastro.cidade) or '').strip()
         razao = (ixc_data.get('nome_razao') or '').strip().upper() or 'CADASTRO_WEB'
         fantasia = ((cadastro.nome_fantasia or '').strip() or (ixc_data.get('nome_razao') or '').strip()).upper()
+        # Vendedor responsável: ficha (override) > consultor logado vinculado > VendedorIXC padrão.
+        vendedor = self._resolve_vendedor_ixc(cadastro)
+        vendedor_ixc_id = (str(vendedor.ixc_id).strip() if vendedor and vendedor.ixc_id else '')
+        vendedor_resp_id = (str(vendedor.responsavel_ixc_id).strip() if vendedor and vendedor.responsavel_ixc_id else vendedor_ixc_id)
+        vendedor_nome = (vendedor.nome.upper() if vendedor and vendedor.nome else '')
         if getattr(cadastro, 'tipo_pessoa', 'pf') == 'pj':
             ie_ident = ((cadastro.inscricao_estadual or '').strip()).upper()
         else:
@@ -883,7 +869,12 @@ class IXCIntegration:
             'id_campanha': '',
             'id_concorrente': '',
             'id_perfil': '',
-            'responsavel': '',
+            # Em `crm_canditados` o `responsavel` é texto (nome) e o IXC tem
+            # um campo numérico separado (`id_responsavel`). Mandamos os dois
+            # para que a tela do IXC apareça preenchida tanto na visualização
+            # quanto na busca/relatório.
+            'responsavel': vendedor_nome,
+            'id_responsavel': vendedor_resp_id,
             'indicado_por': '',
             'status_prospeccao': 'N',
             'tipo_pessoa': tipo_ixc,
@@ -891,11 +882,12 @@ class IXCIntegration:
             'ie_identidade': ie_ident,
             'data_nascimento': dt_nasc,
             'filial_id': filial_str,
+            'id_setor': setor_str,
             'ativo': 'S',
             'data_cadastro': dt_cad,
             'prospeccao_ultimo_contato': '',
             'prospeccao_proximo_contato': '',
-            'id_vendedor': '',
+            'id_vendedor': vendedor_ixc_id,
             'id_conta': '',
             'id_vd_contrato_desejado': '',
             'cadastrado_via_viabilidade': '',
@@ -1052,13 +1044,12 @@ class IXCIntegration:
                     'message': 'IXC não retornou ID do CRM candidatos.',
                     'logs': all_logs + ['[CRM_CANDIDATOS] id ausente na resposta'],
                 }
-            all_logs.append(f'[CRM_CANDIDATOS] recurso_ativo={resource} id={candidato_id}')
             return {
                 'status': 'success',
                 'candidato_id': candidato_id,
                 'candidato_resource': resource,
                 'message': '',
-                'logs': all_logs,
+                'logs': [],
             }
 
         msg_tail = ''
@@ -1185,13 +1176,12 @@ class IXCIntegration:
                     'message': 'IXC não retornou ID do registro (etapa 2).',
                     'logs': all_logs + ['[CRM_ETAPA2] id ausente na resposta'],
                 }
-            all_logs.append(f'[CRM_ETAPA2] recurso_ativo={resource} id={prospect_id}')
             return {
                 'status': 'success',
                 'prospect_id': prospect_id,
                 'prospect_resource': resource,
                 'message': '',
-                'logs': all_logs,
+                'logs': [],
             }
 
         msg_tail = ''
@@ -1235,26 +1225,16 @@ class IXCIntegration:
 
         payload = self.build_crm_lead_payload(cadastro)
 
-        # Salva o JSON para auditoria
-        debug_path = self._save_debug_json(cadastro.pk, payload, 'CRM_LEAD')
+        # Salva o JSON para auditoria (ficheiro em logs/ixc_debug/; não polui a resposta JSON).
+        self._save_debug_json(cadastro.pk, payload, 'CRM_LEAD')
 
         try:
-            all_logs = []
-            all_logs.append(
-                '[CRM_LEAD] payload sem plano/canal/campanha/contrato — só ficha CRM (contato/crm_*).'
-            )
-            if getattr(settings, 'IXC_LEAD_CONTATO_ONLY', True) and not self.lead_resource_override:
-                all_logs.append(
-                    '[CRM_LEAD] IXC_LEAD_CONTATO_ONLY=True — apenas webservice `contato` (sem fallback crm_leads).'
-                )
-            if debug_path:
-                all_logs.append(f"[DEBUG] JSON gerado em: {debug_path}")
-
+            all_logs: list[str] = []
             last_error = None
             resources_to_try = self._crm_lead_resources_to_try()
 
             for idx, resource in enumerate(resources_to_try):
-                endpoint = f"{self.url}/webservice/v1/{resource}"
+                endpoint = f'{self.url}/webservice/v1/{resource}'
                 result = self._post_ixc(
                     endpoint,
                     payload,
@@ -1264,9 +1244,6 @@ class IXCIntegration:
                 all_logs.extend(result.get('logs', []))
 
                 response_data = result.get('data') if result.get('status') == 'success' else None
-                response_preview = json.dumps(response_data, ensure_ascii=False)[:600] if response_data is not None else ''
-                if response_preview:
-                    all_logs.append(f"[CRM_LEAD] resposta: {response_preview}")
 
                 response_message = ''
                 response_type = ''
@@ -1297,22 +1274,21 @@ class IXCIntegration:
                 if response_type == 'error':
                     result['status'] = 'error'
                     result['message'] = response_message or 'IXC retornou erro ao criar lead.'
-                    all_logs.append(f"[CRM_LEAD] erro_api: {result['message']}")
+                    all_logs.append(f'[CRM_LEAD] erro_api: {result["message"]}')
                     result['logs'] = all_logs
                     return result
 
                 lead_id = self._extract_id(response_data)
                 if lead_id in (None, '', 0, '0'):
                     result['status'] = 'error'
-                    result['message'] = "IXC respondeu HTTP 200, mas não retornou ID do Lead."
-                    all_logs.append("[CRM_LEAD] erro: id ausente na resposta")
+                    result['message'] = 'IXC respondeu HTTP 200, mas não retornou ID do Lead.'
+                    all_logs.append('[CRM_LEAD] erro: id ausente na resposta')
                     result['logs'] = all_logs
                     return result
 
                 result['lead_id'] = lead_id
                 result['lead_resource'] = resource
-                all_logs.append(f"[CRM_LEAD] recurso_ativo={resource}")
-                # Segundo POST pode duplicar lead em alguns ambientes IXC — desativado por padrão.
+                lead_logs: list[str] = []
                 if self.lead_post_alterar and resource in (
                     'contato',
                     'crm_lead',
@@ -1320,18 +1296,19 @@ class IXCIntegration:
                     'crm_leads',
                 ):
                     patch = self._ixc_alterar_mesmo_payload(resource, lead_id, payload)
-                    all_logs.append('[CRM_LEAD] pós-inclusão: alterar (IXC_LEAD_POST_ALTERAR=True)')
-                    all_logs.extend(patch.get('logs', []))
                     pdata = patch.get('data') if isinstance(patch.get('data'), dict) else {}
                     if patch.get('status') != 'success' or str(pdata.get('type', '')).lower() == 'error':
                         msg = patch.get('message') or pdata.get('message') or ''
-                        all_logs.append(f"[CRM_LEAD] aviso pós-alterar: {msg or 'sem detalhe'}")
-                result['logs'] = all_logs
+                        lead_logs.append(
+                            f'[CRM_LEAD] aviso pós-alterar (IXC_LEAD_POST_ALTERAR): {msg or "sem detalhe"}'
+                        )
+                        lead_logs.extend(patch.get('logs') or [])
+                result['logs'] = lead_logs
                 return result
 
             return {
                 'status': 'error',
-                'message': "Nenhum recurso de lead disponível.",
+                'message': 'Nenhum recurso de lead disponível.',
                 'logs': all_logs or (last_error.get('logs', []) if last_error else []),
             }
         except Exception as e:
@@ -1371,27 +1348,31 @@ class IXCIntegration:
             )
 
         id_plano, _, _ = self._resolve_plano_e_canal_venda(cadastro)
-        id_vd = (settings.IXC_CONTRATO_TEST_ID_VD_CONTRATO or '').strip()
-        if not id_vd:
-            v = self._ixc_fk_value(id_plano)
-            id_vd = str(v).strip() if v is not None else ''
+        id_vd = ''
+        v = self._ixc_fk_value(id_plano)
+        if v is not None:
+            id_vd = str(v).strip()
+        # Override de emergência por ambiente (homologação): IXC_FORCE_PLANO_VENDA_ID.
+        force_vd = (getattr(settings, 'IXC_FORCE_PLANO_VENDA_ID', None) or '').strip()
+        if force_vd:
+            id_vd = force_vd
         if not id_vd and self._is_demo_ixc_host():
             id_vd = '19'
         if not id_vd:
             return None, (
-                'id_vd_contrato vazio: IXC_CONTRATO_TEST_ID_VD_CONTRATO no .env ou plano com ixc_plano_venda_id '
-                '(Operação). No demo IXC o padrão de teste é 19.'
+                'id_vd_contrato vazio: cadastre o plano em '
+                '/admin-dash/operacao/planos/ com `ixc_plano_venda_id` preenchido '
+                'ou ajuste o default em cadastros/ixc_ids.PLANOS_POR_FILIAL.'
             )
 
-        id_filial = (settings.IXC_CONTRATO_TEST_ID_FILIAL or '').strip()
-        if not id_filial:
-            if self._is_demo_ixc_host():
-                id_filial = '1'
-            else:
-                id_filial = (self.resolve_filial_id(cadastro.cidade) or '').strip() or '1'
+        # Filial: cidade do cadastro (painel Operação → defaults `ixc_ids.FILIAIS`).
+        # Demo IXC sempre vai para a filial 1.
+        if self._is_demo_ixc_host():
+            id_filial = '1'
+        else:
+            id_filial = (self.resolve_filial_id(cadastro.cidade) or '').strip() or '1'
 
         payload['id_cliente'] = str(id_cliente)
-        # Plano de venda (IXC): cadastro / Operação ou IXC_CONTRATO_TEST_ID_VD_CONTRATO.
         payload['id_vd_contrato'] = str(id_vd)
         payload['id_filial'] = str(id_filial)
         base_tipo = (settings.IXC_CONTRATO_TEST_TIPO or 'I').strip() or 'I'
@@ -1401,22 +1382,64 @@ class IXCIntegration:
         else:
             payload['contrato'] = str(cadastro.plano_velocidade or cadastro.plano or 'Contrato teste')[:200]
         payload['data'] = timezone.now().strftime('%d/%m/%Y')
-        # id_tipo_contrato: aplicado depois do alinhamento ao vd (template traz "10" genérico e quebra o IXC).
-        # Defaults alinhados ao Postman oficial IXC Provedor (ajuste por .env / demo).
+        # id_modelo é fixo do provedor (ajustável via AppConfigOperacao no futuro).
         payload['id_modelo'] = (settings.IXC_CONTRATO_TEST_ID_MODELO or '1').strip()
-        payload['id_tipo_documento'] = (settings.IXC_CONTRATO_TEST_ID_TIPO_DOCUMENTO or '502').strip()
-        payload['id_carteira_cobranca'] = (settings.IXC_CONTRATO_TEST_ID_CARTEIRA_COBRANCA or '1').strip()
-        payload['id_vendedor'] = (settings.IXC_CONTRATO_TEST_ID_VENDEDOR or '1').strip()
+        # Tipo de documento da fatura → AppConfigOperacao.ixc_tipo_documento_fatura_id (padrão 501).
+        payload['id_tipo_documento'] = ixc_ids.get_tipo_documento_fatura_id() or '501'
+        # Carteira de cobrança: painel por cidade > default por cidade > 1.
+        payload['id_carteira_cobranca'] = (self.resolve_carteira_cobranca_id(cadastro.cidade) or '1').strip()
+        # Vendedor / responsável: prioridade
+        #   1) `cadastro.vendedor_responsavel` (override manual da ficha).
+        #   2) `cadastro.consultor.vendedor_ixc` (consultor logado tem vínculo IXC).
+        #   3) fallback `.env` (homologação).
+        _vend = self._resolve_vendedor_ixc(cadastro)
+        if _vend:
+            _vend_id = (str(_vend.ixc_id).strip() if _vend.ixc_id else '')
+            _resp_id = (str(_vend.responsavel_ixc_id).strip() if _vend.responsavel_ixc_id else _vend_id)
+            payload['id_vendedor'] = _vend_id
+            payload['id_responsavel'] = _resp_id or _vend_id
+            payload['id_vendedor_ativ'] = _vend_id
+        else:
+            # Mantém compatibilidade com o legado de homologação (ainda preenche no .env).
+            _vend_default = (settings.IXC_CONTRATO_TEST_ID_VENDEDOR or '1').strip()
+            payload['id_vendedor'] = _vend_default
         comissao_v = (getattr(settings, 'IXC_CONTRATO_TEST_COMISSAO', None) or '').strip()
         if comissao_v:
             payload['comissao'] = comissao_v
-        tipo_doc_ativ = (getattr(settings, 'IXC_CONTRATO_TEST_ID_TIPO_DOC_ATIV', None) or '').strip()
-        if tipo_doc_ativ:
+        # Tipo doc opcional/ativação: painel por cidade > default por filial.
+        tipo_doc_ativ = self.resolve_tipo_doc_ativ_id(cadastro.cidade)
+        # id_carencia (cobrança/vencimento): a ficha já guarda o id IXC pronto
+        # (foi escolhido pelo cliente em uma `OpcaoVencimento`). Se for um dia
+        # (ex.: "13"), resolve pelo painel/defaults; se já for id IXC (3 dígitos
+        # ou >31), envia direto.
+        venc_raw = (getattr(cadastro, 'vencimento_id', '') or '').strip()
+        id_carencia = ''
+        if venc_raw.isdigit():
+            if 1 <= int(venc_raw) <= 31:
+                id_carencia = self.resolve_vencimento_id(cadastro.cidade, venc_raw)
+            else:
+                id_carencia = venc_raw
+        if id_carencia:
+            payload['id_carencia'] = id_carencia
+        # Produto da taxa de instalação (R$ 100,00 — produto 146 por padrão).
+        taxa_reais = ixc_ids.get_instalacao_taxa_reais(cadastro)
+        if taxa_reais and taxa_reais > 0:
+            payload['taxa_instalacao'] = (
+                f'{taxa_reais:.2f}'.replace('.', ',') if isinstance(taxa_reais, float) else
+                f'{float(taxa_reais):.2f}'.replace('.', ',')
+            )
+            produto_ativ = ixc_ids.get_produto_instalacao_id()
+            if produto_ativ:
+                payload['id_produto_ativ'] = produto_ativ
+            if tipo_doc_ativ:
+                payload['id_tipo_doc_ativ'] = tipo_doc_ativ
+        elif tipo_doc_ativ:
+            # Mantém o tipo doc opcional preenchido mesmo se não houver taxa cobrada.
             payload['id_tipo_doc_ativ'] = tipo_doc_ativ
         payload['cc_previsao'] = (settings.IXC_CONTRATO_TEST_CC_PREVISAO or 'M').strip()
         payload['tipo_cobranca'] = (settings.IXC_CONTRATO_TEST_TIPO_COBRANCA_ID or 'P').strip()
-        # Fidelidade em meses: 12 se o cliente marcou fidelidade na ficha, senão 0.
-        payload['fidelidade'] = '12' if getattr(cadastro, 'fidelidade', True) else '0'
+        # Fidelidade: 12 meses se aceitou na ficha, senão vazio (IXC entende sem fidelidade).
+        payload['fidelidade'] = ixc_ids.get_fidelidade_meses(bool(getattr(cadastro, 'fidelidade', False)))
         payload['renovacao_automatica'] = (settings.IXC_CONTRATO_TEST_RENOVACAO_AUTOMATICA or 'S').strip()
         payload['base_geracao_tipo_doc'] = (settings.IXC_CONTRATO_TEST_BASE_GERACAO_TIPO_DOC or 'P').strip()
         payload['bloqueio_automatico'] = (settings.IXC_CONTRATO_TEST_BLOQUEIO_AUTOMATICO or 'S').strip()
@@ -1496,9 +1519,6 @@ class IXCIntegration:
             msg = str(body.get('message', ''))[:500]
             logs.append(f'[CLIENTE_CONTRATO] aguardando_assinatura erro_api: {msg}')
             return False, msg or 'erro_api'
-        logs.append(
-            f'[CLIENTE_CONTRATO] aguardando_assinatura ok (recurso={resource}, {key}={cid}).'
-        )
         return True, None
 
     def create_cliente_contrato_test(self, cadastro):
@@ -1516,17 +1536,13 @@ class IXCIntegration:
         resource = (settings.IXC_CLIENTE_CONTRATO_RESOURCE or 'cliente_contrato').strip()
         endpoint = f'{self.url}/webservice/v1/{resource}'
         debug_path = self._save_debug_json(cadastro.pk, payload, 'CLIENTE_CONTRATO_TEST')
-        logs = []
-        if debug_path:
-            logs.append(f'[CLIENTE_CONTRATO] debug_json={debug_path}')
-        logs.append(
-            f"[CLIENTE_CONTRATO] incluir_preview tipo={payload.get('tipo')!r} id_vd={payload.get('id_vd_contrato')!r} "
-            f"id_tipo_contrato={payload.get('id_tipo_contrato')!r} tipo_produtos_plano={payload.get('tipo_produtos_plano')!r}"
-        )
-        logs.append(
-            f"[CLIENTE_CONTRATO] id_cliente_no_body={payload.get('id_cliente')!r} — no IXC abra este cliente "
-            '(aba Contratos). Ordem: ixc_prospect_id > ixc_lead_id > IXC_CONTRATO_TEST_ID_CLIENTE (.env só fallback).'
-        )
+
+        def _contrato_err_logs(*lines: str) -> list[str]:
+            out: list[str] = []
+            if debug_path:
+                out.append(f'[CLIENTE_CONTRATO] debug_json={debug_path}')
+            out.extend(lines)
+            return out
 
         result = self._post_ixc(
             endpoint,
@@ -1534,13 +1550,12 @@ class IXCIntegration:
             'CLIENTE_CONTRATO',
             extra_headers={'ixcsoft': 'incluir'},
         )
-        logs.extend(result.get('logs', []))
 
         if result.get('status') != 'success':
             return {
                 'status': 'error',
                 'message': result.get('message') or 'Falha HTTP ao criar contrato.',
-                'logs': logs,
+                'logs': _contrato_err_logs(*(result.get('logs') or [])),
             }
 
         body = result.get('data') if isinstance(result.get('data'), dict) else {}
@@ -1550,41 +1565,43 @@ class IXCIntegration:
             return {
                 'status': 'error',
                 'message': response_message or 'IXC retornou erro ao incluir contrato.',
-                'logs': logs + [f'[CLIENTE_CONTRATO] erro_api: {response_message}'],
+                'logs': _contrato_err_logs(f'[CLIENTE_CONTRATO] erro_api: {response_message}'),
             }
 
         contrato_id = self._extract_cliente_contrato_id(body)
-        if contrato_id in (None, '', 0, '0'):
-            logs.append(
-                f'[CLIENTE_CONTRATO] id_contrato_nao_extraido; chaves_resposta={list(body.keys())[:25]}'
-            )
-        id_sent = str(payload.get('id_cliente', '')).strip()
-        lead_only = (
-            id_sent
-            and id_sent == str(cadastro.ixc_lead_id or '').strip()
-            and not str(cadastro.ixc_prospect_id or '').strip()
-        )
-
         if contrato_id not in (None, '', 0, '0'):
             msg_ok = f'Contrato criado no IXC (teste). ID: {contrato_id}.'
             from .models import Cadastro
 
             cid = str(contrato_id).strip()
             Cadastro.objects.filter(pk=cadastro.pk).update(ixc_contrato_id=cid)
-            logs.append(f'[CLIENTE_CONTRATO] ixc_contrato_id={cid} gravado no cadastro pk={cadastro.pk}.')
-            ok_sig, sig_err = self._post_cliente_contrato_aguardando_assinatura(cid, logs)
+            sig_logs: list[str] = []
+            ok_sig, sig_err = self._post_cliente_contrato_aguardando_assinatura(cid, sig_logs)
             if ok_sig is True:
                 msg_ok = f'{msg_ok} Aguardando assinatura (WS auxiliar aplicado).'
             elif ok_sig is False and sig_err:
-                msg_ok = f'{msg_ok} Aviso: não foi possível aplicar «aguardando assinatura» no WS auxiliar: {str(sig_err)[:160]}'
+                msg_ok = (
+                    f'{msg_ok} Aviso: não foi possível aplicar «aguardando assinatura» no WS auxiliar: '
+                    f'{str(sig_err)[:160]}'
+                )
 
-            out = {
+            return {
                 'status': 'success',
                 'message': msg_ok,
                 'contrato_id': contrato_id,
-                'logs': logs,
+                'logs': list(sig_logs),
             }
-            return out
+
+        miss_line = (
+            f'[CLIENTE_CONTRATO] id do contrato não extraído do JSON; '
+            f'chaves_resposta={list(body.keys())[:25]}'
+        )
+        id_sent = str(payload.get('id_cliente', '')).strip()
+        lead_only = (
+            id_sent
+            and id_sent == str(cadastro.ixc_lead_id or '').strip()
+            and not str(cadastro.ixc_prospect_id or '').strip()
+        )
 
         if lead_only:
             return {
@@ -1594,7 +1611,10 @@ class IXCIntegration:
                     'Conclua a prospecção (crm_canditados) para gravar ixc_prospect_id e teste de novo com esse ID.'
                 ),
                 'contrato_id': None,
-                'logs': logs + ['[CLIENTE_CONTRATO] id_cliente=contato; prefira ixc_prospect_id após crm_canditados.'],
+                'logs': [
+                    miss_line,
+                    '[CLIENTE_CONTRATO] causa provável: id_cliente ainda é só contato; use ixc_prospect_id após CRM.',
+                ],
             }
 
         msg_ok = 'Contrato enviado ao IXC (teste).'
@@ -1604,7 +1624,314 @@ class IXCIntegration:
             'status': 'success',
             'message': msg_ok,
             'contrato_id': contrato_id,
-            'logs': logs,
+            'logs': [miss_line],
+        }
+
+    # ------------------------------------------------------------------ #
+    # ARQUIVOS DO CLIENTE — POST `webservice/v1/cliente_arquivos`        #
+    # ------------------------------------------------------------------ #
+    # Multipart/form-data com:
+    #   - data: { 'descricao': str, 'id_cliente': str }
+    #   - files: { 'local_arquivo': (filename, fp, mime) }
+    # ``id_cliente`` é o ID do cliente no IXC; tentamos resolver por:
+    #   1) parâmetro explícito do chamador,
+    #   2) ``ixc_prospect_id`` (após prospecção crm_canditados),
+    #   3) ``ixc_candidato_id``,
+    #   4) ``ixc_lead_id`` (lead/contato).
+    # Retorno consolidado para a UI: `status`, `message`, `uploads`, `logs`.
+
+    # Campos do `Cadastro` que viram POST cliente_arquivos. Ordem importa só
+    # para o log de auditoria; não há acoplamento com a API IXC.
+    _ARQUIVOS_FIELDS = (
+        ('selfie_documento', 'SELFIE'),
+        ('foto_documento_frente', 'RG (frente)'),
+        ('foto_documento_verso', 'RG (verso)'),
+        ('comprovante_residencia', 'Comprovante de residência'),
+    )
+
+    def _ixc_files_to_upload(self, cadastro):
+        """[(campo, descricao_padrao, file_field)] filtrando vazios."""
+        items = []
+        for fname, label in self._ARQUIVOS_FIELDS:
+            f = getattr(cadastro, fname, None)
+            items.append((fname, label, f))
+        # PJ → contrato social também vai junto.
+        if (getattr(cadastro, 'tipo_pessoa', '') or '').strip().lower() == 'pj':
+            items.append(('contrato_social', 'Contrato social', getattr(cadastro, 'contrato_social', None)))
+        return items
+
+    def _resolve_id_cliente_for_arquivos(self, cadastro):
+        """Ordem: prospect > candidato > lead. Retorna (id_str, origem) ou (None, None)."""
+        candidates = (
+            ('ixc_prospect_id', getattr(cadastro, 'ixc_prospect_id', None)),
+            ('ixc_candidato_id', getattr(cadastro, 'ixc_candidato_id', None)),
+            ('ixc_lead_id', getattr(cadastro, 'ixc_lead_id', None)),
+        )
+        for origem, val in candidates:
+            s = str(val).strip() if val is not None else ''
+            if s:
+                return s, origem
+        return None, None
+
+    def _post_ixc_multipart(self, endpoint, data, files, etapa, extra_headers=None):
+        """Igual a ``_post_ixc`` mas em multipart/form-data (não envia Content-Type;
+        o requests gera o boundary correto). Mantém o mesmo formato de retorno.
+        """
+        headers = {'Authorization': self.headers.get('Authorization', '')}
+        if extra_headers:
+            headers.update(extra_headers)
+        try:
+            response = requests.post(
+                endpoint,
+                data=data,
+                files=files,
+                headers=headers,
+                verify=False,
+                timeout=60,
+            )
+            if response.status_code in (200, 201):
+                raw_text = (response.text or '').strip()
+                if not raw_text:
+                    return {
+                        'status': 'success',
+                        'data': {},
+                        'logs': [],
+                        'http_status': response.status_code,
+                    }
+                try:
+                    body = response.json()
+                except ValueError:
+                    preview = (response.text or '').strip()[:500]
+                    return {
+                        'status': 'error',
+                        'message': 'Resposta HTTP 200/201 sem JSON válido (IXC ou proxy).',
+                        'logs': [
+                            f'[{etapa}] endpoint={endpoint}',
+                            f'[{etapa}] status_http={response.status_code}',
+                            f'[{etapa}] resposta_nao_json: {preview}',
+                        ],
+                        'http_status': response.status_code,
+                        'endpoint': endpoint,
+                    }
+                return {
+                    'status': 'success',
+                    'data': body,
+                    'logs': [],
+                    'http_status': response.status_code,
+                }
+            error_preview = (response.text or '').strip()[:500]
+            return {
+                'status': 'error',
+                'message': error_preview or f'Falha HTTP {response.status_code}',
+                'logs': [
+                    f'[{etapa}] endpoint={endpoint}',
+                    f'[{etapa}] status_http={response.status_code}',
+                    f'[{etapa}] erro: {error_preview}',
+                ],
+                'http_status': response.status_code,
+                'endpoint': endpoint,
+            }
+        except requests.RequestException as e:
+            return {
+                'status': 'error',
+                'message': f'Falha na conexão: {str(e)}',
+                'logs': [
+                    f'[{etapa}] endpoint={endpoint}',
+                    f'[{etapa}] excecao_rede: {str(e)}',
+                ],
+                'endpoint': endpoint,
+            }
+
+    @staticmethod
+    def _guess_mime(filename):
+        m, _ = mimetypes.guess_type(filename or '')
+        return m or 'application/octet-stream'
+
+    def upload_cliente_arquivos(self, cadastro, *, id_cliente=None, descricao_prefix=None):
+        """POST `webservice/v1/cliente_arquivos` para cada arquivo do cadastro.
+
+        Args:
+            cadastro: instância de `Cadastro` com FileFields preenchidos.
+            id_cliente: opcional. ID do cliente no IXC. Quando omitido, tenta
+                resolver a partir de `ixc_prospect_id` > `ixc_candidato_id` > `ixc_lead_id`.
+            descricao_prefix: opcional. Texto prepended à descrição (ex.: "Cad #42").
+
+        Returns:
+            dict { status, message, uploads: [...], logs: [...], id_cliente }.
+        """
+        if not self.url or not self.token:
+            return {
+                'status': 'error',
+                'message': 'API do IXC não configurada (IXC_API_URL / IXC_API_TOKEN).',
+                'logs': ['[ARQUIVOS] IXC_API_URL/IXC_API_TOKEN ausentes.'],
+                'uploads': [],
+            }
+
+        resolved_id = (str(id_cliente).strip() if id_cliente else '') or None
+        origem_id = 'explicito' if resolved_id else None
+        if not resolved_id:
+            resolved_id, origem_id = self._resolve_id_cliente_for_arquivos(cadastro)
+        if not resolved_id:
+            return {
+                'status': 'error',
+                'message': (
+                    'Cadastro sem ID de cliente no IXC. Envie o lead/prospecção primeiro '
+                    '(modal IXC → opções 1 e 2) para gravar ixc_prospect_id ou ixc_lead_id.'
+                ),
+                'logs': [
+                    '[ARQUIVOS] sem id_cliente: ordem buscada = '
+                    'ixc_prospect_id > ixc_candidato_id > ixc_lead_id.'
+                ],
+                'uploads': [],
+            }
+
+        resource = (getattr(settings, 'IXC_ARQUIVOS_RESOURCE', 'cliente_arquivos') or 'cliente_arquivos').strip()
+        endpoint = f'{self.url}/webservice/v1/{resource}'
+
+        items = self._ixc_files_to_upload(cadastro)
+        error_logs: list[str] = []
+        uploads = []
+        ok_count = 0
+        fail_count = 0
+        skip_count = 0
+
+        prefix = (descricao_prefix or f'Cadastro #{cadastro.pk}').strip()
+
+        for field_name, label, file_field in items:
+            # Sem arquivo neste campo → pula
+            if not file_field or not getattr(file_field, 'name', None):
+                uploads.append({
+                    'campo': field_name,
+                    'status': 'skipped',
+                    'message': 'arquivo ausente neste cadastro',
+                })
+                skip_count += 1
+                continue
+
+            raw_full = b''
+            try:
+                fp = file_field.open('rb')
+                try:
+                    raw_full = fp.read() or b''
+                finally:
+                    try:
+                        fp.close()
+                    except Exception:
+                        pass
+            except Exception as e:
+                uploads.append({
+                    'campo': field_name,
+                    'status': 'error',
+                    'message': f'falha ao abrir arquivo: {e}',
+                    'filename': (os.path.basename(file_field.name) or f'{field_name}.dat'),
+                })
+                error_logs.append(
+                    f'[ARQUIVOS] {field_name}: não foi possível ler do storage '
+                    f'(name={file_field.name!r}): {e}'
+                )
+                fail_count += 1
+                continue
+
+            if not raw_full:
+                uploads.append({
+                    'campo': field_name,
+                    'status': 'error',
+                    'message': 'arquivo vazio ao ler do storage',
+                    'filename': (os.path.basename(file_field.name) or f'{field_name}.dat'),
+                })
+                error_logs.append(
+                    f'[ARQUIVOS] {field_name}: leitura retornou 0 bytes (name={file_field.name!r}).'
+                )
+                fail_count += 1
+                continue
+
+            raw_full, ext, _webp_ixc = prepare_bytes_for_ixc_upload(raw_full, field_name)
+
+            doc_digits = only_digits_br(getattr(cadastro, 'documento', '') or '')
+            filename = build_cliente_document_filename(doc_digits, field_name, ext)
+            descricao = f'{prefix} — {label}'
+            mime = mimetype_for_doc_extension(ext)
+            upload_buf = BytesIO(raw_full)
+
+            try:
+                files_payload = {'local_arquivo': (filename, upload_buf, mime)}
+                data_payload = {'descricao': descricao, 'id_cliente': str(resolved_id)}
+                result = self._post_ixc_multipart(
+                    endpoint, data_payload, files_payload,
+                    f'ARQUIVOS:{field_name}',
+                )
+            finally:
+                try:
+                    upload_buf.close()
+                except Exception:
+                    pass
+
+            if result.get('status') == 'success':
+                body = result.get('data') if isinstance(result.get('data'), dict) else {}
+                arquivo_id = self._extract_id(body)
+                uploads.append({
+                    'campo': field_name,
+                    'status': 'success',
+                    'id': arquivo_id,
+                    'filename': filename,
+                    'descricao': descricao,
+                })
+                ok_count += 1
+            else:
+                msg = (result.get('message', '') or 'falha no POST').strip()
+                uploads.append({
+                    'campo': field_name,
+                    'status': 'error',
+                    'message': msg,
+                    'filename': filename,
+                })
+                error_logs.append(
+                    f'[ARQUIVOS] {field_name}: IXC rejeitou ou falhou (filename={filename!r}). {msg}'
+                )
+                for lg in (result.get('logs') or []):
+                    if lg and lg not in error_logs:
+                        error_logs.append(lg)
+                fail_count += 1
+
+        if ok_count and not fail_count:
+            status_final = 'success'
+            msg = f'{ok_count} arquivo(s) enviado(s) ao IXC com sucesso.'
+        elif ok_count and fail_count:
+            status_final = 'warning'
+            msg = f'{ok_count} enviado(s) e {fail_count} com erro. Consulte o detalhe abaixo.'
+        elif fail_count and not ok_count:
+            status_final = 'error'
+            msg = f'Nenhum arquivo enviado ({fail_count} falha[s]). Consulte o detalhe abaixo.'
+        else:
+            status_final = 'warning'
+            msg = 'Nenhum arquivo encontrado neste cadastro para enviar ao IXC.'
+
+        if skip_count:
+            msg = f'{msg} ({skip_count} campo[s] sem arquivo ignorado[s].)'
+
+        # Persistência local — auditoria em ixc_envio_logs.arquivos
+        try:
+            envio = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
+            envio = dict(envio)
+            envio['arquivos'] = {
+                'ultimo_envio_em': timezone.now().isoformat(),
+                'id_cliente_ixc': str(resolved_id),
+                'origem_id_cliente': origem_id,
+                'status_global': status_final,
+                'uploads': uploads,
+            }
+            cadastro.ixc_envio_logs = envio
+            cadastro.save(update_fields=['ixc_envio_logs'])
+        except Exception as e:
+            error_logs.append(f'[ARQUIVOS] falha ao gravar auditoria local (ixc_envio_logs): {e}')
+
+        return {
+            'status': status_final,
+            'message': msg,
+            'uploads': uploads,
+            'logs': error_logs if error_logs else [],
+            'id_cliente': str(resolved_id),
+            'origem_id_cliente': origem_id,
         }
 
     def create_os(self, cadastro, ixc_id):

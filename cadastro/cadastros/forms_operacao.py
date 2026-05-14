@@ -11,6 +11,7 @@ from .operacao_models import (
     PlanoDefinicao,
     PlanoGrupo,
     VagaInstalacao,
+    VendedorIXC,
 )
 
 TEXTAREA = forms.Textarea(attrs={'class': 'form-control form-control-premium', 'rows': 4})
@@ -53,12 +54,28 @@ class AppConfigOperacaoForm(forms.ModelForm):
             'exigir_fotos_documentacao',
             'texto_ajuda_documentos',
             'modelo_observacoes_ficha',
+            'ixc_tipo_documento_fatura_id',
+            'ixc_produto_instalacao_id',
+            'ixc_fidelidade_meses',
         )
         widgets = {
             'dias_antecedencia_minima_instalacao': forms.NumberInput(attrs={**CONTROL, 'min': 1}),
             'texto_ajuda_documentos': TEXTAREA,
             'modelo_observacoes_ficha': TEXTAREA,
             'exigir_fotos_documentacao': forms.CheckboxInput(attrs=CHECK),
+            'ixc_tipo_documento_fatura_id': forms.TextInput(attrs={**CONTROL, 'placeholder': '501', 'inputmode': 'numeric'}),
+            'ixc_produto_instalacao_id': forms.TextInput(attrs={**CONTROL, 'placeholder': '146', 'inputmode': 'numeric'}),
+            'ixc_fidelidade_meses': forms.NumberInput(attrs={**CONTROL, 'min': 0, 'max': 60, 'placeholder': '12'}),
+        }
+        labels = {
+            'ixc_tipo_documento_fatura_id': 'IXC — Tipo de documento da fatura',
+            'ixc_produto_instalacao_id': 'IXC — Produto da taxa de ativação',
+            'ixc_fidelidade_meses': 'IXC — Fidelidade (meses)',
+        }
+        help_texts = {
+            'ixc_tipo_documento_fatura_id': 'id_tipo_documento da fatura (na Fibramar = 501).',
+            'ixc_produto_instalacao_id': 'id_produto_ativ enviado quando o cliente paga taxa de instalação (na Fibramar = 146).',
+            'ixc_fidelidade_meses': 'Valor do campo `fidelidade` quando o cliente aceita fidelidade. Sem fidelidade vai vazio para o IXC.',
         }
 
 
@@ -142,6 +159,9 @@ class CidadeOperacaoForm(forms.ModelForm):
             'instalacao_valor_sem_fidel_reais',
             'ixc_filial_id',
             'ixc_cidade_id',
+            'ixc_setor_id',
+            'ixc_carteira_cobranca_id',
+            'ixc_tipo_doc_ativ_id',
             'exigir_fotos_documentacao',
         )
         widgets = {
@@ -157,8 +177,11 @@ class CidadeOperacaoForm(forms.ModelForm):
             'instalacao_com_fidelidade_gratis': forms.CheckboxInput(attrs=CHECK),
             'instalacao_valor_com_fidel_reais': forms.NumberInput(attrs={**CONTROL, 'step': '0.01'}),
             'instalacao_valor_sem_fidel_reais': forms.NumberInput(attrs={**CONTROL, 'step': '0.01'}),
-            'ixc_filial_id': forms.TextInput(attrs=CONTROL),
-            'ixc_cidade_id': forms.TextInput(attrs=CONTROL),
+            'ixc_filial_id': forms.TextInput(attrs={**CONTROL, 'placeholder': 'Ex.: 2 (Maricá), 7 (Saquarema)', 'inputmode': 'numeric'}),
+            'ixc_cidade_id': forms.TextInput(attrs={**CONTROL, 'placeholder': 'ID da cidade no IXC', 'inputmode': 'numeric'}),
+            'ixc_setor_id': forms.TextInput(attrs={**CONTROL, 'placeholder': 'Ex.: 1 (Maricá), 23 (Saquarema)', 'inputmode': 'numeric'}),
+            'ixc_carteira_cobranca_id': forms.TextInput(attrs={**CONTROL, 'placeholder': 'Ex.: 108 (Maricá c/ desconto)', 'inputmode': 'numeric'}),
+            'ixc_tipo_doc_ativ_id': forms.TextInput(attrs={**CONTROL, 'placeholder': 'Ex.: 702 (F02), 703 (F07)', 'inputmode': 'numeric'}),
             'exigir_fotos_documentacao': forms.NullBooleanSelect(attrs=CONTROL),
         }
 
@@ -198,3 +221,69 @@ class VagaInstalacaoForm(forms.ModelForm):
             'vagas_max': forms.NumberInput(attrs={**CONTROL, 'min': 1}),
             'ativo': forms.CheckboxInput(attrs=CHECK),
         }
+
+
+class VendedorIXCForm(forms.ModelForm):
+    class Meta:
+        model = VendedorIXC
+        fields = (
+            'nome',
+            'usuario',
+            'ixc_id',
+            'ixc_id_responsavel',
+            'email',
+            'telefone',
+            'ordem',
+            'ativo',
+            'padrao',
+            'observacao',
+        )
+        widgets = {
+            'nome': forms.TextInput(attrs={**CONTROL, 'placeholder': 'Ex.: Marcelo Castro'}),
+            'usuario': forms.Select(attrs=CONTROL),
+            'ixc_id': forms.TextInput(attrs={**CONTROL, 'placeholder': 'ID do vendedor IXC (ex.: 242)', 'inputmode': 'numeric'}),
+            'ixc_id_responsavel': forms.TextInput(attrs={**CONTROL, 'placeholder': 'ID do responsável IXC — vazio usa o do vendedor', 'inputmode': 'numeric'}),
+            'email': forms.EmailInput(attrs={**CONTROL, 'placeholder': 'opcional@fibramar.com.br'}),
+            'telefone': forms.TextInput(attrs={**CONTROL, 'placeholder': 'Opcional'}),
+            'ordem': forms.NumberInput(attrs={**CONTROL, 'min': 0}),
+            'ativo': forms.CheckboxInput(attrs=CHECK),
+            'padrao': forms.CheckboxInput(attrs=CHECK),
+            'observacao': forms.TextInput(attrs={**CONTROL, 'placeholder': 'Anotação interna (opcional)'}),
+        }
+        labels = {
+            'usuario': 'Consultor (usuário do sistema)',
+            'ixc_id': 'ID do vendedor (IXC)',
+            'ixc_id_responsavel': 'ID do responsável (IXC)',
+        }
+        help_texts = {
+            'usuario': 'Quando preenchido, os cadastros criados por este consultor herdam automaticamente estes IDs.',
+            'ixc_id_responsavel': 'Use só se o responsável for diferente do vendedor; se igual, deixe vazio.',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Limita o select de "usuário" a quem ainda não tem vendedor vinculado
+        # (mostrando o atual quando estiver editando).
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        qs = User.objects.filter(vendedor_ixc__isnull=True)
+        if self.instance and self.instance.pk and self.instance.usuario_id:
+            qs = qs | User.objects.filter(pk=self.instance.usuario_id)
+        self.fields['usuario'].queryset = qs.order_by('first_name', 'username')
+        self.fields['usuario'].empty_label = '— Sem vínculo (vendedor avulso) —'
+        self.fields['usuario'].required = False
+
+    def clean_ixc_id(self):
+        val = (self.cleaned_data.get('ixc_id') or '').strip()
+        if not val:
+            raise forms.ValidationError('Informe o ID do vendedor no IXC.')
+        if not val.isdigit():
+            raise forms.ValidationError('O ID do IXC deve conter apenas números (ex.: 242).')
+        return val
+
+    def clean_ixc_id_responsavel(self):
+        val = (self.cleaned_data.get('ixc_id_responsavel') or '').strip()
+        if val and not val.isdigit():
+            raise forms.ValidationError('O ID do responsável deve conter apenas números.')
+        return val

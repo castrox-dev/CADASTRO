@@ -90,10 +90,12 @@
                             <tr>
                                 <th class="px-4 border-0 text-muted small fw-bold">CONSULTOR</th>
                                 <th class="border-0 text-muted small fw-bold">USUÁRIO</th>
-                                <th class="border-0 text-muted small fw-bold text-center">TOTAL CADASTROS</th>
-                                <th class="border-0 text-muted small fw-bold text-center">PENDENTES</th>
-                                <th class="border-0 text-muted small fw-bold text-center">REALIZADOS</th>
-                                <th class="border-0 text-muted small fw-bold">ÚLTIMO ACESSO</th>
+                                <th class="border-0 text-muted small fw-bold text-center">PERFIL</th>
+                                <th class="border-0 text-muted small fw-bold text-center">IDs IXC</th>
+                                <th class="border-0 text-muted small fw-bold text-center">TOTAL</th>
+                                <th class="border-0 text-muted small fw-bold text-center">PEND.</th>
+                                <th class="border-0 text-muted small fw-bold text-center">REALIZ.</th>
+                                <th class="border-0 text-muted small fw-bold">ÚLT. ACESSO</th>
                                 <th class="px-4 border-0 text-muted small fw-bold text-end">AÇÕES</th>
                             </tr>
                         </thead>
@@ -105,6 +107,23 @@
                                     <div class="small text-muted">{{ c.email }}</div>
                                 </td>
                                 <td class="align-middle"><code>{{ c.username }}</code></td>
+                                <td class="align-middle text-center">
+                                    {% if c.is_superuser %}
+                                        <span class="badge bg-primary-subtle text-primary-emphasis border border-primary px-3" title="Acesso administrativo total">
+                                            <i class="bi bi-shield-check me-1"></i>ADMIN
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-light text-muted border px-3">CONSULTOR</span>
+                                    {% endif %}
+                                </td>
+                                <td class="align-middle text-center small">
+                                    {% if c.vendedor_ixc %}
+                                        <div><span class="text-muted">Vendedor:</span> <code>{{ c.vendedor_ixc.ixc_id }}</code></div>
+                                        <div><span class="text-muted">Respons.:</span> <code>{{ c.vendedor_ixc.responsavel_ixc_id }}</code></div>
+                                    {% else %}
+                                        <span class="text-muted fst-italic">— sem ID —</span>
+                                    {% endif %}
+                                </td>
                                 <td class="align-middle text-center">
                                     <span class="badge bg-light text-dark border px-3">{{ c.total_cadastros }}</span>
                                 </td>
@@ -122,14 +141,20 @@
                                     {% endif %}
                                 </td>
                                 <td class="px-4 align-middle text-end">
-                                    <div class="btn-group">
-                                        <button class="btn btn-sm btn-outline-primary" title="Editar Consultor" onclick="openEditModal({{ c.pk }}, '{{ c.first_name }}', '{{ c.email }}')">
+                                    <div class="btn-group"
+                                         data-user-pk="{{ c.pk }}"
+                                         data-first-name="{{ c.first_name|default:c.username }}"
+                                         data-email="{{ c.email }}"
+                                         data-is-admin="{% if c.is_superuser %}1{% else %}0{% endif %}"
+                                         data-ixc-vendedor="{% if c.vendedor_ixc %}{{ c.vendedor_ixc.ixc_id }}{% endif %}"
+                                         data-ixc-responsavel="{% if c.vendedor_ixc %}{{ c.vendedor_ixc.ixc_id_responsavel }}{% endif %}">
+                                        <button class="btn btn-sm btn-outline-primary js-edit-consultor" title="Editar Consultor">
                                             <i class="bi bi-pencil"></i>
                                         </button>
-                                        <button class="btn btn-sm btn-outline-warning" title="Alterar Senha" onclick="openPasswordModal({{ c.pk }})">
+                                        <button class="btn btn-sm btn-outline-warning js-password-consultor" title="Alterar Senha">
                                             <i class="bi bi-key"></i>
                                         </button>
-                                        <button class="btn btn-sm btn-outline-danger" title="Excluir Consultor" onclick="confirmDeleteConsultor({{ c.pk }}, '{{ c.username }}')">
+                                        <button class="btn btn-sm btn-outline-danger js-delete-consultor" data-username="{{ c.username }}" title="Excluir Consultor">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </div>
@@ -137,7 +162,7 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="7" class="text-center py-5 text-muted">
+                                <td colspan="9" class="text-center py-5 text-muted">
                                     <i class="bi bi-people fs-1 mb-3 d-block opacity-25"></i>
                                     <p class="mb-0">Nenhum consultor cadastrado.</p>
                                 </td>
@@ -154,7 +179,7 @@
 <!-- Modals -->
 <!-- New Consultor Modal -->
 <div class="modal fade" id="newConsultorModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow">
             <div class="modal-header border-0 bg-primary text-white">
                 <h5 class="modal-title fw-bold"><i class="bi bi-person-plus me-2"></i>Novo Consultor</h5>
@@ -162,21 +187,51 @@
             </div>
             <form id="createConsultorForm">
                 <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">NOME</label>
-                        <input type="text" name="first_name" class="form-control form-control-premium" required>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">NOME</label>
+                            <input type="text" name="first_name" class="form-control form-control-premium" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">USUÁRIO (LOGIN)</label>
+                            <input type="text" name="username" class="form-control form-control-premium" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">E-MAIL</label>
+                            <input type="email" name="email" class="form-control form-control-premium" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">SENHA INICIAL</label>
+                            <input type="password" name="password" class="form-control form-control-premium" required>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">USUÁRIO (LOGIN)</label>
-                        <input type="text" name="username" class="form-control form-control-premium" required>
+
+                    <hr class="my-4">
+                    <h6 class="fw-bold small text-uppercase text-muted mb-2"><i class="bi bi-shield-lock me-1"></i>Perfil de acesso</h6>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="is_admin" value="1" id="newIsAdmin">
+                        <label class="form-check-label fw-semibold" for="newIsAdmin">
+                            É administrador do sistema
+                            <div class="small text-muted">Vê todos os cadastros, gerencia consultores e a operação. Desmarcado = consultor normal (vê só os próprios cadastros).</div>
+                        </label>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">E-MAIL</label>
-                        <input type="email" name="email" class="form-control form-control-premium" required>
+
+                    <h6 class="fw-bold small text-uppercase text-muted mb-2 mt-4"><i class="bi bi-link-45deg me-1"></i>Vínculo IXC <span class="text-danger">*</span></h6>
+                    <div class="alert alert-info py-2 px-3 small mb-3" role="alert">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <strong>Consultor = Vendedor no IXC.</strong> O ID do vendedor é
+                        obrigatório para que os cadastros criados por este consultor saiam com
+                        <code>id_vendedor</code> e <code>id_responsavel</code> corretos.
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">SENHA INICIAL</label>
-                        <input type="password" name="password" class="form-control form-control-premium" required>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">ID DO VENDEDOR (IXC) <span class="text-danger">*</span></label>
+                            <input type="text" name="ixc_id_vendedor" class="form-control form-control-premium" inputmode="numeric" placeholder="Ex.: 242" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">ID DO RESPONSÁVEL (IXC)</label>
+                            <input type="text" name="ixc_id_responsavel" class="form-control form-control-premium" inputmode="numeric" placeholder="Vazio = igual ao vendedor">
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer border-0">
@@ -190,7 +245,7 @@
 
 <!-- Edit Consultor Modal -->
 <div class="modal fade" id="editConsultorModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow">
             <div class="modal-header border-0 bg-primary text-white">
                 <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i>Editar Consultor</h5>
@@ -199,13 +254,42 @@
             <form id="editConsultorForm">
                 <input type="hidden" id="edit_id" name="pk">
                 <div class="modal-body p-4">
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">NOME</label>
-                        <input type="text" id="edit_name" name="first_name" class="form-control form-control-premium" required>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">NOME</label>
+                            <input type="text" id="edit_name" name="first_name" class="form-control form-control-premium" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">E-MAIL</label>
+                            <input type="email" id="edit_email" name="email" class="form-control form-control-premium" required>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">E-MAIL</label>
-                        <input type="email" id="edit_email" name="email" class="form-control form-control-premium" required>
+
+                    <hr class="my-4">
+                    <h6 class="fw-bold small text-uppercase text-muted mb-2"><i class="bi bi-shield-lock me-1"></i>Perfil de acesso</h6>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="is_admin" value="1" id="editIsAdmin">
+                        <label class="form-check-label fw-semibold" for="editIsAdmin">
+                            É administrador do sistema
+                            <div class="small text-muted">Acesso total: lista de cadastros, gestão de consultores e operação.</div>
+                        </label>
+                    </div>
+
+                    <h6 class="fw-bold small text-uppercase text-muted mb-2 mt-4"><i class="bi bi-link-45deg me-1"></i>Vínculo IXC</h6>
+                    <div class="alert alert-info py-2 px-3 small mb-3" role="alert">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <strong>Consultor = Vendedor no IXC.</strong>
+                        Para remover o vínculo de um consultor antigo, deixe o ID do vendedor vazio.
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">ID DO VENDEDOR (IXC)</label>
+                            <input type="text" id="edit_ixc_vendedor" name="ixc_id_vendedor" class="form-control form-control-premium" inputmode="numeric" placeholder="Ex.: 242">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">ID DO RESPONSÁVEL (IXC)</label>
+                            <input type="text" id="edit_ixc_responsavel" name="ixc_id_responsavel" class="form-control form-control-premium" inputmode="numeric" placeholder="Vazio = igual ao vendedor">
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer border-0">
@@ -248,17 +332,21 @@
 <script>
     const csrftoken = '{{ csrf_token }}';
 
+    function postManage(id, formData) {
+        const url = id ? `/admin-dash/manage/${id}/` : "{% url 'manage_consultor' %}";
+        return fetch(url, {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrftoken},
+            body: formData,
+        }).then(r => r.json());
+    }
+
     // Create
     document.getElementById('createConsultorForm').onsubmit = function(e) {
         e.preventDefault();
         const formData = new FormData(this);
         formData.append('action', 'create');
-        
-        fetch("{% url 'manage_consultor' %}", {
-            method: 'POST',
-            headers: {'X-CSRFToken': csrftoken},
-            body: formData
-        }).then(r => r.json()).then(data => {
+        postManage(null, formData).then(data => {
             if (data.status === 'success') {
                 location.reload();
             } else {
@@ -268,10 +356,13 @@
     };
 
     // Edit
-    function openEditModal(id, name, email) {
-        document.getElementById('edit_id').value = id;
-        document.getElementById('edit_name').value = name;
-        document.getElementById('edit_email').value = email;
+    function openEditModal(group) {
+        document.getElementById('edit_id').value = group.dataset.userPk;
+        document.getElementById('edit_name').value = group.dataset.firstName || '';
+        document.getElementById('edit_email').value = group.dataset.email || '';
+        document.getElementById('editIsAdmin').checked = group.dataset.isAdmin === '1';
+        document.getElementById('edit_ixc_vendedor').value = group.dataset.ixcVendedor || '';
+        document.getElementById('edit_ixc_responsavel').value = group.dataset.ixcResponsavel || '';
         new bootstrap.Modal(document.getElementById('editConsultorModal')).show();
     }
 
@@ -280,19 +371,22 @@
         const id = document.getElementById('edit_id').value;
         const formData = new FormData(this);
         formData.append('action', 'edit');
-        
-        fetch(`/admin-dash/manage/${id}/`, {
-            method: 'POST',
-            headers: {'X-CSRFToken': csrftoken},
-            body: formData
-        }).then(r => r.json()).then(data => {
-            if (data.status === 'success') location.reload();
+        // Boolean explícito: se o checkbox não estiver marcado, o FormData omite.
+        if (!formData.has('is_admin')) {
+            formData.append('is_admin', '0');
+        }
+        postManage(id, formData).then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                showNotify(data.message || 'Erro ao salvar consultor', 'danger');
+            }
         });
     };
 
     // Password
-    function openPasswordModal(id) {
-        document.getElementById('pass_id').value = id;
+    function openPasswordModal(group) {
+        document.getElementById('pass_id').value = group.dataset.userPk;
         new bootstrap.Modal(document.getElementById('passwordModal')).show();
     }
 
@@ -301,12 +395,7 @@
         const id = document.getElementById('pass_id').value;
         const formData = new FormData(this);
         formData.append('action', 'password');
-        
-        fetch(`/admin-dash/manage/${id}/`, {
-            method: 'POST',
-            headers: {'X-CSRFToken': csrftoken},
-            body: formData
-        }).then(r => r.json()).then(data => {
+        postManage(id, formData).then(data => {
             if (data.status === 'success') {
                 showNotify('Senha redefinida com sucesso', 'success');
                 bootstrap.Modal.getInstance(document.getElementById('passwordModal')).hide();
@@ -315,23 +404,39 @@
     };
 
     // Delete
-    function confirmDeleteConsultor(id, username) {
+    function confirmDeleteConsultor(group) {
+        const id = group.dataset.userPk;
+        const username = group.querySelector('.js-delete-consultor')?.dataset.username || id;
         showConfirm(
             'Excluir Consultor',
             `ATENÇÃO: Deseja realmente excluir o consultor "${username}"? Todos os cadastros vinculados a ele serão mantidos, mas sem consultor responsável.`,
             function() {
                 const formData = new FormData();
                 formData.append('action', 'delete');
-                fetch(`/admin-dash/manage/${id}/`, {
-                    method: 'POST',
-                    headers: {'X-CSRFToken': csrftoken},
-                    body: formData
-                }).then(r => r.json()).then(data => {
-                    if (data.status === 'success') location.reload();
+                postManage(id, formData).then(data => {
+                    if (data.status === 'success') {
+                        location.reload();
+                    } else {
+                        showNotify(data.message || 'Erro ao excluir consultor', 'danger');
+                    }
                 });
             },
             true
         );
     }
+
+    // Delegation: lê todos os data-* da row e abre o modal correspondente.
+    document.addEventListener('click', function(e) {
+        const editBtn = e.target.closest('.js-edit-consultor');
+        const passwordBtn = e.target.closest('.js-password-consultor');
+        const deleteBtn = e.target.closest('.js-delete-consultor');
+        if (editBtn) {
+            openEditModal(editBtn.closest('[data-user-pk]'));
+        } else if (passwordBtn) {
+            openPasswordModal(passwordBtn.closest('[data-user-pk]'));
+        } else if (deleteBtn) {
+            confirmDeleteConsultor(deleteBtn.closest('[data-user-pk]'));
+        }
+    });
 </script>
 {% endblock %}

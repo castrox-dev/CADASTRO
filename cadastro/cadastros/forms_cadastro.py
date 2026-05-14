@@ -5,8 +5,9 @@ Substitui o acesso direto a `request.POST.get(...)` campo a campo nas views
 `client_form` e `edit_cadastro`, eliminando ~40 atribuições duplicadas e
 unificando regras (limpeza de máscaras, defaults).
 
-A validação «pesada» (CPF/CNPJ, maioridade, duplicidade) continua em
-`Cadastro.clean()` — o ModelForm já invoca essa validação automaticamente.
+A validação «pesada» (CPF/CNPJ, maioridade, duplicidade, documentos com MIME,
+assinatura binária e Pillow) continua em `Cadastro.clean()` — o ModelForm já
+invoca essa validação automaticamente.
 """
 from django import forms
 
@@ -66,6 +67,7 @@ class CadastroForm(forms.ModelForm):
             'data_instalacao',
             'periodo_instalacao',
             'origem',
+            'vendedor_responsavel',
         ]
 
     # Labels amigáveis usados nas mensagens de erro retornadas para o cliente.
@@ -100,6 +102,7 @@ class CadastroForm(forms.ModelForm):
         'data_instalacao': 'DATA DA INSTALAÇÃO',
         'periodo_instalacao': 'PERÍODO',
         'origem': 'ORIGEM',
+        'vendedor_responsavel': 'VENDEDOR RESPONSÁVEL',
     }
 
     def __init__(self, *args, partial=False, **kwargs):
@@ -109,6 +112,19 @@ class CadastroForm(forms.ModelForm):
         for name, label in self.FRIENDLY_LABELS.items():
             if name in self.fields:
                 self.fields[name].label = label
+        # Vendedor responsável: select com apenas ativos + bonito.
+        if 'vendedor_responsavel' in self.fields:
+            from .operacao_models import VendedorIXC
+            self.fields['vendedor_responsavel'].required = False
+            self.fields['vendedor_responsavel'].empty_label = '— Sem vendedor vinculado —'
+            self.fields['vendedor_responsavel'].queryset = VendedorIXC.objects.filter(ativo=True).order_by('ordem', 'nome')
+            self.fields['vendedor_responsavel'].widget.attrs.update({'class': 'form-control form-control-premium'})
+            # Em cadastros novos (instance sem pk), tenta pré-selecionar o vendedor marcado como padrão.
+            inst = getattr(self, 'instance', None)
+            if inst and not getattr(inst, 'pk', None) and not self.initial.get('vendedor_responsavel'):
+                padrao = VendedorIXC.objects.filter(ativo=True, padrao=True).first()
+                if padrao:
+                    self.initial['vendedor_responsavel'] = padrao.pk
         if partial:
             for f in self.fields.values():
                 f.required = False

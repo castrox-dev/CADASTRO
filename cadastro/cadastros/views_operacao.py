@@ -16,6 +16,7 @@ from .forms_operacao import (
     PlanoDefinicaoFormSet,
     PlanoGrupoForm,
     VagaInstalacaoForm,
+    VendedorIXCForm,
 )
 from .operacao_models import (
     AppConfigOperacao,
@@ -24,6 +25,7 @@ from .operacao_models import (
     OpcaoVencimento,
     PlanoGrupo,
     VagaInstalacao,
+    VendedorIXC,
 )
 
 
@@ -40,6 +42,7 @@ def _operacao_ctx():
         'n_planos': PlanoDefinicao.objects.count(),
         'n_faixas': FaixaVencimento.objects.count(),
         'n_vagas': VagaInstalacao.objects.filter(ativo=True).count(),
+        'n_vendedores': VendedorIXC.objects.filter(ativo=True).count(),
     }
 
 
@@ -310,3 +313,75 @@ def operacao_vaga_delete(request, pk):
     vaga.delete()
     messages.success(request, 'Registro removido.')
     return redirect('operacao_vagas_list')
+
+
+# ----------------------------------------------------------------------------- #
+# VendedorIXC — cadastro dos vendedores/responsáveis usados na integração IXC. #
+# O `ixc_id` é enviado em id_vendedor / id_responsavel / id_vendedor_ativ.     #
+# ----------------------------------------------------------------------------- #
+@login_required
+@user_passes_test(is_admin)
+def operacao_vendedores_list(request):
+    vendedores = VendedorIXC.objects.all().order_by('ordem', 'nome')
+    ctx = _operacao_ctx()
+    ctx['vendedores'] = vendedores
+    ctx['page_title'] = 'Vendedores / responsáveis (IXC)'
+    return render(request, 'cadastros/operacao/vendedores_list.html', ctx)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_http_methods(['GET', 'POST'])
+def operacao_vendedor_create(request):
+    if request.method == 'POST':
+        form = VendedorIXCForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Vendedor cadastrado.')
+            return redirect('operacao_vendedores_list')
+    else:
+        form = VendedorIXCForm(initial={'ordem': VendedorIXC.objects.count()})
+    ctx = _operacao_ctx()
+    ctx['form'] = form
+    ctx['page_title'] = 'Novo vendedor / responsável'
+    return render(request, 'cadastros/operacao/vendedor_form.html', ctx)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_http_methods(['GET', 'POST'])
+def operacao_vendedor_edit(request, pk):
+    vendedor = get_object_or_404(VendedorIXC, pk=pk)
+    if request.method == 'POST':
+        form = VendedorIXCForm(request.POST, instance=vendedor)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Vendedor atualizado.')
+            return redirect('operacao_vendedores_list')
+    else:
+        form = VendedorIXCForm(instance=vendedor)
+    ctx = _operacao_ctx()
+    ctx['form'] = form
+    ctx['vendedor'] = vendedor
+    ctx['page_title'] = f'Editar: {vendedor.nome}'
+    return render(request, 'cadastros/operacao/vendedor_form.html', ctx)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def operacao_vendedor_delete(request, pk):
+    vendedor = get_object_or_404(VendedorIXC, pk=pk)
+    n_cadastros = vendedor.cadastros.count()
+    nome = vendedor.nome
+    if n_cadastros:
+        # Mantém a referência «solta» nos cadastros (SET_NULL).
+        messages.warning(
+            request,
+            f'«{nome}» removido. {n_cadastros} cadastro(s) ficou(ram) sem vendedor — '
+            'edite cada um para escolher outro responsável.',
+        )
+    else:
+        messages.success(request, f'«{nome}» removido.')
+    vendedor.delete()
+    return redirect('operacao_vendedores_list')

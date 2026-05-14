@@ -1,0 +1,81 @@
+{% extends "cadastros/base_admin.html" %}
+
+{% block admin_page_title %}{{ page_title }}{% endblock %}
+
+{% block admin_content %}
+<div class="dashboard-wrapper">
+    <div class="container py-4" style="max-width: 640px;">
+        {% include "cadastros/operacao/_messages.html" %}
+
+        <h4 class="fw-bold mb-1">{{ page_title }}</h4>
+        <p class="text-muted small mb-4">
+            O <strong>ID IXC</strong> é o número do funcionário/vendedor no ERP (consulte na tela
+            <em>Cadastro &raquo; Vendedores</em> do IXC ou no canto direito do registro). Esse ID
+            é usado para vincular o vendedor a leads, prospecções e contratos quando o cadastro
+            for integrado.
+        </p>
+
+        <form method="post" class="card-premium p-4" novalidate>
+            {% csrf_token %}
+
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label class="form-label small fw-bold" for="id_nome">Nome do vendedor *</label>
+                    {{ form.nome }}
+                    {% if form.nome.errors %}<div class="text-danger small mt-1">{{ form.nome.errors|join:" " }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold" for="id_ixc_id">ID IXC *</label>
+                    {{ form.ixc_id }}
+                    {% if form.ixc_id.errors %}<div class="text-danger small mt-1">{{ form.ixc_id.errors|join:" " }}</div>{% endif %}
+                    <div class="form-text">Apenas números (ex.: 242).</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold" for="id_email">E-mail (opcional)</label>
+                    {{ form.email }}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold" for="id_telefone">Telefone (opcional)</label>
+                    {{ form.telefone }}
+                </div>
+
+                <div class="col-md-12">
+                    <label class="form-label small fw-bold" for="id_observacao">Observação interna</label>
+                    {{ form.observacao }}
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold" for="id_ordem">Ordem na listagem</label>
+                    {{ form.ordem }}
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <div class="form-check">
+                        {{ form.ativo }}
+                        <label class="form-check-label" for="id_ativo">Ativo</label>
+                    </div>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <div class="form-check">
+                        {{ form.padrao }}
+                        <label class="form-check-label" for="id_padrao">Marcar como padrão</label>
+                    </div>
+                </div>
+            </div>
+
+            {% if form.non_field_errors %}
+            <div class="alert alert-danger mt-3 mb-0">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <hr class="my-4 opacity-25">
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-fibramar">
+                    <i class="bi bi-check-lg me-1"></i>Salvar
+                </button>
+                <a href="{% url 'operacao_vendedores_list' %}" class="btn btn-light">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

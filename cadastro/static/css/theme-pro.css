@@ -704,6 +704,30 @@ body::before {
     box-shadow: 0 6px 16px rgba(0, 184, 148, 0.18);
 }
 
+.file-preview-pdf {
+    margin-top: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(220, 53, 69, 0.12), rgba(220, 53, 69, 0.04));
+    border: 1px solid rgba(220, 53, 69, 0.35);
+    color: #b02a37;
+    font-weight: 600;
+    font-size: 0.85rem;
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.12);
+}
+.file-preview-pdf i {
+    font-size: 1.4rem;
+    line-height: 1;
+}
+[data-theme="dark"] .file-preview-pdf {
+    color: #ff6b7a;
+    background: linear-gradient(135deg, rgba(220, 53, 69, 0.18), rgba(220, 53, 69, 0.06));
+    border-color: rgba(220, 53, 69, 0.45);
+}
+
 /* --------------------------------------------------------------------------
    14. PROGRESS BAR — gradiente e brilho sutil
    -------------------------------------------------------------------------- */

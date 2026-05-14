@@ -1,4 +1,82 @@
-// CPF/CNPJ: campo único com detecção automática (>11 dígitos = CNPJ)
+function formatFileSize(bytes) {
+    if (!bytes || isNaN(bytes)) return '0 KB';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2).replace('.', ',')} MB`;
+}
+
+/** HTML `accept` e validação: JPEG, PNG, WebP e PDF (MIME + extensão; servidor valida conteúdo). */
+var CLIENT_DOC_ACCEPT_ATTR =
+    'image/jpeg,image/png,image/webp,application/pdf,' +
+    '.pdf,.jpg,.jpeg,.jfif,.png,.webp';
+
+var CLIENT_DOC_ACCEPT_CAMERA_ATTR = 'image/jpeg,image/png,image/webp';
+
+var CLIENT_DOC_ALLOWED_MIME = new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+]);
+
+var CLIENT_DOC_EXT_RE = /\.(pdf|jpe?g|jfif|png|webp)$/i;
+
+function isAllowedClienteDocFile(file, options) {
+    options = options || {};
+    var allowPdf = options.allowPdf !== false;
+    if (!file || !(file instanceof File)) return true;
+    if (!file.size) return true;
+    if (!allowPdf && isPdfFile(file)) return false;
+    if (file.type && file.type.startsWith('video/')) return false;
+    var name = (file.name || '').toLowerCase();
+    if (CLIENT_DOC_EXT_RE.test(name)) return true;
+    if (file.type && CLIENT_DOC_ALLOWED_MIME.has(file.type)) return true;
+    if (!file.type || file.type === 'application/octet-stream') {
+        return CLIENT_DOC_EXT_RE.test(name);
+    }
+    return false;
+}
+
+/** Somente raster comum para compressão via canvas (JPEG/PNG/WebP). */
+function isClientCompressibleImage(file) {
+    if (!file || !(file instanceof File) || !file.size) return false;
+    var t = file.type || '';
+    if (t === 'image/jpeg' || t === 'image/png' || t === 'image/webp') return true;
+    var n = (file.name || '').toLowerCase();
+    return /\.(jpe?g|jfif|png|webp)$/i.test(n);
+}
+
+function notifyClienteDocTipoInvalido() {
+    showNotify(
+        'Arquivo não permitido. Envie apenas JPEG, PNG, WebP ou PDF (vídeos não são aceitos). O servidor confere o tipo real do arquivo.',
+        'danger'
+    );
+}
+
+function validateAllRegistrationUploads() {
+    var names = ['selfie_documento', 'foto_documento_frente', 'foto_documento_verso', 'comprovante_residencia', 'contrato_social'];
+    var i; var j; var inp; var multi;
+    for (i = 0; i < names.length; i++) {
+        inp = document.getElementsByName(names[i])[0];
+        if (!inp || !inp.files || !inp.files.length) continue;
+        for (j = 0; j < inp.files.length; j++) {
+            var selfieOpts = names[i] === 'selfie_documento' ? { allowPdf: false } : {};
+            if (!isAllowedClienteDocFile(inp.files[j], selfieOpts)) {
+                return { ok: false, step: names[i] === 'contrato_social' ? 1 : 4, input: inp };
+            }
+        }
+    }
+    multi = document.getElementById('rg_multi_picker');
+    if (multi && multi.files && multi.files.length) {
+        for (j = 0; j < multi.files.length; j++) {
+            if (!isAllowedClienteDocFile(multi.files[j])) {
+                return { ok: false, step: 4, input: multi };
+            }
+        }
+    }
+    return { ok: true };
+}
+
 $(document).ready(function() {
     $('#cep').mask('00000-000');
     $('#telefone').mask('(00) 00000-0000');
@@ -242,6 +320,17 @@ function syncRgFromMulti() {
 function copyOneFileToInput(finalId, file) {
     const fin = document.getElementById(finalId);
     if (!fin || !file) return;
+    if (!isAllowedClienteDocFile(file, { allowPdf: finalId !== 'selfie_documento' })) {
+        if (finalId === 'selfie_documento' && isPdfFile(file)) {
+            showNotify(
+                'Para SELFIE envie apenas imagem: JPEG, PNG ou WebP (PDF não é aceito neste campo).',
+                'danger'
+            );
+        } else {
+            notifyClienteDocTipoInvalido();
+        }
+        return;
+    }
     const dt = new DataTransfer();
     dt.items.add(file);
     fin.files = dt.files;
@@ -253,8 +342,12 @@ function copyOneFileToInput(finalId, file) {
 function mergeFilesIntoRgMultiPicked(newFiles) {
     const multi = document.getElementById('rg_multi_picker');
     if (!multi || !newFiles || !newFiles.length) return;
-    const cur = multi.files ? Array.from(multi.files) : [];
     const add = Array.from(newFiles);
+    if (add.some(function (f) { return !isAllowedClienteDocFile(f); })) {
+        notifyClienteDocTipoInvalido();
+        return;
+    }
+    const cur = multi.files ? Array.from(multi.files) : [];
     if (cur.length + add.length > 2) {
         showNotify('RG: no máximo 2 fotos. Apenas as 2 primeiras foram mantidas.', 'info');
     }
@@ -315,7 +408,7 @@ function initDocAndRgPickers() {
     document.querySelectorAll('.js-open-doc-gal').forEach(function (btn) {
         btn.addEventListener('click', function () {
             const id = btn.getAttribute('data-target-final');
-            const acc = btn.getAttribute('data-accept') || 'image/*';
+            const acc = btn.getAttribute('data-accept') || CLIENT_DOC_ACCEPT_ATTR;
             const h = document.getElementById('ixcGlobalGalHelper');
             if (!h || !id) return;
             h.setAttribute('accept', acc);
@@ -416,17 +509,44 @@ document.addEventListener('DOMContentLoaded', function() {
     initDocAndRgPickers();
 });
 
+function isPdfFile(file) {
+    if (!file) return false;
+    if (file.type === 'application/pdf') return true;
+    const name = (file.name || '').toLowerCase();
+    return name.endsWith('.pdf');
+}
+
 function handleFiles(input, files, info, wrapper) {
     if (files && files.length > 0) {
-        const fileName = files.length === 1
-            ? files[0].name
-            : `${files.length} arquivos: ${Array.from(files).map(function (f) { return f.name; }).join(', ')}`;
-        if (info) info.innerText = `Arquivo(s) selecionado(s): ${fileName}`;
+        const arr = Array.from(files);
+        if (arr.some(function (f) {
+            var allowPdf = !(input && input.name === 'selfie_documento');
+            return !isAllowedClienteDocFile(f, { allowPdf: allowPdf });
+        })) {
+            notifyClienteDocTipoInvalido();
+            if (input) input.value = '';
+            var emptyList = new DataTransfer().files;
+            handleFiles(input, emptyList, info, wrapper);
+            if (input && input.id === 'rg_multi_picker') syncRgFromMulti();
+            return;
+        }
+        const hasPdf = arr.some(isPdfFile);
+        const fileName = arr.length === 1
+            ? arr[0].name
+            : `${arr.length} arquivos: ${arr.map(function (f) { return f.name; }).join(', ')}`;
+        if (info) {
+            const prefix = hasPdf ? 'PDF/arquivo selecionado' : 'Arquivo(s) selecionado(s)';
+            info.innerText = `${prefix}: ${fileName}`;
+        }
         if (wrapper) {
             wrapper.classList.add('file-selected');
 
-            const previewFile = files[0];
-            if (previewFile.type.startsWith('image/')) {
+            const previewFile = arr[0];
+            const oldPreview = wrapper.querySelector('.file-preview');
+            const oldPdfBadge = wrapper.querySelector('.file-preview-pdf');
+            if (oldPdfBadge) oldPdfBadge.remove();
+
+            if (previewFile.type && previewFile.type.startsWith('image/')) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     let preview = wrapper.querySelector('.file-preview');
@@ -439,15 +559,20 @@ function handleFiles(input, files, info, wrapper) {
                     preview.style.display = 'block';
                 };
                 reader.readAsDataURL(previewFile);
+            } else if (isPdfFile(previewFile)) {
+                if (oldPreview) oldPreview.style.display = 'none';
+                const badge = document.createElement('div');
+                badge.className = 'file-preview-pdf';
+                badge.innerHTML = '<i class="bi bi-file-earmark-pdf-fill" aria-hidden="true"></i><span>PDF anexado</span>';
+                wrapper.appendChild(badge);
             } else {
-                const preview = wrapper.querySelector('.file-preview');
-                if (preview) preview.style.display = 'none';
+                if (oldPreview) oldPreview.style.display = 'none';
             }
         }
     } else {
         if (info) {
             if (input && input.id === 'rg_multi_picker') {
-                info.innerText = 'Toque para escolher até 2 fotos ou arraste aqui';
+                info.innerText = 'Toque para escolher até 2 fotos ou um PDF';
             } else {
                 info.innerText = 'Toque na área ou use os botões acima';
             }
@@ -456,6 +581,8 @@ function handleFiles(input, files, info, wrapper) {
             wrapper.classList.remove('file-selected');
             const preview = wrapper.querySelector('.file-preview');
             if (preview) preview.style.display = 'none';
+            const pdfBadge = wrapper.querySelector('.file-preview-pdf');
+            if (pdfBadge) pdfBadge.remove();
         }
     }
 }
@@ -1159,12 +1286,21 @@ function populateSummary() {
         `;
         config.fields.forEach(field => {
             let value = formData.get(field);
-            
-            // Especial para arquivos
+
             const fileFields = ['comprovante_residencia', 'foto_documento_frente', 'foto_documento_verso', 'selfie_documento'];
             if (fileFields.includes(field)) {
                 const fileInput = document.getElementsByName(field)[0];
-                value = (fileInput && fileInput.files && fileInput.files.length > 0) ? `📎 ${fileInput.files[0].name}` : null;
+                if (fileInput && fileInput.files && fileInput.files.length > 0) {
+                    const f = fileInput.files[0];
+                    const isPdf = (f.type === 'application/pdf') || /\.pdf$/i.test(f.name || '');
+                    const icon = isPdf ? '📄' : '🖼️';
+                    const tipo = isPdf ? 'PDF anexado' : 'Imagem anexada';
+                    const tamanho = formatFileSize(f.size);
+                    value = `<span class="text-success fw-semibold">${icon} ${tipo}</span>` +
+                            `<span class="text-muted ms-1">· ${tamanho}</span>`;
+                } else {
+                    value = null;
+                }
             }
 
             if (!value && field !== 'levar_termo') return;
@@ -1637,12 +1773,99 @@ function clearRequiredOnHiddenInputs() {
     });
 }
 
-document.getElementById('registrationForm').onsubmit = function(e) {
+// Comprime uma imagem no navegador antes de enviar.
+// Reduz dimensões para no máximo `maxDim` (lado maior) e re-encoda em JPEG
+// com `quality`. Mantém PDFs/arquivos não-imagem intactos. Se a compressão
+// não ganhar pelo menos ~5% de tamanho, devolve o arquivo original.
+//
+// Por que: o backend roda em serverless (Vercel) com limite ~4.5MB no body
+// do POST. Celulares modernos geram fotos de 4-8MB cada — sem comprimir
+// no client, o request estoura antes de chegar no Django.
+function compressImageInBrowser(file, options) {
+    const opts = options || {};
+    const maxDim = opts.maxDim || 1600;
+    const quality = typeof opts.quality === 'number' ? opts.quality : 0.78;
+    const mime = opts.mime || 'image/jpeg';
+    if (!file || !(file instanceof File)) return Promise.resolve(file);
+    if (file.type && file.type.startsWith('video/')) return Promise.resolve(file);
+    if (!isClientCompressibleImage(file)) return Promise.resolve(file);
+    if (file.size <= 600 * 1024) return Promise.resolve(file);
+
+    return new Promise(function (resolve) {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = function () {
+            try {
+                const w = img.naturalWidth, h = img.naturalHeight;
+                if (!w || !h) { URL.revokeObjectURL(url); return resolve(file); }
+                const scale = Math.min(1, maxDim / Math.max(w, h));
+                const cw = Math.max(1, Math.round(w * scale));
+                const ch = Math.max(1, Math.round(h * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = cw; canvas.height = ch;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, cw, ch);
+                ctx.drawImage(img, 0, 0, cw, ch);
+                canvas.toBlob(function (blob) {
+                    URL.revokeObjectURL(url);
+                    if (!blob || blob.size >= file.size * 0.95) return resolve(file);
+                    const base = (file.name || 'foto').replace(/\.(jpe?g|jfif|png|webp)$/i, '');
+                    const out = new File([blob], base + '.jpg', { type: mime, lastModified: Date.now() });
+                    resolve(out);
+                }, mime, quality);
+            } catch (_e) {
+                URL.revokeObjectURL(url);
+                resolve(file);
+            }
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+        img.src = url;
+    });
+}
+
+// Percorre os campos de upload do FormData e comprime as imagens em paralelo.
+async function compressFormImages(formData) {
+    const fields = ['selfie_documento', 'foto_documento_frente', 'foto_documento_verso', 'comprovante_residencia', 'contrato_social'];
+    const jobs = fields.map(async function (fld) {
+        const f = formData.get(fld);
+        if (f instanceof File && f.size > 0 && isClientCompressibleImage(f)) {
+            const c = await compressImageInBrowser(f, { maxDim: 1600, quality: 0.78 });
+            formData.set(fld, c);
+        }
+    });
+    await Promise.all(jobs);
+}
+
+function _restoreSubmitButton(btn) {
+    if (btn) {
+        btn.disabled = false;
+        btn.innerText = 'Enviar Cadastro';
+    }
+}
+
+document.getElementById('registrationForm').onsubmit = async function(e) {
     e.preventDefault();
 
     syncOpcionalHiddenFields();
     clearRequiredOnHiddenInputs();
     syncRgFromMulti();
+
+    var uploadCheck = validateAllRegistrationUploads();
+    if (!uploadCheck.ok) {
+        notifyClienteDocTipoInvalido();
+        if (uploadCheck.step && typeof showStep === 'function') {
+            showStep(uploadCheck.step);
+        }
+        setTimeout(function () {
+            try {
+                if (uploadCheck.input && uploadCheck.input.scrollIntoView) {
+                    uploadCheck.input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            } catch (_) { /* ignora */ }
+        }, 50);
+        return;
+    }
 
     // Varre TODOS os steps para encontrar campos obrigatórios em branco
     // (assim o usuário não fica "preso" no Step 6 sem saber o que falta).
@@ -1683,44 +1906,82 @@ document.getElementById('registrationForm').onsubmit = function(e) {
         submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
     }
 
-    const formData = new FormData(this);
     const csrftokenEl = document.querySelector('[name=csrfmiddlewaretoken]');
     const csrftoken = csrftokenEl ? csrftokenEl.value : '';
-
-    // Usa a URL atual para o post
     const postUrl = window.location.href;
+    const formData = new FormData(this);
 
-    fetch(postUrl, {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': csrftoken,
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: formData
-    })
-    .then(async response => {
-        const data = await response.json();
-        if (response.ok && data.status === 'success') {
-            document.getElementById('registrationForm').style.display = 'none';
-            const header = document.querySelector('.form-header');
-            if (header) header.style.display = 'none';
-            document.getElementById('successMessage').style.display = 'block';
-            window.scrollTo(0, 0);
-        } else {
-            const errorMsg = data.message || 'Erro ao enviar o cadastro.';
-            showNotify(errorMsg, 'danger');
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.innerText = 'Enviar Cadastro';
+    if (typeof window.showLoader === 'function') {
+        window.showLoader('Enviando cadastro', 'Preparando arquivos...', {
+            icon: 'bi-cloud-arrow-up-fill',
+            steps: ['Otimizando fotos', 'Enviando ao servidor', 'Confirmando cadastro']
+        });
+    }
+
+    try {
+        try {
+            await compressFormImages(formData);
+        } catch (_compErr) {
+            // se a compressão falhar por algum motivo, segue com os arquivos originais
+        }
+
+        if (typeof window.setLoaderStep === 'function') {
+            window.setLoaderStep('Enviando ao servidor...');
+        }
+
+        const response = await fetch(postUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrftoken,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: formData
+        });
+
+        let data = null;
+        try {
+            data = await response.json();
+        } catch (_jsonErr) {
+            // Resposta sem JSON (geralmente página HTML de erro do gateway/Vercel)
+            if (typeof window.hideLoader === 'function') window.hideLoader();
+            let friendly;
+            if (response.status === 413) {
+                friendly = 'Os arquivos enviados estão muito grandes. Tire fotos com qualidade menor e tente novamente.';
+            } else if (response.status === 504 || response.status === 408) {
+                friendly = 'O servidor demorou demais para responder. Tente novamente em instantes.';
+            } else if (response.status >= 500) {
+                friendly = 'Falha temporária no servidor. Tente novamente em instantes.';
+            } else {
+                friendly = 'Não foi possível enviar o cadastro agora. Verifique sua conexão e tente novamente.';
             }
+            showNotify(friendly, 'danger');
+            _restoreSubmitButton(submitBtn);
+            return;
         }
-    })
-    .catch(error => {
+
+        if (response.ok && data && data.status === 'success') {
+            if (typeof window.setLoaderStep === 'function') {
+                window.setLoaderStep('Cadastro recebido!', { final: true });
+            }
+            setTimeout(function () {
+                if (typeof window.hideLoader === 'function') window.hideLoader();
+                document.getElementById('registrationForm').style.display = 'none';
+                const header = document.querySelector('.form-header');
+                if (header) header.style.display = 'none';
+                const okEl = document.getElementById('successMessage');
+                if (okEl) okEl.style.display = 'block';
+                window.scrollTo(0, 0);
+            }, 600);
+        } else {
+            if (typeof window.hideLoader === 'function') window.hideLoader();
+            const errorMsg = (data && data.message) || 'Erro ao enviar o cadastro.';
+            showNotify(errorMsg, 'danger');
+            _restoreSubmitButton(submitBtn);
+        }
+    } catch (error) {
         console.error('Erro na submissão:', error);
-        showNotify('Erro de conexão. Verifique se o servidor está rodando ou sua internet.', 'danger');
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerText = 'Enviar Cadastro';
-        }
-    });
+        if (typeof window.hideLoader === 'function') window.hideLoader();
+        showNotify('Erro de conexão. Verifique sua internet e tente novamente.', 'danger');
+        _restoreSubmitButton(submitBtn);
+    }
 };

@@ -254,11 +254,11 @@ IXC_LEAD_AFTER_CONTATO_TRY_CRM = config('IXC_LEAD_AFTER_CONTATO_TRY_CRM', defaul
 # True (padrão) = etapa 1 usa só o WS ``contato``; nunca cai em crm_leads (evita pipeline comercial/venda/login variável no IXC).
 # False = permite o fallback acima (IXC_LEAD_AFTER_CONTATO_TRY_CRM) quando não houver IXC_LEAD_RESOURCE fixo.
 IXC_LEAD_CONTATO_ONLY = config('IXC_LEAD_CONTATO_ONLY', default=True, cast=bool)
-# Opcional: força id_plano_venda / id_origem no payload do lead (útil em IXC demo ou homolog).
+# Override de EMERGÊNCIA (homologação) — força um id de plano de venda / canal
+# para todos os cadastros do ambiente. Em produção use o painel Operação.
 IXC_FORCE_PLANO_VENDA_ID = config('IXC_FORCE_PLANO_VENDA_ID', default='').strip()
 IXC_FORCE_CANAL_VENDA_ID = config('IXC_FORCE_CANAL_VENDA_ID', default='').strip()
-# Se o plano/canal ainda vier vazio após Operação + demo, use estes IDs do seu IXC (opcional).
-IXC_DEFAULT_PLANO_VENDA_ID = config('IXC_DEFAULT_PLANO_VENDA_ID', default='').strip()
+# Canal de venda default quando o slug da origem ainda não está em OrigemCanalVenda.
 IXC_DEFAULT_CANAL_VENDA_ID = config('IXC_DEFAULT_CANAL_VENDA_ID', default='').strip()
 # Campanha (input#id_campanha no CRM IXC): só envie se o seu webservice exigir; costuma ser cadastro diferente de «Canal de venda».
 IXC_FORCE_CAMPANHA_ID = config('IXC_FORCE_CAMPANHA_ID', default='').strip()
@@ -282,12 +282,13 @@ IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES = config('IXC_CRM_CANDIDATOS_FALLBACK_RESO
 IXC_CREATE_CRM_CANDIDATOS = config('IXC_CREATE_CRM_CANDIDATOS', default=True, cast=bool)
 # FK ``cidade`` obrigatória no ``crm_canditados`` (Postman). Se o slug não tiver ``ixc_cidade_id`` na Operação, use este ID.
 IXC_CRM_CANDIDATOS_CIDADE_FALLBACK = config('IXC_CRM_CANDIDATOS_CIDADE_FALLBACK', default='1').strip()
-# Opcional: FKs de contrato (homolog); o payload atual do ``contato``/prospect não mescla estes campos — reservado para evoluções.
-IXC_CONTRATO_PLANO_VENDA_ID = config('IXC_CONTRATO_PLANO_VENDA_ID', default='').strip()
-IXC_CONTRATO_TIPO_COBRANCA_ID = config('IXC_CONTRATO_TIPO_COBRANCA_ID', default='').strip()
-IXC_CONTRATO_MODELO_IMPRESSAO_ID = config('IXC_CONTRATO_MODELO_IMPRESSAO_ID', default='').strip()
-IXC_CONTRATO_CARTEIRA_COBRANCA_ID = config('IXC_CONTRATO_CARTEIRA_COBRANCA_ID', default='').strip()
-IXC_CONTRATO_VENDEDOR_ID = config('IXC_CONTRATO_VENDEDOR_ID', default='').strip()
+# FKs de negócio do contrato (filial, carteira, vendedor, plano, tipo doc, etc.)
+# saíram daqui: agora vêm do painel /admin-dash/operacao/ com defaults documentados
+# em `cadastros/ixc_ids.py` (FILIAIS / SETORES / PLANOS / CARTEIRAS / VENCIMENTOS).
+
+# --- WS cliente_arquivos — upload multipart de SELFIE/RG/comprovante ao cliente IXC
+# Nome do recurso (varia por instalação? padrão IXC Provedor é `cliente_arquivos`).
+IXC_ARQUIVOS_RESOURCE = config('IXC_ARQUIVOS_RESOURCE', default='cliente_arquivos').strip()
 
 # --- Teste WS cliente_contrato — painel superusuário
 IXC_CLIENTE_CONTRATO_RESOURCE = config('IXC_CLIENTE_CONTRATO_RESOURCE', default='cliente_contrato').strip()
@@ -306,23 +307,25 @@ IXC_CLIENTE_CONTRATO_ASSINATURA_IXCSOFT = config(
 IXC_CONTRATO_TEST_ID_CLIENTE = config('IXC_CONTRATO_TEST_ID_CLIENTE', default='').strip()
 # Fallback só quando a ficha **não** tem ``ixc_prospect_id`` / ``ixc_lead_id`` (homolog sem envio IXC). Com vínculo na ficha, o contrato usa sempre esse ID — não o valor fixo do .env.
 IXC_CONTRATO_TEST_ID_CONTRATO = config('IXC_CONTRATO_TEST_ID_CONTRATO', default='').strip()
-IXC_CONTRATO_TEST_ID_VD_CONTRATO = config('IXC_CONTRATO_TEST_ID_VD_CONTRATO', default='').strip()
-IXC_CONTRATO_TEST_ID_FILIAL = config('IXC_CONTRATO_TEST_ID_FILIAL', default='').strip()
-# Letra do tipo do contrato (I/S/…): fallback se listar vd_contrato não trouxer ``tipo``; deve coincidir com o plano de venda no IXC.
+# IDs antigos `IXC_CONTRATO_TEST_ID_*` (vd_contrato, filial, tipo_contrato,
+# tipo_documento, carteira, tipo_doc_ativ, descrição) saíram daqui — agora o
+# sistema busca em `/admin-dash/operacao/` com defaults em
+# `cadastros/ixc_ids.py`.
+#
+# Letra do tipo do contrato (I/S/…): fallback se listar vd_contrato não trouxer ``tipo``;
+# deve coincidir com o plano de venda no IXC.
 IXC_CONTRATO_TEST_TIPO = config('IXC_CONTRATO_TEST_TIPO', default='I').strip()
-# True (padrão): listar vd_contrato/cliente_contrato e usar o ``tipo`` do plano no POST (evita erro IXC tipo≠plano).
+# True (padrão): listar vd_contrato e usar o ``tipo`` do plano no POST (evita erro IXC tipo≠plano).
 IXC_CONTRATO_TEST_TIPO_SINCR_COM_PLANO = config(
     'IXC_CONTRATO_TEST_TIPO_SINCR_COM_PLANO', default=True, cast=bool
 )
 IXC_CONTRATO_TEST_ID_TIPO_CONTRATO = config('IXC_CONTRATO_TEST_ID_TIPO_CONTRATO', default='10').strip()
 IXC_CONTRATO_TEST_ID_MODELO = config('IXC_CONTRATO_TEST_ID_MODELO', default='1').strip()
-IXC_CONTRATO_TEST_ID_TIPO_DOCUMENTO = config('IXC_CONTRATO_TEST_ID_TIPO_DOCUMENTO', default='502').strip()
-IXC_CONTRATO_TEST_ID_CARTEIRA_COBRANCA = config('IXC_CONTRATO_TEST_ID_CARTEIRA_COBRANCA', default='1').strip()
+# Vendedor default (legado) só usado quando não há `VendedorIXC` ativo
+# vinculado ao cadastro. O fluxo padrão é cadastrar em /admin-dash/operacao/vendedores/.
 IXC_CONTRATO_TEST_ID_VENDEDOR = config('IXC_CONTRATO_TEST_ID_VENDEDOR', default='1').strip()
-# Aba «Faturamento»: comissão (ex.: 0 ou 0.00). Vazio = não sobrescreve o template.
+# Comissão (opcional) — sobrescreve o template se preenchido.
 IXC_CONTRATO_TEST_COMISSAO = config('IXC_CONTRATO_TEST_COMISSAO', default='').strip()
-# Aba «Taxas de ativação»: tipo de documento da ativação (ex.: 501 = Pedido de Venda). Vazio = não envia.
-IXC_CONTRATO_TEST_ID_TIPO_DOC_ATIV = config('IXC_CONTRATO_TEST_ID_TIPO_DOC_ATIV', default='').strip()
 # Texto do campo «Descrição» do contrato no IXC (sobrescreve plano da ficha do portal se preenchido).
 IXC_CONTRATO_TEST_CONTRATO_DESCRICAO = config('IXC_CONTRATO_TEST_CONTRATO_DESCRICAO', default='').strip()
 # Doc oficial IXC Provedor: letra (ex.: P); algumas bases usam ID numérico — sobrescreva no .env se necessário.

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -9,6 +10,26 @@ import unicodedata
 from PIL import Image
 from io import BytesIO
 from django.core.files.base import ContentFile
+
+
+from .document_security import validate_cliente_document_upload
+
+
+def _doc_storage():
+    """Storage para os FileFields de documentos.
+
+    Com Cloudinary, retorna `AutoMediaCloudinaryStorage` (resource_type='auto'),
+    que classifica imagem (JPEG, PNG, WebP) vs PDF/raw.
+    Sem Cloudinary, retorna `FileSystemStorage` (default do Django).
+    """
+    if getattr(settings, 'CLOUDINARY_CLOUD_NAME', None):
+        try:
+            from .storages import AutoMediaCloudinaryStorage
+            return AutoMediaCloudinaryStorage()
+        except Exception:
+            pass
+    from django.core.files.storage import FileSystemStorage
+    return FileSystemStorage()
 
 def only_digits_br(value):
     """Apenas dígitos (CPF/CNPJ/CEP/telefone vindos do formulário)."""
@@ -67,8 +88,10 @@ def remove_special_chars(text):
     return clean_text
 
 def get_file_path(instance, filename, field_name):
-    ext = filename.split('.')[-1]
-    # Limpa o documento para o nome do arquivo
+    ext = (filename.rsplit('.', 1)[-1] if '.' in filename else 'bin').lower()
+    # Normaliza extensões equivalentes (Windows costuma salvar JPEG como .jfif)
+    if ext in ('jfif', 'jpe', 'jpeg'):
+        ext = 'jpg'
     clean_doc = only_digits_br(instance.documento)
     filename = f"{clean_doc}_{field_name}.{ext}"
     return os.path.join('documentos_clientes', filename)
@@ -78,6 +101,73 @@ def path_comprovante(instance, filename): return get_file_path(instance, filenam
 def path_doc_frente(instance, filename): return get_file_path(instance, filename, 'doc_frente')
 def path_doc_verso(instance, filename): return get_file_path(instance, filename, 'doc_verso')
 def path_selfie(instance, filename): return get_file_path(instance, filename, 'selfie')
+
+
+# Formatos raster que passam por Pillow → JPEG antes do storage (PDF não entra aqui).
+_DOC_COMPRESS_EXT = frozenset({'jpg', 'jpeg', 'jfif', 'jpe', 'png', 'webp'})
+
+
+def _basename_upload(name):
+    return os.path.basename(name or '') or 'upload.bin'
+
+
+def _maybe_compress_cadastro_document(instance, field_name):
+    """Normaliza imagens para JPEG em memória (qualidade fixa). PDF só reposiciona o stream.
+
+    `Image.open(upload)` pode avançar o cursor do arquivo: se a compressão falhar e o
+    storage ler o mesmo handle, o Cloudinary pode responder «Invalid image file».
+    """
+    file = getattr(instance, field_name)
+    if not file or getattr(file, '_committed', False):
+        return
+
+    base_fname = _basename_upload(getattr(file, 'name', '') or '')
+    ext = base_fname.rsplit('.', 1)[-1].lower() if '.' in base_fname else ''
+
+    if ext == 'pdf':
+        try:
+            file.seek(0)
+        except Exception:
+            pass
+        return
+
+    if ext and ext not in _DOC_COMPRESS_EXT:
+        try:
+            file.seek(0)
+        except Exception:
+            pass
+        return
+
+    try:
+        file.seek(0)
+        raw = file.read()
+    except Exception:
+        return
+
+    if not raw:
+        return
+
+    stem = os.path.splitext(base_fname)[0] if '.' in base_fname else base_fname
+
+    try:
+        bio = BytesIO(raw)
+        img = Image.open(bio)
+        img.load()
+
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+
+        output = BytesIO()
+        img.save(output, format='JPEG', quality=85, optimize=True)
+        new_filename = f'{stem}.jpg'
+
+        output.seek(0)
+        setattr(instance, field_name, ContentFile(output.read(), name=new_filename))
+    except Exception:
+        setattr(instance, field_name, ContentFile(raw, name=base_fname))
+
 
 class Cadastro(models.Model):
     TIPO_PESSOA_CHOICES = [
@@ -105,13 +195,13 @@ class Cadastro(models.Model):
     rg = models.CharField(max_length=20, blank=True, null=True)
     inscricao_estadual = models.CharField(max_length=50, blank=True, null=True)
     data_nascimento = models.DateField(blank=True, null=True)
-    contrato_social = models.FileField(upload_to=path_contrato, blank=True, null=True)
-    
+    contrato_social = models.FileField(upload_to=path_contrato, storage=_doc_storage, blank=True, null=True)
+
     # Documentos Adicionais
-    comprovante_residencia = models.FileField(upload_to=path_comprovante, blank=True, null=True)
-    foto_documento_frente = models.FileField(upload_to=path_doc_frente, blank=True, null=True)
-    foto_documento_verso = models.FileField(upload_to=path_doc_verso, blank=True, null=True)
-    selfie_documento = models.FileField(upload_to=path_selfie, blank=True, null=True)
+    comprovante_residencia = models.FileField(upload_to=path_comprovante, storage=_doc_storage, blank=True, null=True)
+    foto_documento_frente = models.FileField(upload_to=path_doc_frente, storage=_doc_storage, blank=True, null=True)
+    foto_documento_verso = models.FileField(upload_to=path_doc_verso, storage=_doc_storage, blank=True, null=True)
+    selfie_documento = models.FileField(upload_to=path_selfie, storage=_doc_storage, blank=True, null=True)
     levar_termo = models.BooleanField(default=False) # Opção para Unamar/Cabo Frio/SP
     
     # Contato
@@ -145,6 +235,17 @@ class Cadastro(models.Model):
     
     # Controle
     consultor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    vendedor_responsavel = models.ForeignKey(
+        'cadastros.VendedorIXC',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cadastros',
+        help_text=(
+            'Vendedor / responsável vinculado a este cadastro. '
+            'O `ixc_id` do vendedor é enviado ao IXC como id_vendedor / id_responsavel / id_vendedor_ativ.'
+        ),
+    )
     data_cadastro = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pendente')
     ixc_lead_id = models.CharField(max_length=50, blank=True, null=True)
@@ -246,6 +347,20 @@ class Cadastro(models.Model):
                     'É necessário ter pelo menos 18 anos para realizar o cadastro.'
                 )
 
+        for fname in (
+            'contrato_social',
+            'comprovante_residencia',
+            'foto_documento_frente',
+            'foto_documento_verso',
+            'selfie_documento',
+        ):
+            field_file = getattr(self, fname)
+            if not field_file:
+                continue
+            if getattr(field_file, '_committed', False):
+                continue
+            validate_cliente_document_upload(field_file, fname)
+
         # Duplicidade: compara pelo valor numérico (registros antigos podem estar só com dígitos).
         for other in Cadastro.objects.exclude(pk=self.pk).only('documento', 'status'):
             if only_digits_br(other.documento) == doc_digits:
@@ -269,34 +384,9 @@ class Cadastro(models.Model):
         if not update_fields:
             self.full_clean()
 
-            # Compressão de imagens (apenas em saves completos).
-            # 3.4 — preferimos WebP (≈25-35% menor que JPEG) e caímos para JPEG
-            # se a build do Pillow não tiver suporte (caso raro em hosts modernos).
+            # Imagens → JPEG (cópia em RAM); PDF não passa pelo Pillow.
             for field in ['comprovante_residencia', 'foto_documento_frente', 'foto_documento_verso', 'selfie_documento']:
-                file = getattr(self, field)
-                if file and not file._committed:  # apenas se for um novo upload
-                    try:
-                        img = Image.open(file)
-                        if img.mode not in ('RGB', 'RGBA'):
-                            img = img.convert('RGB')
-
-                        base_name = os.path.splitext(file.name)[0]
-                        output = BytesIO()
-                        try:
-                            img.save(output, format='WEBP', quality=80, method=6)
-                            new_filename = f"{base_name}.webp"
-                        except (KeyError, OSError):
-                            output.seek(0)
-                            output.truncate()
-                            if img.mode == 'RGBA':
-                                img = img.convert('RGB')
-                            img.save(output, format='JPEG', quality=70, optimize=True)
-                            new_filename = f"{base_name}.jpg"
-
-                        output.seek(0)
-                        setattr(self, field, ContentFile(output.read(), name=new_filename))
-                    except Exception:
-                        pass  # Se não for imagem ou erro na compressão, segue original
+                _maybe_compress_cadastro_document(self, field)
 
         super().save(*args, **kwargs)
 
