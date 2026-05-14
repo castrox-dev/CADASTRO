@@ -1,6 +1,11 @@
 """
 Configuração operacional da ficha pública: cidades, planos, vencimentos, IXC e políticas.
 Editável pelo painel em /admin-dash/operacao/.
+
+IDs IXC aqui (ex.: ``ixc_filial_id``, ``ixc_cidade_id``, ``ixc_plano_venda_id`` em ``PlanoDefinicao``,
+``OrigemCanalVenda.ixc_id``) são os **valores de produção** por cidade/plano quando preenchidos;
+substituem mapas legados no código. Enquanto não estiverem todos preenchidos, o ``.env`` de
+homologação pode ainda conter IDs de teste — ver ``INTELIGENCIA_DO_PROJETO.md`` seção 1.1.
 """
 from django.core.exceptions import ValidationError
 from django.db import models

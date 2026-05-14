@@ -360,37 +360,48 @@
             <div class="form-step" id="step4">
                 <div class="mb-4">
                     <h6 class="text-uppercase small fw-bold text-muted mb-3">4. Documentação Obrigatória</h6>
-                    
+                    <p class="small text-muted mb-3">Em cada documento você pode usar a <strong>câmera</strong> do celular ou escolher arquivo na <strong>galeria</strong> (e ainda arrastar/soltar na área tracejada).</p>
+
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="small fw-bold mb-2">COMPROVANTE DE RESIDÊNCIA *</label>
+                            <label class="small fw-bold mb-2" for="selfie_documento">SELFIE *</label>
+                            <p class="small text-muted mb-2">Selfie segurando o documento, com rosto visível.</p>
+                            <div class="d-flex flex-wrap gap-2 mb-2">
+                                <button type="button" class="btn btn-sm btn-outline-primary js-open-doc-cam" data-target-final="selfie_documento"><i class="bi bi-camera-fill me-1" aria-hidden="true"></i>Câmera</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary js-open-doc-gal" data-target-final="selfie_documento" data-accept="image/*"><i class="bi bi-images me-1" aria-hidden="true"></i>Galeria</button>
+                            </div>
                             <div class="file-upload-wrapper">
-                                <input type="file" id="comprovante_residencia" name="comprovante_residencia" accept="image/*,.pdf">
-                                <div class="file-upload-info">Clique para selecionar ou arraste aqui</div>
+                                <input type="file" id="selfie_documento" name="selfie_documento" accept="image/*">
+                                <div class="file-upload-info">Toque na área ou use os botões acima</div>
                             </div>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="small fw-bold mb-2">DOC. FRENTE *</label>
-                            <div class="file-upload-wrapper">
-                                <input type="file" name="foto_documento_frente" accept="image/*">
-                                <div class="file-upload-info">Clique para selecionar ou arraste aqui</div>
+                            <label class="small fw-bold mb-2" for="rg_multi_picker">RG (FRENTE E VERSO) *</label>
+                            <p class="small text-muted mb-2">1 foto (frente e verso na mesma imagem) ou até <strong>2 fotos</strong> (frente e verso separados).</p>
+                            <input type="file" name="foto_documento_frente" id="foto_documento_frente" class="d-none" accept="image/*" tabindex="-1" aria-hidden="true">
+                            <input type="file" name="foto_documento_verso" id="foto_documento_verso" class="d-none" accept="image/*" tabindex="-1" aria-hidden="true">
+                            <div class="d-flex flex-wrap gap-2 mb-2">
+                                <button type="button" class="btn btn-sm btn-outline-primary js-open-rg-cam"><i class="bi bi-camera-fill me-1" aria-hidden="true"></i>Câmera</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary js-open-rg-gal"><i class="bi bi-images me-1" aria-hidden="true"></i>Galeria</button>
+                            </div>
+                            <div class="file-upload-wrapper" id="rg_multi_wrapper">
+                                <input type="file" id="rg_multi_picker" accept="image/*" multiple>
+                                <div class="file-upload-info">Toque para escolher até 2 fotos ou arraste aqui</div>
                             </div>
                         </div>
                     </div>
 
                     <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="small fw-bold mb-2">DOC. VERSO *</label>
-                            <div class="file-upload-wrapper">
-                                <input type="file" name="foto_documento_verso" accept="image/*">
-                                <div class="file-upload-info">Clique para selecionar ou arraste aqui</div>
+                        <div class="col-md-6 mb-3" id="comprovante_upload_wrapper">
+                            <label class="small fw-bold mb-2" for="comprovante_residencia">COMPROVANTE DE RESIDÊNCIA *</label>
+                            <p class="small text-muted mb-2">Conta de luz, água, telefone ou equivalente. Foto ou PDF.</p>
+                            <div class="d-flex flex-wrap gap-2 mb-2">
+                                <button type="button" class="btn btn-sm btn-outline-primary js-open-doc-cam" data-target-final="comprovante_residencia"><i class="bi bi-camera-fill me-1" aria-hidden="true"></i>Câmera</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary js-open-doc-gal" data-target-final="comprovante_residencia" data-accept="image/*,application/pdf,.pdf"><i class="bi bi-images me-1" aria-hidden="true"></i>Galeria / arquivo</button>
                             </div>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="small fw-bold mb-2">SELFIE COM DOCUMENTO *</label>
                             <div class="file-upload-wrapper">
-                                <input type="file" name="selfie_documento" accept="image/*">
-                                <div class="file-upload-info">Clique para selecionar ou arraste aqui</div>
+                                <input type="file" id="comprovante_residencia" name="comprovante_residencia" accept="image/*,.pdf,application/pdf">
+                                <div class="file-upload-info">Toque na área ou use os botões acima</div>
                             </div>
                         </div>
                     </div>
@@ -468,6 +479,12 @@
                     <button type="submit" class="btn-fibramar px-5" formnovalidate>Enviar Cadastro</button>
                 </div>
             </div>
+
+            <!-- Sem name: usados só pelo JS para copiar arquivo ao input real (não vão no POST) -->
+            <input type="file" id="ixcGlobalCamHelper" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true" class="position-fixed" style="left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none">
+            <input type="file" id="ixcGlobalGalHelper" accept="image/*" tabindex="-1" aria-hidden="true" class="position-fixed" style="left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none">
+            <input type="file" id="ixcRgCamHelper" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true" class="position-fixed" style="left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none">
+            <input type="file" id="ixcRgGalHelper" accept="image/*" multiple tabindex="-1" aria-hidden="true" class="position-fixed" style="left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none">
         </form>
 
         <div id="successMessage" class="p-5 text-center" style="display:none;">

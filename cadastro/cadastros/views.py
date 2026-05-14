@@ -137,8 +137,9 @@ def send_to_ixc(request, pk):
     Integração IXC em etapas (POST):
     - ixc_etapa=lead (padrão): cria lead/contato e, por padrão, ``crm_candidatos`` encadeado.
     - ixc_etapa=candidatos: apenas ``crm_candidatos`` (exige lead já enviado).
-    - ixc_etapa=prospect: cria crm_prospect (requer lead já enviado neste cadastro).
-    - ixc_etapa=completo: cria lead se faltar; em seguida prospecção se ainda não houver ``ixc_prospect_id``.
+    - ixc_etapa=prospect: etapa 2 — ``crm_canditados`` / ``crm_candidatos`` (Postman) em primeiro lugar; fallback ``crm_prospect`` (requer lead já enviado).
+    - ixc_etapa=completo: fluxo único — cria lead se faltar; se houver lead sem ``ixc_candidato_id`` tenta CRM candidatos;
+      em seguida etapa 2 (crm_canditados) se ainda não houver ``ixc_prospect_id`` (usado pelo botão principal no detalhe).
     - ixc_etapa=limpar: apaga só no Django os IDs/auditoria IXC já gravados (não altera o IXC).
       Corpo: ``ixc_limpar_escopo=prospecto`` (só ``ixc_prospect_id``) ou ``tudo`` (lead, prospect,
       contrato, logs locais). Útil para rodar de novo «completo» / prospecção após vínculo antigo.
@@ -273,7 +274,7 @@ def _limpar_vinculo_ixc_local(request, cadastro, logs):
 
 
 def _send_ixc_completo(request, cadastro, logs):
-    """Cria lead se necessário e, na mesma requisição, prospecção se ainda não houver ID local."""
+    """Fluxo único: lead (se faltar) → CRM candidatos (se faltar) → etapa 2 / crm_canditados (se faltar)."""
     logs.append('[IXC] etapa=completo')
     if not (cadastro.ixc_lead_id or '').strip():
         lead_resp = _send_ixc_lead_body(request, cadastro, logs)
@@ -283,18 +284,39 @@ def _send_ixc_completo(request, cadastro, logs):
             data = json.loads(lead_resp.content.decode('utf-8'))
         except (ValueError, UnicodeDecodeError, AttributeError):
             return lead_resp
-        if data.get('status') == 'error':
+        if data.get('status') != 'success':
             return lead_resp
         cadastro.refresh_from_db()
+
+    if (
+        (cadastro.ixc_lead_id or '').strip()
+        and not (cadastro.ixc_candidato_id or '').strip()
+        and getattr(settings, 'IXC_CHAIN_CRM_CANDIDATOS_AFTER_LEAD', True)
+    ):
+        logs.append('[IXC] completo: lead sem candidato local — tentando CRM candidatos...')
+        cr = _send_ixc_candidatos_body(request, cadastro, logs)
+        if cr.status_code != 200:
+            return cr
+        try:
+            cd = json.loads(cr.content.decode('utf-8'))
+        except (ValueError, UnicodeDecodeError, AttributeError):
+            return cr
+        if cd.get('status') == 'error':
+            return cr
+        cadastro.refresh_from_db()
+
     if not (cadastro.ixc_prospect_id or '').strip():
-        logs.append('[IXC] completo: encadeando prospecção...')
+        logs.append('[IXC] completo: encadeando etapa 2 (crm_canditados / …)...')
         return _send_ixc_prospect_body(request, cadastro, logs)
     return JsonResponse(
         {
             'status': 'success',
-            'message': 'Nada pendente: lead e prospecção já vinculados a esta ficha.',
+            'message': 'Nada pendente: lead, CRM candidatos e etapa 2 já vinculados a esta ficha.',
             'ixc_etapa': 'completo',
-            'logs': logs + ['[IXC] completo: sem etapas pendentes (prospecção já local).'],
+            'lead_id': (cadastro.ixc_lead_id or '').strip() or None,
+            'candidato_id': (cadastro.ixc_candidato_id or '').strip() or None,
+            'prospect_id': (cadastro.ixc_prospect_id or '').strip() or None,
+            'logs': logs + ['[IXC] completo: sem etapas pendentes.'],
         }
     )
 
@@ -423,16 +445,18 @@ def _send_ixc_lead_body(request, cadastro, logs):
 
 
 def _send_ixc_prospect_body(request, cadastro, logs):
-    """Etapa 2: apenas crm_prospect (após lead). Exige ixc_lead_id no cadastro."""
+    """Etapa 2: POST ``crm_canditados`` / ``crm_candidatos`` (Postman) em primeiro lugar; fallback ``crm_prospect``.
+    Exige ``ixc_lead_id`` no cadastro.
+    """
     ixc = IXCIntegration()
     logs.append('[IXC] etapa=prospect')
 
     if (cadastro.ixc_prospect_id or '').strip():
         pid = cadastro.ixc_prospect_id.strip()
-        logs.append(f"[CRM_PROSPECT] já existe ixc_prospect_id={pid}")
+        logs.append(f"[CRM_ETAPA2] já existe ixc_prospect_id={pid}")
         return JsonResponse({
             'status': 'warning',
-            'message': f'Prospecção já vinculada (ID IXC: {pid}).',
+            'message': f'Etapa 2 já vinculada (ID IXC: {pid}).',
             'prospect_id': pid,
             'ixc_etapa': 'prospect',
             'logs': logs,
@@ -440,7 +464,7 @@ def _send_ixc_prospect_body(request, cadastro, logs):
 
     lead_key = (cadastro.ixc_lead_id or '').strip()
     if not lead_key:
-        logs.append('[CRM_PROSPECT] ixc_lead_id ausente — faça a etapa 1 (lead) antes.')
+        logs.append('[CRM_ETAPA2] ixc_lead_id ausente — faça a etapa 1 (lead) antes.')
         return JsonResponse(
             {
                 'status': 'error',
@@ -457,7 +481,7 @@ def _send_ixc_prospect_body(request, cadastro, logs):
     ).strip()
     if not had_res_in_logs:
         logs.append(
-            f'[CRM_PROSPECT] recurso_etapa1={lr!r} (inferido: mensagem/env ou padrão demo=contato; '
+            f'[CRM_ETAPA2] recurso_etapa1={lr!r} (inferido: mensagem/env ou padrão demo=contato; '
             'reenvie a etapa 1 para gravar ixc_lead_resource no JSON se usar lead fora de contato).'
         )
 
@@ -471,19 +495,32 @@ def _send_ixc_prospect_body(request, cadastro, logs):
 
     if prospect_result.get('status') == 'success':
         pr_id = prospect_result.get('prospect_id')
+        res_name = (prospect_result.get('prospect_resource') or '').strip().lower()
         cadastro.ixc_prospect_id = str(pr_id) if pr_id is not None else None
         prev = (cadastro.ixc_envio_mensagem or '').strip()
         tail = f"prospect_id={cadastro.ixc_prospect_id}"
         cadastro.ixc_envio_mensagem = _truncate_ixc_msg(' | '.join(p for p in (prev, tail) if p))
         log_block = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
         log_block = {**log_block, 'text': _truncate_ixc_msg('\n'.join(logs), _IXC_LOGS_MAX)}
+        save_fields = ['ixc_prospect_id', 'ixc_envio_mensagem', 'ixc_envio_logs']
+        if res_name in ('crm_canditados', 'crm_candidatos') and pr_id is not None:
+            cadastro.ixc_candidato_id = str(pr_id)
+            log_block = {**log_block, 'ixc_candidato_id': str(pr_id)}
+            save_fields.insert(1, 'ixc_candidato_id')
         cadastro.ixc_envio_logs = log_block
-        cadastro.save(update_fields=['ixc_prospect_id', 'ixc_envio_mensagem', 'ixc_envio_logs'])
-        logs.append(f'[FIM] prospecção id={pr_id}')
-        logger.info("IXC prospect success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+        cadastro.save(update_fields=save_fields)
+        logs.append(f'[FIM] etapa 2 recurso={res_name or "?"} id={pr_id}')
+        logger.info("IXC prospect/etapa2 success cadastro=%s logs=%s", cadastro.pk, " | ".join(logs))
+        if res_name in ('crm_canditados', 'crm_candidatos'):
+            msg_ok = (
+                f'Candidato CRM criado no IXC via `{res_name}` (ID: {pr_id}). '
+                'Etapa 2 concluída (modelo Postman crm_canditados).'
+            )
+        else:
+            msg_ok = f'Prospecção criada no IXC (ID: {pr_id}). Etapa 2 concluída.'
         return JsonResponse({
             'status': 'success',
-            'message': f'Prospecção criada no IXC (ID: {pr_id}). Etapa 2 concluída.',
+            'message': msg_ok,
             'prospect_id': pr_id,
             'ixc_etapa': 'prospect',
             'logs': logs,
@@ -854,26 +891,24 @@ def export_cadastro_json(request, pk):
     lr = _infer_ixc_lead_resource_for_prospect(cadastro, ixc) if lead_id else ''
     log_dict = cadastro.ixc_envio_logs if isinstance(cadastro.ixc_envio_logs, dict) else {}
     prospect_etapa2 = None
+    etapa2_primeiro_recurso = None
     if lead_id:
-        prospect_etapa2 = ixc.build_crm_prospect_payload(
-            cadastro,
-            link_contato_id=lead_id,
-            ixc_lead_resource=lr,
-        )
-    rad_pppoe = {'login': ixc.build_pppoe_login_for_cadastro(cadastro)}
-    try:
-        pl_rad, err_rad, logs_rad = ixc.build_radusuarios_pppoe_payload(cadastro)
-        rad_pppoe['montagem_erro'] = err_rad
-        if pl_rad is not None and not err_rad:
-            prev = dict(pl_rad)
-            sd = str(prev.get('senha', '') or '')
-            if sd:
-                prev['senha'] = f'*** ({len(sd)} dígitos — mesmo valor de documento_digits)'
-            rad_pppoe['payload_radusuarios_montado'] = prev
-        rad_pppoe['montagem_logs'] = list(logs_rad or [])[:150]
-    except Exception as ex:
-        rad_pppoe['montagem_excecao'] = str(ex)
-
+        etapa2_list = ixc._crm_prospect_resources_to_try()
+        etapa2_primeiro_recurso = etapa2_list[0] if etapa2_list else None
+        if etapa2_primeiro_recurso and IXCIntegration._crm_etapa2_resource_uses_candidatos_payload(
+            etapa2_primeiro_recurso
+        ):
+            prospect_etapa2 = ixc.build_crm_candidatos_payload(
+                cadastro,
+                link_contato_id=lead_id,
+                ixc_lead_resource=lr,
+            )
+        else:
+            prospect_etapa2 = ixc.build_crm_prospect_payload(
+                cadastro,
+                link_contato_id=lead_id,
+                ixc_lead_resource=lr,
+            )
     payload = {
         'cadastro_id': cadastro.pk,
         'documentacao_integracao': {
@@ -885,12 +920,11 @@ def export_cadastro_json(request, pk):
             ),
             'debug_json_no_servidor': (
                 'Cada POST ao IXC grava uma cópia do body em `cadastro/logs/ixc_debug/` '
-                '(nome `debug_id_<cadastro_id>_CRM_LEAD|CRM_CANDIDATOS|CRM_PROSPECT>_*.json`). '
+                '(nome `debug_id_<cadastro_id>_CRM_LEAD|CRM_CANDIDATOS|CRM_ETAPA2_*|…>_*.json`). '
                 'O log da tela de envio mostra `[DEBUG] JSON gerado em: …` com o caminho completo.'
             ),
         },
         'documento_digits': ''.join(c for c in str(cadastro.documento or '') if c.isdigit()),
-        'radusuarios_pppoe': rad_pppoe,
         'ixc_vinculos_locais': {
             'ixc_lead_id': cadastro.ixc_lead_id or None,
             'ixc_lead_enviado_em': cadastro.ixc_lead_enviado_em.isoformat()
@@ -908,16 +942,19 @@ def export_cadastro_json(request, pk):
         else ixc.crm_lead_resources_for_export(),
         'lead_payload': ixc.build_crm_lead_payload(cadastro),
         'crm_prospect_resource': getattr(settings, 'IXC_CRM_PROSPECT_RESOURCE', '').strip()
-        or 'crm_prospect (+ IXC_CRM_PROSPECT_FALLBACK_RESOURCES se configurado)',
+        or 'crm_canditados, crm_candidatos, crm_prospect (+ IXC_CRM_PROSPECT_FALLBACK_RESOURCES)',
         'crm_prospect_payload': ixc.build_crm_prospect_payload(cadastro, link_contato_id=None),
+        'crm_etapa2_primeiro_recurso_padrao': etapa2_primeiro_recurso,
         'crm_prospect_payload_etapa2_como_enviado': prospect_etapa2,
         'crm_candidatos_resource': getattr(settings, 'IXC_CRM_CANDIDATOS_RESOURCE', '').strip()
         or 'crm_candidatos (+ IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES se configurado)',
         'crm_candidatos_payload': ixc.build_crm_candidatos_payload(cadastro, link_contato_id=None),
+        'cliente_contrato_teste': _export_cliente_contrato_teste_block(ixc, cadastro),
         'nota': (
-            'crm_prospect_payload_etapa2_como_enviado reflete o POST de prospecção após lead local '
-            '(id_contato / id_lead conforme recurso da etapa 1). Se ixc_lead_id estiver vazio, vem null. '
-            'radusuarios_pppoe: login PPPoE gerado, montagem do POST de teste (senha mascarada) e logs de lookup IXC.'
+            'crm_prospect_payload_etapa2_como_enviado: mesmo body que o primeiro POST da etapa 2 após o lead '
+            '(modelo Postman `crm_canditados` quando esse recurso vem primeiro na fila; senão payload legado '
+            '`crm_prospect`). crm_prospect_payload: amostra sem vínculo ao id do contato. '
+            'cliente_contrato_teste: body do POST incluir (teste) + amostra listar vd_contrato para conferir tipo/FKs.'
         ),
     }
 
@@ -927,6 +964,32 @@ def export_cadastro_json(request, pk):
     )
     response['Content-Disposition'] = f'attachment; filename="cadastro_{cadastro.pk}.json"'
     return response
+
+
+def _export_cliente_contrato_teste_block(ixc, cadastro):
+    """Bloco opcional do export JSON: payload do teste cliente_contrato + diagnóstico vd."""
+    out = {}
+    pl_cc, err_cc = ixc.build_cliente_contrato_test_payload(cadastro)
+    out['montagem_erro'] = err_cc
+    if not pl_cc:
+        return out
+    out['payload_cliente_contrato_incluir'] = dict(pl_cc)
+    vid = str(pl_cc.get('id_vd_contrato') or '').strip()
+    if vid:
+        vrow, vlogs = ixc._fetch_vd_contrato_row_by_id(vid)
+        out['vd_contrato_listar_logs'] = list(vlogs)[:40]
+        if vrow:
+            out['vd_contrato_campos_tipo_e_tipo_contrato'] = {
+                k: vrow[k]
+                for k in vrow
+                if isinstance(k, str)
+                and (
+                    'tipo' in k.lower()
+                    or k.split('.')[-1].lower() == 'id_tipo_contrato'
+                )
+            }
+            out['vd_contrato_chaves_amostra'] = sorted(vrow.keys())[:55]
+    return out
 
 @login_required
 def edit_cadastro(request, pk):
@@ -970,7 +1033,7 @@ def delete_cadastro(request, pk):
 
 @login_required
 def ixc_test_cliente_contrato(request, pk):
-    """Teste (superusuário): POST ``cliente_contrato`` e, se configurado, ``radusuarios``."""
+    """Teste (superusuário): POST ``cliente_contrato`` no IXC."""
     if not request.user.is_superuser:
         return JsonResponse(
             {'status': 'error', 'message': 'Acesso restrito a superusuário.', 'logs': []},
@@ -1007,8 +1070,6 @@ def ixc_test_cliente_contrato(request, pk):
             'contrato_id': out.get('contrato_id'),
             'logs': merged_logs,
         }
-        if 'radusuarios' in out:
-            resp['radusuarios'] = out['radusuarios']
         return JsonResponse(resp)
     except Exception as e:
         logger.exception('IXC cliente_contrato teste excecao cadastro=%s', cadastro.pk)

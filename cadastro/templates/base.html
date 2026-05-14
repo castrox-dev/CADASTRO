@@ -7,10 +7,11 @@
     <title>{% block title %}FIBRAMAR{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <link rel="stylesheet" href="{% static 'css/theme-pro.css' %}">
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -59,7 +60,21 @@
             </div>
         </div>
     </div>
-    
+
+    <!-- Loader global em tela cheia (chamado por showLoader/hideLoader) -->
+    <div id="fibramarLoader" class="fibramar-loader" aria-hidden="true" role="status" aria-live="polite">
+        <div class="fibramar-loader__card">
+            <div class="fibramar-loader__spinner" aria-hidden="true">
+                <span class="fibramar-loader__ring"></span>
+                <span class="fibramar-loader__ring fibramar-loader__ring--2"></span>
+                <i class="bi bi-cloud-arrow-up-fill fibramar-loader__icon" id="fibramarLoaderIcon"></i>
+            </div>
+            <div class="fibramar-loader__title" id="fibramarLoaderTitle">Processando...</div>
+            <div class="fibramar-loader__step" id="fibramarLoaderStep">Conectando ao servidor</div>
+            <ol class="fibramar-loader__progress" id="fibramarLoaderProgress" hidden></ol>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script>
@@ -139,6 +154,80 @@
             }
             confirmModal.hide();
         });
+
+        // ---------------------------------------------------------------
+        // Loader global em tela cheia.
+        //   showLoader(title, step, options?) → exibe e fixa o foco no overlay.
+        //   setLoaderStep(text, opts?) → atualiza só o passo atual.
+        //   hideLoader() → encerra.
+        // options.steps = ['Texto 1', 'Texto 2', ...] mostra um checklist
+        // animado; setLoaderStep(text, { advance: true }) marca o item atual.
+        // ---------------------------------------------------------------
+        (function () {
+            const overlay = document.getElementById('fibramarLoader');
+            if (!overlay) return;
+            const titleEl = document.getElementById('fibramarLoaderTitle');
+            const stepEl = document.getElementById('fibramarLoaderStep');
+            const iconEl = document.getElementById('fibramarLoaderIcon');
+            const progressEl = document.getElementById('fibramarLoaderProgress');
+            let progressIndex = -1;
+
+            function renderProgress(steps) {
+                progressEl.innerHTML = '';
+                progressIndex = -1;
+                if (!steps || !steps.length) {
+                    progressEl.hidden = true;
+                    return;
+                }
+                steps.forEach(function (label) {
+                    const li = document.createElement('li');
+                    li.className = 'fibramar-loader__progress-item';
+                    li.innerHTML = '<span class="fibramar-loader__dot" aria-hidden="true"></span><span class="fibramar-loader__progress-label">' + label + '</span>';
+                    progressEl.appendChild(li);
+                });
+                progressEl.hidden = false;
+            }
+
+            window.showLoader = function (title, step, options) {
+                options = options || {};
+                titleEl.textContent = title || 'Processando...';
+                stepEl.textContent = step || '';
+                if (options.icon) {
+                    iconEl.className = 'bi ' + options.icon + ' fibramar-loader__icon';
+                } else {
+                    iconEl.className = 'bi bi-cloud-arrow-up-fill fibramar-loader__icon';
+                }
+                renderProgress(options.steps);
+                overlay.classList.add('is-active');
+                overlay.setAttribute('aria-hidden', 'false');
+                document.body.classList.add('fibramar-loader-open');
+            };
+
+            window.setLoaderStep = function (text, opts) {
+                opts = opts || {};
+                if (text) stepEl.textContent = text;
+                if (!progressEl.hidden && opts.advance) {
+                    const items = progressEl.querySelectorAll('.fibramar-loader__progress-item');
+                    if (progressIndex >= 0 && progressIndex < items.length) {
+                        items[progressIndex].classList.remove('is-current');
+                        items[progressIndex].classList.add('is-done');
+                    }
+                    progressIndex += 1;
+                    if (progressIndex < items.length) {
+                        items[progressIndex].classList.add('is-current');
+                    }
+                }
+            };
+
+            window.hideLoader = function () {
+                overlay.classList.remove('is-active');
+                overlay.setAttribute('aria-hidden', 'true');
+                document.body.classList.remove('fibramar-loader-open');
+                progressEl.hidden = true;
+                progressEl.innerHTML = '';
+                progressIndex = -1;
+            };
+        })();
     </script>
     <script src="{% static 'js/app_helpers.js' %}"></script>
     {% block extra_js %}{% endblock %}

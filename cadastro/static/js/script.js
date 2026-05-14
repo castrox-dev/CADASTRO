@@ -207,6 +207,136 @@ function buscarDadosCNPJ(cnpj) {
         .catch(function () { showNotify('Não foi possível carregar os dados do CNPJ automaticamente.', 'warning'); });
 }
 
+/** RG no seletor único (até 2 fotos) → preenche `foto_documento_frente` e opcionalmente `foto_documento_verso` para o POST. */
+function syncRgFromMulti() {
+    const multi = document.getElementById('rg_multi_picker');
+    const fr = document.getElementById('foto_documento_frente');
+    const vs = document.getElementById('foto_documento_verso');
+    if (!multi || !fr || !vs) return;
+    let list = multi.files ? Array.from(multi.files) : [];
+    if (list.length > 2) {
+        const cap = new DataTransfer();
+        cap.items.add(list[0]);
+        cap.items.add(list[1]);
+        multi.files = cap.files;
+        list = Array.from(multi.files);
+    }
+    const empty = new DataTransfer();
+    if (!list.length) {
+        fr.files = empty.files;
+        vs.files = empty.files;
+        return;
+    }
+    const dt1 = new DataTransfer();
+    dt1.items.add(list[0]);
+    fr.files = dt1.files;
+    if (list.length >= 2) {
+        const dt2 = new DataTransfer();
+        dt2.items.add(list[1]);
+        vs.files = dt2.files;
+    } else {
+        vs.files = empty.files;
+    }
+}
+
+function copyOneFileToInput(finalId, file) {
+    const fin = document.getElementById(finalId);
+    if (!fin || !file) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fin.files = dt.files;
+    const wrap = fin.closest('.file-upload-wrapper');
+    const info = wrap && wrap.querySelector('.file-upload-info');
+    handleFiles(fin, fin.files, info, wrap);
+}
+
+function mergeFilesIntoRgMultiPicked(newFiles) {
+    const multi = document.getElementById('rg_multi_picker');
+    if (!multi || !newFiles || !newFiles.length) return;
+    const cur = multi.files ? Array.from(multi.files) : [];
+    const add = Array.from(newFiles);
+    if (cur.length + add.length > 2) {
+        showNotify('RG: no máximo 2 fotos. Apenas as 2 primeiras foram mantidas.', 'info');
+    }
+    const merged = cur.concat(add).slice(0, 2);
+    const dt = new DataTransfer();
+    merged.forEach(function (f) { dt.items.add(f); });
+    multi.files = dt.files;
+    const wrap = multi.closest('.file-upload-wrapper');
+    const info = wrap && wrap.querySelector('.file-upload-info');
+    handleFiles(multi, multi.files, info, wrap);
+    syncRgFromMulti();
+}
+
+function initDocAndRgPickers() {
+    const camHelper = document.getElementById('ixcGlobalCamHelper');
+    const galHelper = document.getElementById('ixcGlobalGalHelper');
+    const rgCamHelper = document.getElementById('ixcRgCamHelper');
+    const rgGalHelper = document.getElementById('ixcRgGalHelper');
+
+    if (camHelper) {
+        camHelper.addEventListener('change', function () {
+            const tid = this.dataset.targetFinal;
+            if (tid && this.files && this.files[0]) copyOneFileToInput(tid, this.files[0]);
+            this.value = '';
+            delete this.dataset.targetFinal;
+        });
+    }
+    if (galHelper) {
+        galHelper.addEventListener('change', function () {
+            const tid = this.dataset.targetFinal;
+            if (tid && this.files && this.files[0]) copyOneFileToInput(tid, this.files[0]);
+            this.value = '';
+            delete this.dataset.targetFinal;
+        });
+    }
+    if (rgCamHelper) {
+        rgCamHelper.addEventListener('change', function () {
+            if (this.files && this.files[0]) mergeFilesIntoRgMultiPicked([this.files[0]]);
+            this.value = '';
+        });
+    }
+    if (rgGalHelper) {
+        rgGalHelper.addEventListener('change', function () {
+            if (this.files && this.files.length) mergeFilesIntoRgMultiPicked(Array.from(this.files));
+            this.value = '';
+        });
+    }
+
+    document.querySelectorAll('.js-open-doc-cam').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const id = btn.getAttribute('data-target-final');
+            const h = document.getElementById('ixcGlobalCamHelper');
+            if (!h || !id) return;
+            h.dataset.targetFinal = id;
+            h.click();
+        });
+    });
+    document.querySelectorAll('.js-open-doc-gal').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const id = btn.getAttribute('data-target-final');
+            const acc = btn.getAttribute('data-accept') || 'image/*';
+            const h = document.getElementById('ixcGlobalGalHelper');
+            if (!h || !id) return;
+            h.setAttribute('accept', acc);
+            h.dataset.targetFinal = id;
+            h.click();
+        });
+    });
+    document.querySelectorAll('.js-open-rg-cam').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const h = document.getElementById('ixcRgCamHelper');
+            if (h) h.click();
+        });
+    });
+    document.querySelectorAll('.js-open-rg-gal').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const h = document.getElementById('ixcRgGalHelper');
+            if (h) h.click();
+        });
+    });
+}
+
 // File Upload Listener e Drag-and-Drop
 document.addEventListener('DOMContentLoaded', function() {
     initFormRuntimeConfig();
@@ -230,8 +360,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     const fileInputs = document.querySelectorAll('input[type="file"]');
-    
+    const skipFileInputIds = new Set(['ixcGlobalCamHelper', 'ixcGlobalGalHelper', 'ixcRgCamHelper', 'ixcRgGalHelper']);
+
     fileInputs.forEach(input => {
+        if (skipFileInputIds.has(input.id)) return;
+
         const wrapper = input.closest('.file-upload-wrapper');
         const info = wrapper ? wrapper.querySelector('.file-upload-info') : null;
 
@@ -258,30 +391,42 @@ document.addEventListener('DOMContentLoaded', function() {
 
             function handleDrop(e) {
                 const dt = e.dataTransfer;
-                const files = dt.files;
+                let files = dt.files;
+                if (input.id === 'rg_multi_picker' && files.length > 2) {
+                    const cap = new DataTransfer();
+                    cap.items.add(files[0]);
+                    cap.items.add(files[1]);
+                    files = cap.files;
+                    showNotify('RG: no máximo 2 fotos. Apenas as 2 primeiras foram anexadas.', 'info');
+                }
                 input.files = files;
                 handleFiles(input, files, info, wrapper);
+                if (input.id === 'rg_multi_picker') syncRgFromMulti();
             }
         }
 
         if (input) {
             input.addEventListener('change', function(e) {
                 handleFiles(this, this.files, info, wrapper);
+                if (this.id === 'rg_multi_picker') syncRgFromMulti();
             });
         }
     });
+
+    initDocAndRgPickers();
 });
 
 function handleFiles(input, files, info, wrapper) {
     if (files && files.length > 0) {
-        const file = files[0];
-        const fileName = file.name;
-        if (info) info.innerText = `Arquivo selecionado: ${fileName}`;
+        const fileName = files.length === 1
+            ? files[0].name
+            : `${files.length} arquivos: ${Array.from(files).map(function (f) { return f.name; }).join(', ')}`;
+        if (info) info.innerText = `Arquivo(s) selecionado(s): ${fileName}`;
         if (wrapper) {
             wrapper.classList.add('file-selected');
-            
-            // Preview da imagem
-            if (file.type.startsWith('image/')) {
+
+            const previewFile = files[0];
+            if (previewFile.type.startsWith('image/')) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     let preview = wrapper.querySelector('.file-preview');
@@ -292,15 +437,21 @@ function handleFiles(input, files, info, wrapper) {
                     }
                     preview.src = e.target.result;
                     preview.style.display = 'block';
-                }
-                reader.readAsDataURL(file);
+                };
+                reader.readAsDataURL(previewFile);
             } else {
                 const preview = wrapper.querySelector('.file-preview');
                 if (preview) preview.style.display = 'none';
             }
         }
     } else {
-        if (info) info.innerText = 'Clique para selecionar o arquivo';
+        if (info) {
+            if (input && input.id === 'rg_multi_picker') {
+                info.innerText = 'Toque para escolher até 2 fotos ou arraste aqui';
+            } else {
+                info.innerText = 'Toque na área ou use os botões acima';
+            }
+        }
         if (wrapper) {
             wrapper.classList.remove('file-selected');
             const preview = wrapper.querySelector('.file-preview');
@@ -953,6 +1104,7 @@ function showStep(step) {
 }
 
 function populateSummary() {
+    syncRgFromMulti();
     const summary = document.getElementById('confirmationSummary');
     const form = document.getElementById('registrationForm');
     const formData = new FormData(form);
@@ -963,7 +1115,7 @@ function populateSummary() {
         'DADOS CADASTRAIS': { fields: ['documento', 'tipoPessoa', 'nome_razao', 'nome_fantasia', 'rg', 'inscricao_estadual', 'data_nascimento', 'email', 'telefone'], step: 1 },
         'ENDEREÇO': { fields: ['cep', 'cidade', 'bairro', 'endereco', 'google_maps_link', 'referencia'], step: 2 },
         'PLANO E VENCIMENTO': { fields: ['plano', 'fidelidade', 'vencimento'], step: 3 },
-        'DOCUMENTOS': { fields: ['levar_termo', 'comprovante_residencia', 'foto_documento_frente', 'foto_documento_verso', 'selfie_documento'], step: 4 },
+        'DOCUMENTOS': { fields: ['levar_termo', 'selfie_documento', 'foto_documento_frente', 'foto_documento_verso', 'comprovante_residencia'], step: 4 },
         'INSTALAÇÃO': { fields: ['pagamento_instalacao', 'data_instalacao', 'periodo_instalacao', 'origem'], step: 5 }
     };
 
@@ -976,10 +1128,10 @@ function populateSummary() {
         referencia: 'Referência',
         plano: 'Plano', fidelidade: 'Fidelidade', vencimento: 'Dia de Vencimento',
         levar_termo: 'Levar Termo?',
-        comprovante_residencia: 'Comprovante de Residência',
-        foto_documento_frente: 'Foto Doc. (Frente)',
-        foto_documento_verso: 'Foto Doc. (Verso)',
-        selfie_documento: 'Selfie com Documento',
+        comprovante_residencia: 'Comprovante de residência',
+        foto_documento_frente: 'RG (F/V)',
+        foto_documento_verso: 'RG (F/V) — 2ª foto',
+        selfie_documento: 'SELFIE',
         pagamento_instalacao: 'Modo de Pagamento',
         data_instalacao: 'Data Instalação', periodo_instalacao: 'Período', origem: 'Origem'
     };
@@ -1131,7 +1283,7 @@ function getRequiredFieldsForStep(step) {
         const exigirFotos = c && typeof c.exigirFotos === 'boolean' ? c.exigirFotos : true;
         if (!levarTermo) requiredFields[4].push('comprovante_residencia');
         if (exigirFotos) {
-            requiredFields[4].push('foto_documento_frente', 'foto_documento_verso', 'selfie_documento');
+            requiredFields[4].push('foto_documento_frente', 'selfie_documento');
         }
     }
 
@@ -1147,6 +1299,10 @@ function getRequiredFieldsForStep(step) {
 }
 
 function getFieldLabel(fieldName, input) {
+    if (fieldName === 'foto_documento_frente') {
+        const lblRg = document.querySelector('label[for="rg_multi_picker"]');
+        if (lblRg) return lblRg.innerText.replace(/\s*\*/, '').replace('*', '').trim();
+    }
     // 1) Tenta um <label for="id"> ou <label> dentro do mesmo .form-group / .pf-only / .pj-only
     if (input?.id) {
         const lbl = document.querySelector(`label[for="${input.id}"]`);
@@ -1204,17 +1360,29 @@ function validateField(fieldName) {
     if (input.type === 'file') {
         const wrapper = input.closest('.file-upload-wrapper');
         if (wrapper) wrapper.style.borderColor = valid ? '#ddd' : 'red';
+        if (fieldName === 'foto_documento_frente') {
+            const rgWrap = document.getElementById('rg_multi_wrapper');
+            if (rgWrap) rgWrap.style.borderColor = valid ? '#ddd' : 'red';
+        }
     } else {
         input.style.borderColor = valid ? '' : 'red';
     }
 
-    return { valid, input, message };
+    let focusInput = input;
+    if (!valid && fieldName === 'foto_documento_frente') {
+        const rgMulti = document.getElementById('rg_multi_picker');
+        if (rgMulti) focusInput = rgMulti;
+    }
+
+    return { valid, input: focusInput, message };
 }
 
 // Valida um step. Retorna true/false.
 // Em modo silent, não dispara toast (usado quando varremos vários steps).
 function validateStep(step, options) {
     options = options || {};
+    if (step === 4) syncRgFromMulti();
+
     const fields = getRequiredFieldsForStep(step);
     let valid = true;
     let firstError = null;
@@ -1244,6 +1412,7 @@ function validateStep(step, options) {
 // Varre todos os steps e retorna o primeiro problema encontrado.
 // { ok: true } se está tudo OK; senão { ok:false, step, fieldName, input, message }.
 function findFirstFormError() {
+    syncRgFromMulti();
     const steps = [1, 2, 3, 4, 5];
     for (const s of steps) {
         const fields = getRequiredFieldsForStep(s);
@@ -1473,6 +1642,7 @@ document.getElementById('registrationForm').onsubmit = function(e) {
 
     syncOpcionalHiddenFields();
     clearRequiredOnHiddenInputs();
+    syncRgFromMulti();
 
     // Varre TODOS os steps para encontrar campos obrigatórios em branco
     // (assim o usuário não fica "preso" no Step 6 sem saber o que falta).

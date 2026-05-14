@@ -153,7 +153,10 @@ class Cadastro(models.Model):
         max_length=50,
         blank=True,
         null=True,
-        help_text='ID do registro crm_prospect (prospecção) no IXC, quando criado pelo envio da ficha.',
+        help_text=(
+            'ID retornado pelo IXC na etapa 2 (prospecção CRM: em geral `crm_canditados` / `crm_candidatos`; '
+            'fallback legado `crm_prospect`). Usado também em fluxos de contrato quando o IXC espera esse vínculo.'
+        ),
     )
     ixc_candidato_id = models.CharField(
         max_length=50,

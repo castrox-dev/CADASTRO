@@ -1,0 +1,1069 @@
+/* ==========================================================================
+   FIBRAMAR — Camada de polimento "Pro"
+   Sobreposta a style.css. Aqui adicionamos refinamentos visuais — tipografia,
+   sombras, microinterações, glassmorphism, animações de entrada — para deixar
+   o sistema com cara de produto premium, sem alterar a estrutura existente.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. TIPOGRAFIA REFINADA
+   -------------------------------------------------------------------------- */
+:root {
+    --font-display: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-body:    'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+    /* Sombras "premium" (mais nuance, menos blur "borrachudo") */
+    --shadow-xs-pro: 0 1px 2px rgba(15, 23, 42, 0.06);
+    --shadow-sm-pro: 0 2px 6px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+    --shadow-md-pro: 0 6px 18px rgba(15, 23, 42, 0.08), 0 2px 5px rgba(15, 23, 42, 0.04);
+    --shadow-lg-pro: 0 16px 40px rgba(15, 23, 42, 0.10), 0 4px 10px rgba(15, 23, 42, 0.05);
+    --shadow-xl-pro: 0 28px 60px rgba(15, 23, 42, 0.16), 0 8px 18px rgba(15, 23, 42, 0.06);
+    --shadow-orange-pro: 0 10px 28px rgba(255, 107, 0, 0.32),
+                         0 2px 6px rgba(255, 107, 0, 0.18);
+    --shadow-orange-pro-strong: 0 16px 42px rgba(255, 107, 0, 0.42),
+                                0 4px 12px rgba(255, 107, 0, 0.22);
+
+    /* Gradiente de marca para destaques */
+    --grad-brand:        linear-gradient(135deg, #ff6b00 0%, #ff8a3d 60%, #ffb37a 100%);
+    --grad-brand-soft:   linear-gradient(135deg, rgba(255, 107, 0, 0.10) 0%, rgba(255, 138, 61, 0.05) 100%);
+    --grad-night:        linear-gradient(135deg, #1a1d2e 0%, #11121f 100%);
+    --grad-cool:         linear-gradient(135deg, #3a7bd5 0%, #00d2ff 100%);
+
+    /* Tokens semânticos extras */
+    --surface-glass-light: rgba(255, 255, 255, 0.72);
+    --surface-glass-dark:  rgba(20, 22, 38, 0.62);
+}
+
+body {
+    font-family: var(--font-body);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+    letter-spacing: -0.005em;
+}
+
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+h2, .h2 { font-weight: 800; letter-spacing: -0.022em; }
+h1, .h1 { font-weight: 800; letter-spacing: -0.025em; }
+
+/* Texto numérico tabular nas estatísticas e tabelas — alinhamento perfeito de dígitos */
+.stats-card .value,
+.table td,
+.table th,
+.summary-value,
+.plan-install-summary__price {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Seleção de texto com a cor de marca */
+::selection { background: rgba(255, 107, 0, 0.28); color: #ffffff; }
+
+/* --------------------------------------------------------------------------
+   2. SCROLLBARS REFINADAS
+   -------------------------------------------------------------------------- */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(255, 107, 0, 0.55), rgba(255, 138, 61, 0.55));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background var(--t-fast) var(--ease);
+}
+*::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #ff6b00, #ff8a3d);
+    background-clip: padding-box;
+}
+
+/* --------------------------------------------------------------------------
+   3. FUNDO DA APLICAÇÃO — mesh sutil + ruído opcional
+   -------------------------------------------------------------------------- */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+    background:
+        radial-gradient(60% 50% at 12% 8%, rgba(255, 107, 0, 0.10), transparent 60%),
+        radial-gradient(50% 40% at 92% 12%, rgba(58, 123, 213, 0.08), transparent 60%),
+        radial-gradient(80% 55% at 50% 110%, rgba(255, 107, 0, 0.06), transparent 70%);
+    opacity: 1;
+}
+[data-theme="dark"] body::before {
+    background:
+        radial-gradient(60% 50% at 12% 8%, rgba(255, 107, 0, 0.16), transparent 60%),
+        radial-gradient(50% 40% at 92% 12%, rgba(58, 123, 213, 0.12), transparent 60%),
+        radial-gradient(80% 55% at 50% 110%, rgba(255, 107, 0, 0.10), transparent 70%);
+}
+
+/* --------------------------------------------------------------------------
+   4. CARDS — bordas suaves, sombras em camadas e leve "lift" no hover
+   -------------------------------------------------------------------------- */
+.card-premium {
+    border-radius: 18px;
+    box-shadow: var(--shadow-md-pro);
+    border: 1px solid var(--border-color);
+    backdrop-filter: saturate(115%);
+    -webkit-backdrop-filter: saturate(115%);
+    transition: transform 280ms var(--ease),
+                box-shadow 280ms var(--ease),
+                border-color 280ms var(--ease);
+}
+.card-premium:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg-pro);
+}
+.card-premium:focus-within {
+    border-color: rgba(255, 107, 0, 0.30);
+    box-shadow: var(--shadow-lg-pro), 0 0 0 4px rgba(255, 107, 0, 0.10);
+}
+[data-theme="dark"] .card-premium {
+    border-color: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45),
+                0 2px 4px rgba(0, 0, 0, 0.35),
+                inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+[data-theme="dark"] .card-premium:hover {
+    border-color: rgba(255, 255, 255, 0.10);
+    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.55),
+                0 6px 14px rgba(0, 0, 0, 0.40),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.header-accent {
+    height: 4px;
+    background: var(--grad-brand);
+    box-shadow: 0 1px 0 rgba(255, 107, 0, 0.20);
+}
+
+/* "Glow" sutil aparecendo do topo no card de stats — só no dark */
+[data-theme="dark"] .card-premium.stats-card {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 60%), var(--card-bg);
+}
+
+/* --------------------------------------------------------------------------
+   5. STATS CARDS — números maiores, gradiente no número, ícones em chip
+   -------------------------------------------------------------------------- */
+.stats-card .value {
+    font-size: 38px;
+    line-height: 1;
+    font-weight: 800;
+    background: var(--grad-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: -0.02em;
+}
+.stats-card .label {
+    color: var(--text-muted);
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+.stats-icon {
+    box-shadow: inset 0 0 0 1px rgba(255, 107, 0, 0.08);
+}
+[data-theme="dark"] .stats-icon {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+/* Cards "info" (segundo card da dashboard) — borda gradiente sutil ao passar o mouse. */
+@media (min-width: 768px) {
+    .card-premium.h-100:has(.btn-fibramar) {
+        position: relative;
+    }
+    .card-premium.h-100:has(.btn-fibramar)::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1.5px;
+        background: linear-gradient(135deg, rgba(255, 107, 0, 0.55), rgba(58, 123, 213, 0.20) 60%, transparent);
+        -webkit-mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+                mask-composite: exclude;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 280ms var(--ease);
+    }
+    .card-premium.h-100:has(.btn-fibramar):hover::after { opacity: 1; }
+}
+
+/* --------------------------------------------------------------------------
+   6. BOTÕES — microinterações refinadas
+   -------------------------------------------------------------------------- */
+.btn-fibramar {
+    background: var(--grad-brand);
+    box-shadow: var(--shadow-orange-pro);
+    transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 220ms var(--ease),
+                filter 220ms var(--ease);
+    position: relative;
+    isolation: isolate;
+}
+.btn-fibramar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 40%);
+    pointer-events: none;
+    mix-blend-mode: overlay;
+    opacity: 0.9;
+}
+.btn-fibramar:hover {
+    transform: translateY(-2px) scale(1.01);
+    box-shadow: var(--shadow-orange-pro-strong);
+}
+.btn-fibramar:active {
+    transform: translateY(0) scale(0.99);
+    box-shadow: var(--shadow-orange-pro);
+}
+
+.btn-outline-fibramar {
+    border-width: 1.5px;
+    transition: background 200ms var(--ease),
+                color 200ms var(--ease),
+                box-shadow 200ms var(--ease),
+                transform 200ms var(--ease);
+}
+.btn-outline-fibramar:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-orange-pro);
+}
+
+/* Botões de ação premium (página de detalhe) — sombras mais profundas e
+   leve grain interno para parecerem 3D. */
+.btn-action-premium {
+    border-radius: 14px;
+    padding: 13px 18px;
+    font-size: 12.5px;
+    letter-spacing: 0.6px;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.16),
+                inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn-action-premium:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.22),
+                inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.btn-action-premium:active {
+    transform: translateY(0);
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.18),
+                inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.btn-action-os    { background: var(--grad-brand); }
+.btn-action-ixc   { background: linear-gradient(135deg, #3a7bd5 0%, #00d2ff 100%); color: #fff !important; }
+.btn-action-receita { background: var(--grad-cool); }
+.btn-action-edit  {
+    background: linear-gradient(135deg, #2a2c3a 0%, #1b1d28 100%);
+    color: #f1f3f8 !important;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.btn-action-delete {
+    background: linear-gradient(135deg, #ff3a5e 0%, #c81d3b 100%);
+}
+
+/* Reforço de foco em links/btns que viraram action cards */
+.btn-action-premium:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-orange-pro), 0 0 0 4px rgba(255, 107, 0, 0.30);
+}
+
+/* --------------------------------------------------------------------------
+   7. NAVBAR — toque de "vidro fosco"
+   -------------------------------------------------------------------------- */
+.navbar-fibramar {
+    background-image: linear-gradient(180deg, #1f1f44 0%, #14142e 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(8px) saturate(150%);
+    -webkit-backdrop-filter: blur(8px) saturate(150%);
+    box-shadow: 0 2px 18px rgba(0, 0, 0, 0.20);
+}
+[data-theme="dark"] .navbar-fibramar {
+    background-image: linear-gradient(180deg, #0d0d1c 0%, #07070f 100%);
+}
+
+/* Marca clicável: leve animação no hover */
+.navbar-brand {
+    transition: transform 200ms var(--ease), opacity 200ms var(--ease);
+}
+.navbar-brand:hover { transform: translateY(-1px); opacity: 0.92; }
+
+/* --------------------------------------------------------------------------
+   8. SIDEBAR ADMIN — visual premium completo
+   -------------------------------------------------------------------------- */
+
+/* Fundo da sidebar com leve "glow" de marca no topo + sombra à direita. */
+.admin-sidebar {
+    background:
+        radial-gradient(120% 60% at 0% 0%, rgba(255, 107, 0, 0.10), transparent 55%),
+        linear-gradient(180deg, #ffffff 0%, #f4f5fb 100%);
+    box-shadow: 1px 0 0 var(--border-color), 8px 0 28px -16px rgba(0, 0, 0, 0.10);
+}
+[data-theme="dark"] .admin-sidebar {
+    background:
+        radial-gradient(120% 60% at 0% 0%, rgba(255, 107, 0, 0.18), transparent 55%),
+        linear-gradient(180deg, #0d0d1c 0%, #07070f 100%);
+    box-shadow: 1px 0 0 rgba(255, 255, 255, 0.04), 8px 0 32px -14px rgba(0, 0, 0, 0.6);
+}
+
+/* Brand (logo + nome) — cartão com leve elevação */
+.admin-sidebar-brand {
+    padding: 16px 16px 14px !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    position: relative;
+}
+[data-theme="dark"] .admin-sidebar-brand {
+    border-bottom-color: rgba(255, 255, 255, 0.06) !important;
+}
+.admin-sidebar-brand::after {
+    content: "";
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: -1px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 107, 0, 0.45) 50%, transparent);
+    opacity: 0.7;
+}
+.admin-sidebar-brand img {
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 10px !important;
+    box-shadow: 0 6px 14px rgba(255, 107, 0, 0.25),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.10);
+    transition: transform 220ms var(--ease), box-shadow 220ms var(--ease);
+}
+.admin-sidebar-brand a:hover img {
+    transform: rotate(-3deg) scale(1.04);
+    box-shadow: 0 10px 22px rgba(255, 107, 0, 0.42);
+}
+.admin-sidebar-brand .fw-bold {
+    font-size: 0.95rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.01em;
+    background: linear-gradient(135deg, #ff6b00 0%, #ff8a3d 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.admin-sidebar-brand .text-white-50 {
+    font-size: 0.62rem !important;
+    letter-spacing: 0.12em !important;
+    font-weight: 700;
+    color: rgba(15, 23, 42, 0.45) !important;
+}
+[data-theme="dark"] .admin-sidebar-brand .text-white-50 {
+    color: rgba(255, 255, 255, 0.42) !important;
+}
+
+/* Separadores "Configuração da ficha", "Área consultor" */
+.admin-sidebar-nav .admin-nav-section {
+    font-size: 0.62rem !important;
+    letter-spacing: 0.14em !important;
+    font-weight: 800 !important;
+    text-transform: uppercase;
+    color: var(--text-muted) !important;
+    margin: 22px 4px 8px !important;
+    padding: 0 10px !important;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.admin-sidebar-nav .admin-nav-section::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--border-color), transparent);
+}
+[data-theme="dark"] .admin-sidebar-nav .admin-nav-section {
+    color: rgba(255, 255, 255, 0.40) !important;
+}
+[data-theme="dark"] .admin-sidebar-nav .admin-nav-section::after {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.10), transparent);
+}
+
+/* Itens do menu */
+.admin-nav-link {
+    border-radius: 12px;
+    padding: 11px 14px !important;
+    margin: 2px 6px;
+    font-size: 0.9rem !important;
+    font-weight: 500;
+    transition: background 200ms var(--ease),
+                color 200ms var(--ease),
+                transform 200ms var(--ease),
+                box-shadow 200ms var(--ease);
+    position: relative;
+    overflow: hidden;
+}
+.admin-nav-link i {
+    width: 20px;
+    text-align: center;
+    font-size: 1.05rem;
+    opacity: 0.9;
+    transition: transform 220ms var(--ease), opacity 220ms var(--ease);
+}
+.admin-nav-link span { position: relative; z-index: 1; }
+
+/* Hover — pílula que cresce da esquerda */
+.admin-nav-link::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(255, 107, 0, 0.12), rgba(255, 107, 0, 0.02) 60%, transparent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 280ms var(--ease);
+    border-radius: inherit;
+}
+.admin-nav-link:hover::before { transform: scaleX(1); }
+.admin-nav-link:hover {
+    color: var(--secondary-color) !important;
+    transform: translateX(3px);
+}
+.admin-nav-link:hover i {
+    transform: scale(1.12);
+    opacity: 1;
+}
+
+/* Item ativo — barra vertical com glow, badge laranja */
+.admin-nav-link.active {
+    background: linear-gradient(90deg,
+                rgba(255, 107, 0, 0.22) 0%,
+                rgba(255, 107, 0, 0.06) 60%,
+                transparent 100%) !important;
+    color: var(--secondary-color) !important;
+    font-weight: 700;
+    box-shadow:
+        inset 3px 0 0 var(--secondary-color),
+        0 6px 16px rgba(255, 107, 0, 0.10),
+        inset 0 0 0 1px rgba(255, 107, 0, 0.12);
+}
+[data-theme="dark"] .admin-nav-link.active {
+    background: linear-gradient(90deg,
+                rgba(255, 107, 0, 0.30) 0%,
+                rgba(255, 107, 0, 0.08) 60%,
+                transparent 100%) !important;
+    box-shadow:
+        inset 3px 0 0 var(--secondary-color),
+        0 8px 18px rgba(255, 107, 0, 0.14),
+        inset 0 0 0 1px rgba(255, 107, 0, 0.18);
+}
+.admin-nav-link.active::after {
+    content: "";
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--secondary-color);
+    box-shadow: 0 0 8px rgba(255, 107, 0, 0.70);
+    transform: translateY(-50%);
+    animation: sidebarPulse 2.2s var(--ease) infinite;
+}
+@keyframes sidebarPulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255, 107, 0, 0.45); }
+    50%      { opacity: 0.85; box-shadow: 0 0 0 5px rgba(255, 107, 0, 0); }
+}
+.admin-nav-link.active i {
+    color: var(--secondary-color);
+    opacity: 1;
+}
+
+/* Footer (Tema + dropdown da conta) */
+.admin-sidebar-footer {
+    padding: 12px 10px 12px !important;
+    border-top: 1px solid var(--border-color) !important;
+    background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.04));
+}
+[data-theme="dark"] .admin-sidebar-footer {
+    border-top-color: rgba(255, 255, 255, 0.06) !important;
+    background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.3));
+}
+.admin-sidebar-theme {
+    background: rgba(255, 107, 0, 0.05) !important;
+    border: 1px solid rgba(255, 107, 0, 0.18) !important;
+    color: var(--secondary-color) !important;
+    transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.admin-sidebar-theme:hover {
+    background: rgba(255, 107, 0, 0.12) !important;
+    border-color: rgba(255, 107, 0, 0.40) !important;
+}
+[data-theme="dark"] .admin-sidebar-theme {
+    background: rgba(255, 107, 0, 0.10) !important;
+    border-color: rgba(255, 107, 0, 0.22) !important;
+    color: var(--secondary-color) !important;
+}
+[data-theme="dark"] .admin-sidebar-theme:hover {
+    background: rgba(255, 107, 0, 0.18) !important;
+}
+
+.admin-sidebar-footer .btn-outline-light {
+    border-radius: 12px !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-main) !important;
+    background: transparent !important;
+    padding: 9px 12px !important;
+    font-weight: 600;
+    transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.admin-sidebar-footer .btn-outline-light:hover,
+.admin-sidebar-footer .btn-outline-light:focus-visible {
+    background: rgba(255, 107, 0, 0.08) !important;
+    border-color: rgba(255, 107, 0, 0.35) !important;
+    color: var(--secondary-color) !important;
+}
+[data-theme="dark"] .admin-sidebar-footer .btn-outline-light {
+    border-color: rgba(255, 255, 255, 0.10) !important;
+    color: #fff !important;
+}
+[data-theme="dark"] .admin-sidebar-footer .btn-outline-light:hover {
+    background: rgba(255, 107, 0, 0.14) !important;
+    border-color: rgba(255, 107, 0, 0.40) !important;
+}
+.admin-sidebar-footer .bi-person-circle { color: var(--secondary-color); }
+
+/* Scroll interno da nav: pista invisível */
+.admin-sidebar-nav { padding: 14px 4px !important; }
+.admin-sidebar-nav::-webkit-scrollbar { width: 6px; }
+.admin-sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255, 107, 0, 0.25); }
+
+/* --------------------------------------------------------------------------
+   9. FORMULÁRIOS — campos com mais "respiração" e foco premium
+   -------------------------------------------------------------------------- */
+.form-control,
+.form-select,
+.form-control-premium {
+    border-radius: 10px;
+    padding: 12px 14px;
+    border-width: 1.5px;
+    transition: border-color 180ms var(--ease),
+                box-shadow 180ms var(--ease),
+                background 180ms var(--ease);
+}
+.form-control:hover:not(:focus):not(:disabled),
+.form-select:hover:not(:focus):not(:disabled),
+.form-control-premium:hover:not(:focus):not(:disabled) {
+    border-color: var(--border-color-strong);
+}
+.form-control:focus,
+.form-select:focus,
+.form-control-premium:focus {
+    border-color: var(--secondary-color);
+    box-shadow: 0 0 0 4px rgba(255, 107, 0, 0.16),
+                0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* Labels da .form-group — mais hierarquia */
+.form-group label,
+.form-label {
+    font-size: 11.5px;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+    font-weight: 700;
+}
+[data-theme="dark"] .form-group label,
+[data-theme="dark"] .form-label {
+    color: var(--text-soft) !important;
+}
+
+/* --------------------------------------------------------------------------
+   10. TABELAS — linhas com "card row" e hover refinado
+   -------------------------------------------------------------------------- */
+.table thead th {
+    background: var(--table-header) !important;
+    color: var(--text-muted) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    font-size: 10.5px;
+    letter-spacing: 0.8px;
+    padding: 14px 14px;
+}
+.table tbody td {
+    padding: 16px 14px;
+    border-bottom: 1px solid var(--border-color);
+}
+.table-hover tbody tr {
+    position: relative;
+    transition: background var(--t-fast) var(--ease),
+                box-shadow var(--t-fast) var(--ease),
+                transform var(--t-fast) var(--ease);
+}
+.table-hover tbody tr:hover {
+    background: linear-gradient(90deg, rgba(255, 107, 0, 0.06), rgba(255, 107, 0, 0.02)) !important;
+    box-shadow: inset 3px 0 0 var(--secondary-color);
+}
+[data-theme="dark"] .table-hover tbody tr:hover {
+    background: linear-gradient(90deg, rgba(255, 107, 0, 0.10), rgba(255, 107, 0, 0.02)) !important;
+}
+
+/* Garante alinhamento monoespaçado em qualquer célula de tabela. */
+.table td { font-variant-numeric: tabular-nums; }
+
+/* --------------------------------------------------------------------------
+   11. BADGES DE STATUS — pulsação mais suave + sombra colorida
+   -------------------------------------------------------------------------- */
+.badge-status-pendente,
+.badge-status-aguardando,
+.badge-status-realizado,
+.badge-status-cancelado {
+    padding: 6px 12px 6px 24px;
+    box-shadow: inset 0 0 0 1px currentColor;
+    font-size: 10.5px;
+    letter-spacing: 0.6px;
+}
+.badge-status-pendente::before,
+.badge-status-aguardando::before,
+.badge-status-realizado::before,
+.badge-status-cancelado::before {
+    left: 10px;
+    width: 8px;
+    height: 8px;
+    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent);
+    animation: badgePulse 2.6s var(--ease) infinite;
+}
+@keyframes badgePulse {
+    0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent); }
+    50%      { box-shadow: 0 0 0 6px color-mix(in srgb, currentColor 8%, transparent); }
+}
+
+/* --------------------------------------------------------------------------
+   12. MODAIS / TOASTS — sombra mais cinematográfica
+   -------------------------------------------------------------------------- */
+.modal-backdrop.show {
+    opacity: 0.7;
+    backdrop-filter: blur(4px) saturate(120%);
+    -webkit-backdrop-filter: blur(4px) saturate(120%);
+}
+.modal-content {
+    border-radius: 18px;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.35),
+                0 10px 22px rgba(0, 0, 0, 0.20);
+}
+.modal-header {
+    padding: 20px 24px 16px;
+}
+.modal-body { padding: 20px 24px; }
+.modal-footer {
+    padding: 12px 24px 18px;
+    border-top: 1px solid var(--border-color);
+}
+
+.toast {
+    border-radius: 14px;
+    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.25),
+                0 6px 14px rgba(0, 0, 0, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+}
+.toast.bg-primary   { background: linear-gradient(135deg, #ff6b00 0%, #ff8a3d 100%) !important; }
+.toast.bg-success   { background: linear-gradient(135deg, #00b894 0%, #00d28b 100%) !important; }
+.toast.bg-danger    { background: linear-gradient(135deg, #d63031 0%, #ff3a5e 100%) !important; }
+.toast.bg-warning   { background: linear-gradient(135deg, #f1c40f 0%, #ffd54a 100%) !important; color: #1a1a3a; }
+.toast.bg-info      { background: linear-gradient(135deg, #3a7bd5 0%, #00d2ff 100%) !important; }
+
+/* --------------------------------------------------------------------------
+   13. UPLOAD DE ARQUIVO — área tracejada com micro animação
+   -------------------------------------------------------------------------- */
+.file-upload-wrapper {
+    border-radius: 16px;
+    border-width: 2px;
+    padding: 22px 16px;
+    transition: border-color var(--t-fast) var(--ease),
+                background var(--t-fast) var(--ease),
+                transform var(--t-fast) var(--ease),
+                box-shadow var(--t-fast) var(--ease);
+    background: var(--input-bg);
+}
+.file-upload-wrapper:hover {
+    border-color: var(--secondary-color);
+    background: rgba(255, 107, 0, 0.04);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(255, 107, 0, 0.08);
+}
+.file-upload-wrapper.drag-over {
+    border-color: var(--secondary-color);
+    background: rgba(255, 107, 0, 0.12);
+    transform: scale(1.01);
+    box-shadow: 0 12px 30px rgba(255, 107, 0, 0.18);
+}
+.file-selected {
+    background: rgba(0, 184, 148, 0.08) !important;
+    border-style: solid !important;
+    border-color: var(--success) !important;
+    box-shadow: 0 6px 16px rgba(0, 184, 148, 0.18);
+}
+
+/* --------------------------------------------------------------------------
+   14. PROGRESS BAR — gradiente e brilho sutil
+   -------------------------------------------------------------------------- */
+.progress-bar-fibramar {
+    height: 10px;
+    background-color: rgba(0, 0, 0, 0.06);
+    border-radius: 999px;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.10);
+}
+[data-theme="dark"] .progress-bar-fibramar {
+    background-color: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.30);
+}
+.progress-fill {
+    background: linear-gradient(90deg, #ff6b00, #ff8a3d, #ff6b00);
+    background-size: 200% 100%;
+    animation: progressShine 3s linear infinite;
+    box-shadow: 0 0 14px rgba(255, 107, 0, 0.55);
+}
+@keyframes progressShine {
+    from { background-position: 0% 0; }
+    to   { background-position: 200% 0; }
+}
+
+/* --------------------------------------------------------------------------
+   15. NAV-TABS — indicador deslizante
+   -------------------------------------------------------------------------- */
+.nav-tabs .nav-link {
+    font-weight: 600;
+    padding: 12px 16px;
+    border-bottom: 3px solid transparent;
+}
+.nav-tabs .nav-link.active {
+    color: var(--secondary-color);
+    border-bottom-color: var(--secondary-color);
+    background: linear-gradient(180deg, transparent 60%, rgba(255, 107, 0, 0.06));
+}
+.nav-tabs .nav-link:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(255, 107, 0, 0.15);
+    border-radius: 8px 8px 0 0;
+}
+
+/* --------------------------------------------------------------------------
+   16. ACCORDION — header com leve "step"
+   -------------------------------------------------------------------------- */
+.accordion-button {
+    font-weight: 600;
+    border-radius: 12px;
+}
+.accordion-button:not(.collapsed) {
+    background: linear-gradient(135deg, rgba(255, 107, 0, 0.06), transparent);
+    color: var(--text-main);
+}
+.accordion-button:focus { box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.18); }
+
+/* Accordion da página de detalhe (OS + Ficha Completa) — headers refinados,
+   substituindo o azul/cinza chapados do Bootstrap. */
+.detail-text-accordion .accordion-button {
+    padding: 16px 22px;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    color: #ffffff !important;
+    border: none;
+    border-radius: 0;
+    transition: background var(--t-med) var(--ease),
+                filter var(--t-med) var(--ease);
+}
+.detail-text-accordion .accordion-button.bg-primary,
+.detail-text-accordion .accordion-button.bg-secondary {
+    background-image: none;
+}
+/* Header "OS" — gradiente da marca */
+.detail-text-accordion .accordion-button.bg-primary {
+    background: linear-gradient(135deg, #ff6b00 0%, #ff8a3d 60%, #ff9f5c 100%) !important;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+                inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.detail-text-accordion .accordion-button.bg-primary:hover:not(.collapsed),
+.detail-text-accordion .accordion-button.bg-primary:not(.collapsed) {
+    filter: brightness(1.04);
+}
+/* Header "Ficha completa" — gradiente escuro com toque azulado */
+.detail-text-accordion .accordion-button.bg-secondary {
+    background: linear-gradient(135deg, #2b3144 0%, #1d2233 60%, #161a2a 100%) !important;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.30),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.detail-text-accordion .accordion-button.bg-secondary:hover {
+    filter: brightness(1.12);
+}
+/* Chevron animado */
+.detail-text-accordion .accordion-button::after {
+    background-size: 1.05rem;
+    transition: transform var(--t-med) var(--ease);
+}
+.detail-text-accordion .accordion-button:not(.collapsed)::after {
+    transform: rotate(-180deg);
+}
+.detail-text-accordion .accordion-button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.45),
+                inset 0 -1px 0 rgba(0, 0, 0, 0.20);
+}
+/* Item bordado para o accordion */
+.detail-text-accordion .accordion-item {
+    border-radius: 18px;
+    overflow: hidden;
+}
+.detail-text-accordion .accordion-collapse .accordion-body {
+    padding: 22px 24px;
+}
+
+/* "Console" para os blocos de OS e Ficha (pre dentro de .bg-light) */
+.detail-text-accordion .accordion-body .bg-light {
+    position: relative;
+    background: #0e1020 !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-radius: 14px !important;
+    padding: 34px 18px 18px !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+                inset 0 12px 30px rgba(0, 0, 0, 0.30);
+}
+[data-theme="light"] .detail-text-accordion .accordion-body .bg-light {
+    background: #11131f !important;
+}
+/* Barrinha estilo "macOS" com três pontos no topo do bloco */
+.detail-text-accordion .accordion-body .bg-light::before {
+    content: "";
+    position: absolute;
+    top: 12px;
+    left: 16px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ff5f57;
+    box-shadow:
+        18px 0 0 #febc2e,
+        36px 0 0 #28c840;
+    opacity: 0.90;
+}
+.detail-text-accordion .accordion-body #osContent::after {
+    content: "ORDEM DE SERVIÇO";
+    position: absolute;
+    top: 11px;
+    right: 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.40);
+    font-weight: 700;
+}
+.detail-text-accordion .accordion-body #fichaDisplay::after {
+    content: "FICHA DO CLIENTE";
+    position: absolute;
+    top: 11px;
+    right: 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.40);
+    font-weight: 700;
+}
+.detail-text-accordion .accordion-body .bg-light pre {
+    color: #e4e7ff;
+    background: transparent !important;
+    border: none !important;
+    padding: 4px 4px 0 !important;
+    font-family: 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace !important;
+    font-size: 12.5px !important;
+    line-height: 1.65 !important;
+    margin: 0;
+}
+/* Destaca rótulos em CAIXA ALTA no texto (ex.: "INSTALAÇÃO SERÁ PAGA...") */
+.detail-text-accordion .accordion-body .bg-light pre {
+    /* Sem highlighter dinâmico: o pre vem como texto puro do Django. */
+}
+
+/* Painel de edição da ficha — mantém harmonia com o console */
+.ficha-edit-panel { border-radius: 14px; }
+#fichaTextarea.ficha-textarea,
+textarea#fichaTextarea.ficha-textarea {
+    border-radius: 12px !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: #0e1020 !important;
+    color: #e4e7ff !important;
+    font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace !important;
+    font-size: 12.5px !important;
+    line-height: 1.65 !important;
+    box-shadow: inset 0 12px 30px rgba(0, 0, 0, 0.30);
+}
+#fichaTextarea.ficha-textarea:focus,
+textarea#fichaTextarea.ficha-textarea:focus {
+    border-color: var(--secondary-color) !important;
+    box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.20),
+                inset 0 12px 30px rgba(0, 0, 0, 0.30) !important;
+}
+
+/* --------------------------------------------------------------------------
+   17. PRE / CÓDIGO / FICHA — visual mais "console"
+   -------------------------------------------------------------------------- */
+pre, code.bg-light {
+    border-radius: 10px;
+}
+[data-theme="dark"] pre,
+[data-theme="dark"] code.bg-light {
+    background: #0e0f1c !important;
+    border-color: #1a1b2f;
+}
+
+/* --------------------------------------------------------------------------
+   18. SUMMARY BOX (revisão do form) — refinamentos sutis
+   -------------------------------------------------------------------------- */
+.summary-section-header {
+    background: linear-gradient(90deg, rgba(255, 107, 0, 0.12), rgba(255, 107, 0, 0.02));
+    border-left: 3px solid var(--secondary-color);
+    color: var(--secondary-color);
+}
+.summary-item:hover {
+    background: rgba(255, 107, 0, 0.04);
+}
+[data-theme="dark"] .summary-item:hover {
+    background: rgba(255, 107, 0, 0.06);
+}
+.summary-value { font-weight: 600; }
+
+/* --------------------------------------------------------------------------
+   19. ANIMAÇÕES DE ENTRADA — cards "subindo" ao carregar a página
+   -------------------------------------------------------------------------- */
+@keyframes fibramarFadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fibramarSlideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+.auth-wrapper > .card-premium,
+.dashboard-wrapper > .container-fluid > .row > [class*="col-"],
+.dashboard-wrapper > .container-fluid > .card-premium,
+.admin-main-inner > * {
+    animation: fibramarFadeUp 420ms var(--ease) both;
+}
+.dashboard-wrapper > .container-fluid > .row > [class*="col-"]:nth-child(1) { animation-delay: 0ms; }
+.dashboard-wrapper > .container-fluid > .row > [class*="col-"]:nth-child(2) { animation-delay: 80ms; }
+.dashboard-wrapper > .container-fluid > .row > [class*="col-"]:nth-child(3) { animation-delay: 160ms; }
+.dashboard-wrapper > .container-fluid > .row > [class*="col-"]:nth-child(4) { animation-delay: 240ms; }
+
+.admin-sidebar { animation: fibramarSlideIn 380ms var(--ease) both; }
+
+/* Linhas de tabela aparecem com escalonamento sutil */
+.table tbody tr { animation: fibramarFadeUp 300ms var(--ease) both; }
+.table tbody tr:nth-child(1)  { animation-delay: 30ms; }
+.table tbody tr:nth-child(2)  { animation-delay: 60ms; }
+.table tbody tr:nth-child(3)  { animation-delay: 90ms; }
+.table tbody tr:nth-child(4)  { animation-delay: 120ms; }
+.table tbody tr:nth-child(5)  { animation-delay: 150ms; }
+.table tbody tr:nth-child(6)  { animation-delay: 180ms; }
+.table tbody tr:nth-child(7)  { animation-delay: 210ms; }
+.table tbody tr:nth-child(8)  { animation-delay: 240ms; }
+.table tbody tr:nth-child(n+9){ animation-delay: 260ms; }
+
+@media (prefers-reduced-motion: reduce) {
+    .auth-wrapper > .card-premium,
+    .dashboard-wrapper > .container-fluid > .row > [class*="col-"],
+    .dashboard-wrapper > .container-fluid > .card-premium,
+    .admin-main-inner > *,
+    .admin-sidebar,
+    .table tbody tr {
+        animation: none !important;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   20. LOGIN — visual de hero, com glow de marca
+   -------------------------------------------------------------------------- */
+.auth-wrapper {
+    position: relative;
+    padding: 32px 24px;
+}
+.auth-wrapper::before {
+    content: "";
+    position: absolute;
+    inset: -10vh -10vw auto auto;
+    width: 540px;
+    height: 540px;
+    background: radial-gradient(closest-side, rgba(255, 107, 0, 0.22), transparent);
+    filter: blur(4px);
+    z-index: -1;
+    pointer-events: none;
+}
+.auth-wrapper::after {
+    content: "";
+    position: absolute;
+    inset: auto auto -15vh -10vw;
+    width: 520px;
+    height: 520px;
+    background: radial-gradient(closest-side, rgba(58, 123, 213, 0.18), transparent);
+    z-index: -1;
+    pointer-events: none;
+}
+.auth-wrapper > .card-premium {
+    position: relative;
+    border-radius: 22px;
+    isolation: isolate;
+}
+.auth-wrapper > .card-premium::after {
+    content: "";
+    position: absolute;
+    inset: -1.5px;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: linear-gradient(135deg, rgba(255, 107, 0, 0.55), rgba(58, 123, 213, 0.30) 60%, transparent);
+    -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* --------------------------------------------------------------------------
+   21. DROPDOWNS — leve "pop" e separadores delicados
+   -------------------------------------------------------------------------- */
+.dropdown-menu {
+    animation: fibramarFadeUp 180ms var(--ease) both;
+    border-radius: 12px;
+    padding: 8px;
+}
+.dropdown-item { padding: 9px 12px; }
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background: linear-gradient(90deg, rgba(255, 107, 0, 0.12), rgba(255, 107, 0, 0.02));
+    color: var(--secondary-color);
+}
+
+/* --------------------------------------------------------------------------
+   22. AJUSTES MOBILE
+   -------------------------------------------------------------------------- */
+@media (max-width: 575.98px) {
+    .stats-card .value { font-size: 30px; }
+    .btn-action-premium { padding: 11px 14px; font-size: 12px; }
+    .modal-content { border-radius: 16px; }
+    .auth-wrapper::before,
+    .auth-wrapper::after { display: none; }
+}
+
+/* --------------------------------------------------------------------------
+   23. UTILITÁRIOS DE TEXTO
+   -------------------------------------------------------------------------- */
+.text-gradient-brand {
+    background: var(--grad-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.text-balance { text-wrap: balance; }

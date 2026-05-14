@@ -10,7 +10,15 @@ from django.utils import timezone
 
 class IXCIntegration:
     """
-    Classe para gerenciar a integração com o ERP IXCSoft.
+    Integração outbound com o webservice IXCSoft (IXC Provedor).
+
+    **Sobre IDs «fixos»:** constantes de classe como ``FILIAIS_MAP``, ``CIDADES_MAP``,
+    ``PLANOS_MAP`` e ``ORIGENS_MAP`` são *fallbacks* de homologação / legado. Não
+    representam os IDs de produção da Fibramar. Os valores definitivos por cidade
+    (filial, plano de venda, canal, carteira, tipo de documento, etc.) virão do painel
+    Operação (``operacao_models``) e/ou variáveis ``IXC_*`` no ``.env`` por ambiente —
+    tudo que hoje parece «fixo» no ``.env`` de teste será substituído quando o mapeamento
+    estiver fechado.
     """
 
     # Mapeamento de Filiais
@@ -93,7 +101,7 @@ class IXCIntegration:
         if self._is_demo_ixc_host():
             return ['contato']
         # Só ``contato``: o fallback para ``crm_leads`` / ``crm_sp_leads`` costuma abrir o fluxo comercial
-        # no IXC (venda, contrato, login PPPoE) de forma inconsistente. Use IXC_LEAD_RESOURCE se precisar de outro WS.
+        # no IXC (venda, contrato) de forma inconsistente. Use IXC_LEAD_RESOURCE se precisar de outro WS.
         if getattr(settings, 'IXC_LEAD_CONTATO_ONLY', True):
             return ['contato']
         out = ['contato']
@@ -108,15 +116,16 @@ class IXCIntegration:
         return self._crm_lead_resources_to_try()
 
     def _crm_prospect_resources_to_try(self):
-        """Recursos WS para incluir prospecção. Ordem: IXC_CRM_PROSPECT_RESOURCE (um só) senão
-        ``crm_prospect`` + IXC_CRM_PROSPECT_FALLBACK_RESOURCES (Postman IXC Provedor).
+        """Recursos WS da etapa 2 (painel). Ordem: IXC_CRM_PROSPECT_RESOURCE (um só) senão
+        ``crm_canditados`` / ``crm_candidatos`` (Postman IXC Provedor — prospecção CRM),
+        depois ``crm_prospect`` (legado) + IXC_CRM_PROSPECT_FALLBACK_RESOURCES.
         """
         override = (getattr(settings, 'IXC_CRM_PROSPECT_RESOURCE', None) or '').strip()
         if override:
             return [override]
         fallbacks_raw = (getattr(settings, 'IXC_CRM_PROSPECT_FALLBACK_RESOURCES', '') or '').strip()
         extra = [x.strip() for x in fallbacks_raw.split(',') if x.strip()]
-        base = ['crm_prospect']
+        base = ['crm_canditados', 'crm_candidatos', 'crm_prospect']
         seen = set()
         out = []
         for name in base + extra:
@@ -142,6 +151,12 @@ class IXCIntegration:
                 seen.add(name)
                 out.append(name)
         return out
+
+    @staticmethod
+    def _crm_etapa2_resource_uses_candidatos_payload(resource):
+        """POST em ``crm_canditados`` / ``crm_candidatos`` exige o modelo do Postman (``build_crm_candidatos_payload``)."""
+        r = (resource or '').strip().lower()
+        return r in ('crm_canditados', 'crm_candidatos')
 
     def __init__(self):
         self.url = self._normalize_base_url(getattr(settings, 'IXC_API_URL', ''))
@@ -300,6 +315,29 @@ class IXCIntegration:
         return None
 
     @staticmethod
+    def _extract_cliente_contrato_id(body):
+        """ID do contrato no retorno do POST ``cliente_contrato`` (incluir). Não usa ``id_cliente``."""
+        if not isinstance(body, dict):
+            return None
+        for key in (
+            'id_contrato',
+            'id_cliente_contrato',
+            'idcrm_cliente_contrato',
+            'id_crm_cliente_contrato',
+            'id',
+        ):
+            v = body.get(key)
+            if v not in (None, '', 0, '0'):
+                return v
+        for k, v in body.items():
+            if not isinstance(k, str) or v in (None, '', 0, '0'):
+                continue
+            tail = k.split('.')[-1].lower()
+            if tail in ('id_contrato', 'id_cliente_contrato'):
+                return v
+        return None
+
+    @staticmethod
     def _is_resource_unavailable(result):
         message_text = f"{result.get('message', '')}".lower()
         data = result.get('data')
@@ -386,807 +424,193 @@ class IXCIntegration:
             pass
         return self.FILIAIS_MAP.get(cidade_slug, '2')
 
-    def _fetch_first_contrato_id_for_id_cliente(self, id_cliente):
-        """Lista contratos no IXC por id_cliente (``ixcsoft: listar``). Retorna (id_contrato ou None, logs)."""
-        logs = []
-        qid = str(id_cliente or '').strip()
-        if not qid or not self.url or not self.token:
-            return None, logs
-
-        resource = (settings.IXC_CLIENTE_CONTRATO_RESOURCE or 'cliente_contrato').strip()
-        endpoint = f'{self.url}/webservice/v1/{resource}'
-        qtypes = (
-            'id_cliente',
-            'cliente_contrato.id_cliente',
-            'contrato.id_cliente',
-            'cliente_id',
-        )
-
-        for qtype in qtypes:
-            payload = {
-                'qtype': qtype,
-                'query': qid,
-                'oper': '=',
-                'page': '1',
-                'rp': '15',
-                'sortname': 'id',
-                'sortorder': 'desc',
-            }
-            result = self._post_ixc(
-                endpoint,
-                payload,
-                'CLIENTE_CONTRATO_LIST',
-                extra_headers={'ixcsoft': 'listar'},
-            )
-            if result.get('status') != 'success':
-                logs.append(
-                    f'[RADUSUARIOS] listar_contrato qtype={qtype} http_falha: {result.get("message", "")[:120]}'
-                )
-                continue
-
-            data = result.get('data')
-            if not isinstance(data, dict):
-                continue
-            if str(data.get('type', '')).lower() == 'error':
-                msg = str(data.get('message', ''))[:200]
-                logs.append(f'[RADUSUARIOS] listar_contrato qtype={qtype} erro_api: {msg}')
-                continue
-
-            rows = data.get('registros')
-            if not isinstance(rows, list):
-                rows = data.get('records')
-            if not isinstance(rows, list) or not rows:
-                logs.append(f'[RADUSUARIOS] listar_contrato qtype={qtype} sem_registros total={data.get("total")!r}')
-                continue
-
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                cid = (
-                    str(row.get('id') or row.get('id_contrato') or row.get('id_cliente_contrato') or '')
-                    .strip()
-                )
-                row_cliente = str(row.get('id_cliente') or row.get('cliente_id') or '').strip()
-                if row_cliente and row_cliente != qid:
-                    continue
-                if cid and cid not in ('0', 'null'):
-                    logs.append(
-                        f'[RADUSUARIOS] id_contrato obtido via listar (qtype={qtype}): {cid}'
-                    )
-                    return cid, logs
-
-        logs.append(
-            '[RADUSUARIOS] listar_contrato: nenhum contrato encontrado para este id_cliente '
-            '(confira permissão do token e nomes de campo no IXC).'
-        )
-        return None, logs
-
-    def _fetch_cliente_contrato_row_by_id(self, id_contrato):
-        """Uma linha de ``cliente_contrato`` (listar) pelo id do contrato — para endereço no radusuarios."""
-        logs = []
-        cid = str(id_contrato or '').strip()
-        if not cid or not self.url or not self.token:
-            return None, logs
-        resource = (settings.IXC_CLIENTE_CONTRATO_RESOURCE or 'cliente_contrato').strip()
-        endpoint = f'{self.url}/webservice/v1/{resource}'
-        qtypes = (
-            'cliente_contrato.id',
-            'id',
-            'contrato.id',
-            'id_contrato',
-        )
-        for qtype in qtypes:
-            payload = {
-                'qtype': qtype,
-                'query': cid,
-                'oper': '=',
-                'page': '1',
-                'rp': '100',
-                'sortname': 'id',
-                'sortorder': 'desc',
-            }
-            result = self._post_ixc(
-                endpoint,
-                payload,
-                'CLIENTE_CONTRATO_BY_ID',
-                extra_headers={'ixcsoft': 'listar'},
-            )
-            if result.get('status') != 'success':
-                logs.append(
-                    f'[RADUSUARIOS] listar_contrato_por_id qtype={qtype} http: {result.get("message", "")[:80]}'
-                )
-                continue
-            data = result.get('data')
-            if not isinstance(data, dict) or str(data.get('type', '')).lower() == 'error':
-                msg = str(data.get('message', ''))[:120] if isinstance(data, dict) else ''
-                logs.append(f'[RADUSUARIOS] listar_contrato_por_id qtype={qtype} erro_api: {msg}')
-                continue
-            rows = data.get('registros')
-            if not isinstance(rows, list):
-                rows = data.get('records')
-            if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
-                continue
-            logs.append(f'[RADUSUARIOS] contrato_por_id qtype={qtype} encontrado')
-            return rows[0], logs
-        logs.append('[RADUSUARIOS] contrato_por_id: nenhuma linha retornada')
-        return None, logs
-
     @staticmethod
-    def _cliente_contrato_row_id_contrato(row):
-        """Id numérico do contrato na linha listar (chave simples ou ``tabela.campo``)."""
-        if not isinstance(row, dict):
+    def _tipo_letra_ixc_from_valor_bruto(v):
+        """Converte valor vindo do IXC (letra, dígito, «Internet», …) para a letra usada em ``cliente_contrato.tipo``."""
+        if v in (None, '', 0, '0'):
             return ''
-        for pref in ('id', 'id_contrato', 'id_cliente_contrato'):
-            v = row.get(pref)
-            if v not in (None, '', 0, '0'):
-                return str(v).strip()
-        for k, v in row.items():
-            if not isinstance(k, str) or v in (None, '', 0, '0'):
-                continue
-            tail = k.split('.')[-1]
-            if tail in ('id', 'id_contrato') and str(v).strip():
-                return str(v).strip()
+        s = str(v).strip()
+        if not s:
+            return ''
+        sl = s.lower()
+        # Rótulos da tela IXC (Tipo: Internet / Telefonia / Serviços / SVA)
+        word_map = {
+            'internet': 'I',
+            'telefonia': 'T',
+            'servicos': 'S',
+            'serviços': 'S',
+            'sva': 'V',
+        }
+        if sl in word_map:
+            return word_map[sl]
+        # Algumas bases gravam só a letra ou dígito
+        if sl in ('i', 't', 's', 'v'):
+            return sl.upper()
+        # Padrão comum: 1=Internet, 2=Telefonia, 3=Serviços, 4=SVA (ajuste no IXC se divergir)
+        digit_map = {'1': 'I', '2': 'T', '3': 'S', '4': 'V'}
+        if len(s) == 1 and s in digit_map:
+            return digit_map[s]
+        if len(s) == 1:
+            return s.upper()
+        if s[0].isalpha():
+            return s[0].upper()
         return ''
 
     @staticmethod
-    def _id_cliente_from_cliente_contrato_row(row):
-        """``id_cliente`` dono do contrato na resposta listar ``cliente_contrato`` (pode ser prospecção, não o contato)."""
+    def _tipo_ixc_from_vd_sale_plan_row(row):
+        """Extrai ``tipo`` (I/T/S/V) da linha do **plano de venda** (vd_contrato).
+
+        Não use linha de ``cliente_contrato`` para isso: o ``tipo`` ali costuma ser do contrato,
+        não do vd — reaproveitar gera ``tipo`` errado e o IXC acusa diferença em relação ao vd.
+        """
         if not isinstance(row, dict):
             return ''
-        for pref in ('id_cliente', 'cliente_id'):
-            v = row.get(pref)
-            if v not in (None, '', 0, '0'):
-                return str(v).strip()
+        prioritized = (
+            'tipo',
+            'tipo_contrato',
+            'tipo_plano',
+            'tipo_produtos_plano',
+            'tipo_servico',
+            'tipo_internet',
+            'td_tipo',
+            'tipo_contrato_vd',
+            'classificacao',
+        )
+        for key in prioritized:
+            t = IXCIntegration._tipo_letra_ixc_from_valor_bruto(row.get(key))
+            if t:
+                return t
+        # Qualquer coluna cujo nome sugira «tipo» (vd_contrato.tipo, …)
         for k, v in row.items():
-            if not isinstance(k, str) or v in (None, '', 0, '0'):
+            if not isinstance(k, str):
                 continue
-            tail = k.split('.')[-1].lower()
-            if tail in ('id_cliente', 'cliente_id'):
-                return str(v).strip()
+            kl = k.lower()
+            if 'tipo' not in kl:
+                continue
+            t = IXCIntegration._tipo_letra_ixc_from_valor_bruto(v)
+            if t:
+                return t
         return ''
 
-    def _radusuarios_postar_id_vd_contrato_no_ixc(self, merged_plano):
-        """True = incluir ``id_vd_contrato`` (e FKs de plano) no POST ``radusuarios``."""
-        if getattr(settings, 'IXC_RADUSUARIOS_ENVIAR_ID_VD_CONTRATO', False):
-            return True
-        if getattr(settings, 'IXC_RADUSUARIOS_ENVIAR_ID_VD_SE_MERGE_CONTRATO', True):
-            return isinstance(merged_plano, list) and 'id_vd_contrato' in merged_plano
-        return False
-
-    @staticmethod
-    def _pick_contrato_row_for_vd_lookup(rows, id_contrato_prefer):
-        if not rows:
-            return None
-        cid = str(id_contrato_prefer or '').strip()
-        if not cid:
-            return rows[0]
-        for r in rows:
-            if not isinstance(r, dict):
-                continue
-            rid = IXCIntegration._cliente_contrato_row_id_contrato(r)
-            if rid and rid == cid:
-                return r
-        return rows[0]
-
-    def _vd_lookup_qtypes_for_resource(self, resource):
-        r = (resource or '').strip()
-        rlow = r.lower()
-        base_cc = (settings.IXC_CLIENTE_CONTRATO_RESOURCE or 'cliente_contrato').strip().lower()
-        if rlow == base_cc or rlow.split('/')[-1] == base_cc:
-            return (
-                'cliente_contrato.id_vd_contrato',
-                'id_vd_contrato',
-            )
-        short = rlow.split('/')[-1].replace('-', '_')
-        return (f'{short}.id', 'id')
-
-    def _fetch_radusuarios_plano_aux_row_via_vd(self, id_vd, id_contrato=None):
-        """Listagens auxiliares pelo ``id_vd_contrato`` (vd_contrato indisponível no demo → ``cliente_contrato``)."""
+    def _fetch_vd_contrato_row_by_id(self, id_vd):
+        """Listar **somente** ``vd_contrato`` por id do plano de venda (para ``tipo`` coerente no incluir)."""
         logs = []
         vid = str(id_vd or '').strip()
         if not vid or not self.url or not self.token:
             return None, logs
-        raw = (getattr(settings, 'IXC_RADUSUARIOS_VD_LOOKUP_RESOURCES', None) or '').strip()
-        if raw:
-            resources = [x.strip() for x in raw.split(',') if x.strip()]
-        else:
-            resources = [(getattr(settings, 'IXC_VD_CONTRATO_RESOURCE', None) or 'vd_contrato').strip()]
-        for resource in resources:
-            endpoint = f'{self.url}/webservice/v1/{resource}'
-            for qtype in self._vd_lookup_qtypes_for_resource(resource):
-                payload = {
-                    'qtype': qtype,
-                    'query': vid,
-                    'oper': '=',
-                    'page': '1',
-                    'rp': '50',
-                    'sortname': 'id',
-                    'sortorder': 'desc',
-                }
-                etapa = f'PLANO_AUX_{resource.replace("/", "_")}'
-                result = self._post_ixc(
-                    endpoint,
-                    payload,
-                    etapa,
-                    extra_headers={'ixcsoft': 'listar'},
-                )
-                if result.get('status') != 'success':
-                    logs.append(
-                        f'[RADUSUARIOS] listar_plano_aux recurso={resource} qtype={qtype} http: '
-                        f'{result.get("message", "")[:80]}'
-                    )
-                    continue
-                data = result.get('data')
-                if not isinstance(data, dict) or str(data.get('type', '')).lower() == 'error':
-                    msg = str(data.get('message', ''))[:120] if isinstance(data, dict) else ''
-                    logs.append(
-                        f'[RADUSUARIOS] listar_plano_aux recurso={resource} qtype={qtype} erro_api: {msg}'
-                    )
-                    continue
-                rows = data.get('registros')
-                if not isinstance(rows, list):
-                    rows = data.get('records')
-                if not isinstance(rows, list) or not rows:
-                    continue
-                dict_rows = [r for r in rows if isinstance(r, dict)]
-                if not dict_rows:
-                    continue
-                chosen = self._pick_contrato_row_for_vd_lookup(dict_rows, id_contrato)
-                if chosen is None:
-                    continue
-                logs.append(
-                    f'[RADUSUARIOS] plano_aux recurso={resource} qtype={qtype} linhas={len(dict_rows)} '
-                    f'(id_contrato_pref={id_contrato or "-"})'
-                )
-                return chosen, logs
-        logs.append('[RADUSUARIOS] plano_aux: nenhuma listagem retornou linha para este id_vd_contrato')
-        return None, logs
-
-    @staticmethod
-    def _radusuarios_row_id_contrato(row):
-        if not isinstance(row, dict):
-            return ''
-        for pref in ('id_contrato', 'contrato_id'):
-            v = row.get(pref)
-            if v not in (None, '', 0, '0'):
-                return str(v).strip()
-        for k, v in row.items():
-            if not isinstance(k, str) or v in (None, '', 0, '0'):
-                continue
-            if k.split('.')[-1] in ('id_contrato', 'contrato_id'):
-                return str(v).strip()
-        return ''
-
-    @staticmethod
-    def _radusuarios_row_id_vd_contrato(row):
-        if not isinstance(row, dict):
-            return ''
-        for pref in ('id_vd_contrato',):
-            v = row.get(pref)
-            if v not in (None, '', 0, '0'):
-                return str(v).strip()
-        for k, v in row.items():
-            if not isinstance(k, str) or v in (None, '', 0, '0'):
-                continue
-            if k.split('.')[-1] == 'id_vd_contrato':
-                return str(v).strip()
-        return ''
-
-    def _fetch_radusuarios_primeiro_por_id_contrato(self, id_contrato, id_vd_contrato_prefer=None):
-        """Linha ``radusuarios`` (listar) com o mesmo ``id_contrato``.
-
-        Se ``id_vd_contrato_prefer`` for informado, usa só linha cujo ``id_vd_contrato`` coincida
-        (evita copiar grupo/mapa de login de outro plano no mesmo contrato → «plano não existe»).
-        """
-        logs = []
-        cid = str(id_contrato or '').strip()
-        vd_pref = str(id_vd_contrato_prefer or '').strip()
-        if not cid or not self.url or not self.token:
-            return None, logs
-        resource = (getattr(settings, 'IXC_RADUSUARIOS_RESOURCE', None) or 'radusuarios').strip()
+        resource = (getattr(settings, 'IXC_VD_CONTRATO_RESOURCE', None) or 'vd_contrato').strip()
         endpoint = f'{self.url}/webservice/v1/{resource}'
-        for qtype in ('radusuarios.id_contrato', 'id_contrato'):
+        qtypes = (
+            'id',
+            'vd_contrato.id',
+            'vd_contrato.id_vd_contrato',
+            'vd_contrato.id_vd',
+            'id_vd_contrato',
+            'id_vd',
+        )
+        for qtype in qtypes:
             payload = {
                 'qtype': qtype,
-                'query': cid,
+                'query': vid,
                 'oper': '=',
                 'page': '1',
                 'rp': '30',
-                'sortname': 'id',
-                'sortorder': 'asc',
-            }
-            result = self._post_ixc(
-                endpoint,
-                payload,
-                'RADUSUARIOS_LISTAR_CONTRATO',
-                extra_headers={'ixcsoft': 'listar'},
-            )
-            if result.get('status') != 'success':
-                logs.append(
-                    f'[RADUSUARIOS] listar_radusuarios_contrato qtype={qtype} http: '
-                    f'{(result.get("message") or "")[:100]}'
-                )
-                continue
-            data = result.get('data')
-            if not isinstance(data, dict) or str(data.get('type', '')).lower() == 'error':
-                msg = str(data.get('message', ''))[:120] if isinstance(data, dict) else ''
-                logs.append(f'[RADUSUARIOS] listar_radusuarios_contrato qtype={qtype} erro_api: {msg}')
-                continue
-            rows = data.get('registros')
-            if not isinstance(rows, list):
-                rows = data.get('records')
-            if isinstance(rows, dict):
-                rows = [rows]
-            if not isinstance(rows, list):
-                continue
-            dict_rows = [r for r in rows if isinstance(r, dict)]
-            if not dict_rows:
-                logs.append(f'[RADUSUARIOS] listar_radusuarios_contrato qtype={qtype} sem_registros')
-                continue
-            chosen = None
-            if vd_pref:
-                for r in dict_rows:
-                    if self._radusuarios_row_id_vd_contrato(r) == vd_pref:
-                        chosen = r
-                        break
-                if chosen is None:
-                    logs.append(
-                        f'[RADUSUARIOS] listar_radusuarios_contrato qtype={qtype} linhas={len(dict_rows)} '
-                        f'sem id_vd_contrato={vd_pref!r} no radius — não reutilizar grupo/mapa de outro plano.'
-                    )
-                    continue
-            else:
-                chosen = dict_rows[0]
-            logs.append(
-                f'[RADUSUARIOS] listar_radusuarios_contrato qtype={qtype} linhas={len(dict_rows)} '
-                f'(modelo grupo/mapa{" id_vd=" + vd_pref if vd_pref else ""})'
-            )
-            return chosen, logs
-        logs.append('[RADUSUARIOS] listar_radusuarios_contrato: sem linha neste id_contrato' + (f' id_vd={vd_pref!r}' if vd_pref else ''))
-        return None, logs
-
-    def _fetch_radusuarios_modelo_por_cliente_e_plano(self, id_cliente, id_vd, id_contrato):
-        """Listar ``radusuarios`` por id_cliente; prefere mesma id_contrato, senão mesmo id_vd_contrato, senão 1ª linha."""
-        logs = []
-        icy = str(id_cliente or '').strip()
-        if not icy or not self.url or not self.token:
-            return None, logs
-        resource = (getattr(settings, 'IXC_RADUSUARIOS_RESOURCE', None) or 'radusuarios').strip()
-        endpoint = f'{self.url}/webservice/v1/{resource}'
-        vd_w = str(id_vd or '').strip()
-        ctr_w = str(id_contrato or '').strip()
-        for qtype in (
-            'radusuarios.id_cliente',
-            'radusuarios.cliente_id',
-            'id_cliente',
-            'cliente_id',
-            'radusuarios.id_cliente_principal',
-        ):
-            payload = {
-                'qtype': qtype,
-                'query': icy,
-                'oper': '=',
-                'page': '1',
-                'rp': '80',
                 'sortname': 'id',
                 'sortorder': 'desc',
             }
             result = self._post_ixc(
                 endpoint,
                 payload,
-                'RADUSUARIOS_LISTAR_CLIENTE',
+                'VD_CONTRATO_TIPO_SYNC',
                 extra_headers={'ixcsoft': 'listar'},
             )
             if result.get('status') != 'success':
                 logs.append(
-                    f'[RADUSUARIOS] listar_radusuarios_cliente qtype={qtype} http: '
-                    f'{(result.get("message") or "")[:100]}'
+                    f'[VD_CONTRATO] listar qtype={qtype} http: {(result.get("message") or "")[:100]}'
                 )
                 continue
             data = result.get('data')
             if not isinstance(data, dict) or str(data.get('type', '')).lower() == 'error':
                 msg = str(data.get('message', ''))[:120] if isinstance(data, dict) else ''
-                logs.append(f'[RADUSUARIOS] listar_radusuarios_cliente qtype={qtype} erro_api: {msg}')
+                logs.append(f'[VD_CONTRATO] listar qtype={qtype} erro_api: {msg}')
                 continue
             rows = data.get('registros')
             if not isinstance(rows, list):
                 rows = data.get('records')
-            if isinstance(rows, dict):
-                rows = [rows]
-            if not isinstance(rows, list):
-                logs.append(
-                    f'[RADUSUARIOS] listar_radusuarios_cliente qtype={qtype} rows_nao_lista '
-                    f'type={type(rows).__name__} data_keys={list(data.keys())[:12]!r}'
-                )
+            if not isinstance(rows, list) or not rows:
                 continue
-            dict_rows = [r for r in rows if isinstance(r, dict)]
-            if not dict_rows:
-                logs.append(f'[RADUSUARIOS] listar_radusuarios_cliente qtype={qtype} sem_registros')
-                continue
-            chosen = None
-            if ctr_w:
-                for r in dict_rows:
-                    if self._radusuarios_row_id_contrato(r) == ctr_w:
-                        chosen = r
-                        break
-            if chosen is None and vd_w:
-                for r in dict_rows:
-                    if self._radusuarios_row_id_vd_contrato(r) == vd_w:
-                        chosen = r
-                        break
-            if chosen is None:
-                chosen = dict_rows[0]
-            logs.append(
-                f'[RADUSUARIOS] listar_radusuarios_cliente qtype={qtype} linhas={len(dict_rows)} '
-                f'(modelo grupo/mapa por contrato/vd)'
-            )
-            return chosen, logs
-        logs.append('[RADUSUARIOS] listar_radusuarios_cliente: falhou')
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                rid = str(
+                    r.get('id')
+                    or r.get('id_vd_contrato')
+                    or r.get('id_vd')
+                    or ''
+                ).strip()
+                if rid == vid:
+                    logs.append(f'[VD_CONTRATO] linha id={rid} qtype={qtype}')
+                    return r, logs
+            if rows and isinstance(rows[0], dict):
+                logs.append(f'[VD_CONTRATO] aviso: nenhum id exato {vid}; usando primeira linha qtype={qtype}')
+                return rows[0], logs
+        logs.append('[VD_CONTRATO] sem linha para este id (vd indisponível ou id inválido).')
         return None, logs
 
     @staticmethod
-    def _merge_radusuarios_grupo_tipo_apenas_de_linha_radius(row, payload, merged_plano):
-        """Copia só ``id_grupo`` / ``tipo_conexao_mapa`` (e sinônimos) de uma linha ``listar radusuarios``."""
-        applied = []
-        if not isinstance(row, dict) or not isinstance(payload, dict) or not isinstance(merged_plano, list):
-            return applied
-        grupo_tails = (
-            'id_grupo',
-            'id_grupo_login',
-            'id_grupo_radius',
-            'id_grupo_pppoe',
-            'id_grupo_internet',
-            'id_grupo_rad',
-        )
-        mapa_tails = (
-            'tipo_conexao_mapa',
-            'id_tipo_conexao_mapa',
-            'id_mapa_acesso',
-            'id_mapa',
-            'id_tipo_conexao',
-        )
-        for tail in grupo_tails:
-            hit = None
-            for k, v in row.items():
-                if not isinstance(k, str) or v in (None, '', 0, '0'):
-                    continue
-                if k == tail or k.split('.')[-1] == tail:
-                    hit = v
-                    break
-            if hit is not None:
-                payload['id_grupo'] = hit
-                if 'id_grupo' not in merged_plano:
-                    merged_plano.append('id_grupo')
-                applied.append('id_grupo')
-                break
-        for tail in mapa_tails:
-            hit = None
-            for k, v in row.items():
-                if not isinstance(k, str) or v in (None, '', 0, '0'):
-                    continue
-                if k == tail or k.split('.')[-1] == tail:
-                    hit = v
-                    break
-            if hit is not None:
-                payload['tipo_conexao_mapa'] = hit
-                if 'tipo_conexao_mapa' not in merged_plano:
-                    merged_plano.append('tipo_conexao_mapa')
-                applied.append('tipo_conexao_mapa')
-                break
-        return applied
-
-    @staticmethod
-    def _merge_radusuarios_fallback_desde_linha_cc(row, payload, merged_plano, lookup_logs, enabled):
-        """Sem modelo ``radusuarios``: tenta mapa/grupo a partir de colunas comuns no ``listar cliente_contrato``."""
-        if (
-            not enabled
-            or not isinstance(row, dict)
-            or not isinstance(payload, dict)
-            or not isinstance(merged_plano, list)
-            or not isinstance(lookup_logs, list)
-        ):
+    def _merge_cliente_contrato_campos_do_vd(payload, vd_row):
+        """Copia do ``vd_contrato`` campos que o IXC cruza com o contrato (evita ``tipo``/FK incoerentes)."""
+        if not isinstance(vd_row, dict) or not isinstance(payload, dict):
             return
-        if 'tipo_conexao_mapa' not in merged_plano:
-            for tail in ('id_tipo_conexao_mapa', 'id_mapa', 'id_mapa_acesso', 'id_tipo_contrato'):
-                for k, v in row.items():
-                    if not isinstance(k, str) or v in (None, '', 0, '0'):
-                        continue
-                    if k.split('.')[-1] != tail:
-                        continue
-                    s = str(v).strip()
-                    if s.isdigit():
-                        payload['tipo_conexao_mapa'] = s
-                        merged_plano.append('tipo_conexao_mapa')
-                        lookup_logs.append(
-                            f'[RADUSUARIOS] tipo_conexao_mapa via {tail} da linha cliente_contrato (fallback).'
-                        )
+        id_tc = None
+        for pref in ('id_tipo_contrato',):
+            v = vd_row.get(pref)
+            if v not in (None, '', 0, '0'):
+                id_tc = str(v).strip()
+                break
+        if not id_tc:
+            for k, v in vd_row.items():
+                if not isinstance(k, str) or v in (None, '', 0, '0'):
+                    continue
+                if k.split('.')[-1].lower() == 'id_tipo_contrato':
+                    id_tc = str(v).strip()
+                    break
+        if not id_tc:
+            for k, v in vd_row.items():
+                if not isinstance(k, str) or v in (None, '', 0, '0'):
+                    continue
+                kl = k.lower()
+                if 'id' in kl and 'tipo' in kl and 'contrato' in kl and 'document' not in kl:
+                    sv = str(v).strip()
+                    if sv.isdigit():
+                        id_tc = sv
                         break
-                else:
-                    continue
-                break
-        if 'id_grupo' not in merged_plano:
-            for k, v in row.items():
+        if id_tc:
+            payload['id_tipo_contrato'] = id_tc
+        tpm = vd_row.get('tipo_produtos_plano')
+        if tpm in (None, '', 0, '0'):
+            for k, v in vd_row.items():
                 if not isinstance(k, str) or v in (None, '', 0, '0'):
                     continue
-                tail = k.split('.')[-1].lower()
-                if tail != 'tipo_produtos_plano':
-                    continue
-                s = str(v).strip()
-                m = re.search(r'\d{1,12}', s)
-                if m:
-                    payload['id_grupo'] = m.group(0)
-                    merged_plano.append('id_grupo')
-                    lookup_logs.append(
-                        '[RADUSUARIOS] id_grupo via 1º número em tipo_produtos_plano (fallback; valide no IXC).'
-                    )
-                break
-        if 'id_grupo' not in merged_plano:
-            for k, v in row.items():
-                if not isinstance(k, str) or v in (None, '', 0, '0'):
-                    continue
-                tail = k.split('.')[-1].lower()
-                if 'grupo' not in tail or any(x in tail for x in ('descont', 'cancel', 'vended', 'comis', 'cobr')):
-                    continue
-                s = str(v).strip()
-                if s.isdigit():
-                    payload['id_grupo'] = s
-                    merged_plano.append('id_grupo')
-                    lookup_logs.append(f'[RADUSUARIOS] id_grupo via coluna {tail} (fallback).')
+                if 'tipo_produtos' in k.lower():
+                    tpm = v
                     break
+        if tpm not in (None, '', 0, '0'):
+            payload['tipo_produtos_plano'] = str(tpm).strip()
 
-    @staticmethod
-    def _merge_radusuarios_plano_desde_contrato(row, payload):
-        """Sobrescreve FKs de plano/conexão com o que está no contrato (evita «plano não existe neste contrato»).
-
-        A listagem IXC costuma trazer chaves com prefixo (ex.: ``cliente_contrato.id_grupo``) — usamos o sufixo.
-        Retorna lista de chaves canônicas efetivamente aplicadas ao payload.
-        """
-        merged = []
-        if not isinstance(row, dict) or not isinstance(payload, dict):
-            return merged
-        wanted = {
-            'id_vd_contrato',
-            'id_plano',
-            'id_plano_venda',
-            'id_plano_velocidade',
-            'id_grupo',
-            'tipo_conexao_mapa',
-            'id_tipo_conexao_mapa',
-            'id_mapa_acesso',
-            'id_concentrador',
-            'id_porta_servico',
-            'id_tipo_conexao',
-            'id_mapa',
-            'id_servico',
-            'id_servico_plano',
-            'id_produto',
-            'id_produto_plano',
-        }
-        synonyms = (
-            ('id_grupo', ('id_grupo_rad', 'id_grupo_radius', 'grupo_id', 'id_grupo_internet', 'id_grupo_login', 'id_grupo_pppoe')),
-            (
-                'tipo_conexao_mapa',
-                (
-                    'id_tipo_conexao_mapa',
-                    'tipo_conexao',
-                    'id_mapa_conexao',
-                    'id_matriz_conexao',
-                    'id_mapa_acesso',
-                    'mapa_conexao',
-                    'id_tipo_conexao_mapa_cliente',
-                ),
-            ),
-            ('id_vd_contrato', ('vd_contrato', 'id_vd_contrato_plano', 'id_plano_contrato')),
-        )
-
-        for k, v in row.items():
-            if not isinstance(k, str) or v in (None, '', 0, '0'):
-                continue
-            tail = k.split('.')[-1]
-            if tail in wanted:
-                payload[tail] = v
-                if tail not in merged:
-                    merged.append(tail)
-
-        for dst, srcs in synonyms:
-            if dst in merged:
-                continue
-            for s in srcs:
-                hit = None
-                for k, v in row.items():
-                    if not isinstance(k, str) or v in (None, '', 0, '0'):
-                        continue
-                    if k == s or k.split('.')[-1] == s:
-                        hit = v
-                        break
-                if hit is not None:
-                    payload[dst] = hit
-                    merged.append(dst)
-                    break
-
-        # Heurística: ``tipo_conexao`` (sem _mapa) ou chave com tipo+conexao+mapa no nome.
-        for k, v in row.items():
-            if not isinstance(k, str) or v in (None, '', 0, '0'):
-                continue
-            if 'tipo_conexao_mapa' in merged:
-                break
-            tail = k.split('.')[-1].lower()
-            if 'tipo' in tail and 'conex' in tail and ('mapa' in tail or tail == 'tipo_conexao'):
-                payload['tipo_conexao_mapa'] = v
-                merged.append('tipo_conexao_mapa')
-                break
-
-        if 'tipo_conexao_mapa' not in merged:
-            for k, v in row.items():
-                if not isinstance(k, str) or v in (None, '', 0, '0'):
-                    continue
-                tail = k.split('.')[-1].lower()
-                if tail in ('id_mapa', 'id_tipo_conexao_mapa', 'tipo_conexao_mapa'):
-                    payload['tipo_conexao_mapa'] = v
-                    merged.append('tipo_conexao_mapa')
-                    break
-
-        if 'id_grupo' not in merged:
-            for k, v in row.items():
-                if not isinstance(k, str) or v in (None, '', 0, '0'):
-                    continue
-                tail = k.split('.')[-1].lower()
-                if tail == 'grupo':
-                    payload['id_grupo'] = v
-                    merged.append('id_grupo')
-                    break
-                if re.match(r'^id_.*grupo.*$', tail) and 'cancel' not in tail and 'descont' not in tail:
-                    payload['id_grupo'] = v
-                    merged.append('id_grupo')
-                    break
-
-        # Scavenge: colunas fora do conjunto ``wanted`` (ex.: id_grupo_login, id_tipo_conexao_mapa_cliente).
-        if not str(payload.get('id_grupo', '') or '').strip():
-            best_v = None
-            best_rank = 999
-            for k, v in row.items():
-                if not isinstance(k, str) or v in (None, '', 0, '0'):
-                    continue
-                tail = k.split('.')[-1].lower()
-                rank = None
-                if tail in ('id_grupo', 'grupo_id'):
-                    rank = 0
-                elif tail in ('id_grupo_login', 'id_grupo_radius', 'id_grupo_pppoe', 'id_grupo_internet'):
-                    rank = 2
-                elif re.match(r'^id_[a-z0-9_]*grupo[a-z0-9_]*$', tail) and not any(
-                    x in tail for x in ('descont', 'cancel', 'vended', 'comiss', 'cobr', 'filial')
-                ):
-                    rank = 10 + len(tail)
-                if rank is not None and rank < best_rank:
-                    best_rank = rank
-                    best_v = v
-            if best_v is not None:
-                payload['id_grupo'] = best_v
-                merged.append('id_grupo')
-
-        if not str(payload.get('tipo_conexao_mapa', '') or '').strip():
-            best_v = None
-            best_rank = 999
-            for k, v in row.items():
-                if not isinstance(k, str) or v in (None, '', 0, '0'):
-                    continue
-                tail = k.split('.')[-1].lower()
-                rank = None
-                if tail in ('id_mapa', 'id_tipo_conexao_mapa', 'tipo_conexao_mapa', 'id_tipo_conexao'):
-                    rank = len(tail)
-                elif tail == 'tipo_conexao':
-                    rank = 20
-                elif 'conex' in tail and 'mapa' in tail:
-                    rank = 40 + len(tail)
-                if rank is not None and rank < best_rank:
-                    best_rank = rank
-                    best_v = v
-            if best_v is not None:
-                payload['tipo_conexao_mapa'] = best_v
-                merged.append('tipo_conexao_mapa')
-
-        # IXC às vezes expõe o mapa só no nome longo da coluna (ex.: cliente_contrato.id_tipo_conexao_mapa_acesso).
-        if 'tipo_conexao_mapa' not in merged:
-            for k, v in row.items():
-                if not isinstance(k, str) or v in (None, '', 0, '0'):
-                    continue
-                lk = k.lower()
-                if ('tipo_conexao' in lk) or ('tipo' in lk and ('mapa' in lk or 'conex' in lk)):
-                    payload['tipo_conexao_mapa'] = v
-                    merged.append('tipo_conexao_mapa')
-                    break
-
-        # O POST ``radusuarios`` valida ``tipo_conexao_mapa``; a listagem pode expor só id_mapa / id_tipo_conexao.
-        if not str(payload.get('tipo_conexao_mapa', '') or '').strip():
-            for alt in ('id_mapa', 'id_tipo_conexao_mapa', 'id_tipo_conexao'):
-                v = payload.get(alt)
-                if v in (None, '', 0, '0'):
-                    continue
-                payload['tipo_conexao_mapa'] = v
-                if 'tipo_conexao_mapa' not in merged:
-                    merged.append('tipo_conexao_mapa')
-                break
-
-        return merged
-
-    @staticmethod
-    def _merge_radusuarios_endereco_desde_contrato(row, payload):
-        """Copia chaves de endereço do retorno listar cliente_contrato para o POST radusuarios."""
-        if not isinstance(row, dict) or not isinstance(payload, dict):
-            return
-        prefer = (
-            'endereco',
-            'numero',
-            'bairro',
-            'complemento',
-            'cep',
-            'cidade',
-            'id_cidade',
-            'referencia',
-            'uf',
-            'latitude',
-            'longitude',
-            'endereco_padrao_cliente',
-            'endereco_novo',
-            'numero_novo',
-            'bairro_novo',
-            'cep_novo',
-            'cidade_novo',
-            'complemento_novo',
-            'referencia_novo',
-            'id_endereco',
-        )
-        for k in prefer:
-            if k not in row:
-                continue
-            v = row.get(k)
-            if v in (None, ''):
-                continue
-            if k == 'cidade' and str(v).strip() in ('0',):
-                continue
-            if k == 'id_cidade' and str(v).strip() in ('0',):
-                continue
-            payload[k] = v
-
-    def _completar_radusuarios_campos_obrigatorios(self, payload, lookup_logs):
-        """Remove duplicatas id_plano=id_vd. Completa tipo/grupo do .env quando ainda vazios (IXC exige ambos).
-        Com só ``id_contrato`` (sem ``id_vd_contrato`` no POST), também completa a partir do .env.
-        ``IXC_RADUSUARIOS_FORCAR_GRUPO_MAPA_COM_VD_CONTRATO``: sobrescreve sempre com .env (pode gerar «plano não existe»)."""
-        vd_raw = str(payload.get('id_vd_contrato', '') or '').strip()
-        id_ctr = str(payload.get('id_contrato', '') or '').strip()
-        if not vd_raw and not id_ctr:
-            return
-        if vd_raw:
-            vd_norm = self._ixc_fk_value(vd_raw)
-            for k in ('id_plano', 'id_plano_venda', 'id_plano_velocidade'):
-                if k not in payload:
-                    continue
-                pv = self._ixc_fk_value(str(payload.get(k, '')).strip())
-                if vd_norm is not None and pv is not None and str(pv) == str(vd_norm):
-                    del payload[k]
-                    lookup_logs.append(
-                        f'[RADUSUARIOS] removido {k} (igual a id_vd_contrato; evita «plano não existe neste contrato»)'
-                    )
-        forcar = getattr(settings, 'IXC_RADUSUARIOS_FORCAR_GRUPO_MAPA_COM_VD_CONTRATO', False)
-        if forcar:
-            payload['tipo_conexao_mapa'] = (settings.IXC_RADUSUARIOS_TIPO_CONEXAO_MAPA or '58').strip()
-            payload['id_grupo'] = (settings.IXC_RADUSUARIOS_ID_GRUPO or '9').strip()
-            lookup_logs.append(
-                '[RADUSUARIOS] tipo_conexao_mapa+id_grupo=forçados .env (IXC_RADUSUARIOS_FORCAR_GRUPO_MAPA_COM_VD_CONTRATO=True)'
-            )
-            return
-        if not str(payload.get('tipo_conexao_mapa', '') or '').strip():
-            payload['tipo_conexao_mapa'] = (settings.IXC_RADUSUARIOS_TIPO_CONEXAO_MAPA or '58').strip()
-            lookup_logs.append(
-                '[RADUSUARIOS] tipo_conexao_mapa=complemento .env'
-                + (' (há id_vd_contrato)' if vd_raw else ' (id_contrato sem id_vd no POST)')
-            )
-        if not str(payload.get('id_grupo', '') or '').strip():
-            payload['id_grupo'] = (settings.IXC_RADUSUARIOS_ID_GRUPO or '9').strip()
-            lookup_logs.append(
-                '[RADUSUARIOS] id_grupo=complemento .env'
-                + (' (há id_vd_contrato)' if vd_raw else ' (id_contrato sem id_vd no POST)')
-            )
+    def _resolve_tipo_contrato_alinhado_ao_plano_venda(self, id_vd, fallback_tipo):
+        """Retorna (``tipo`` para o POST, linha ``vd_contrato`` ou None) — regra IXC contrato vs plano."""
+        vid = str(id_vd or '').strip()
+        fb = (fallback_tipo or 'I').strip() or 'I'
+        if not vid or not self.url or not self.token:
+            return fb, None
+        row, _logs = self._fetch_vd_contrato_row_by_id(vid)
+        if row:
+            t = IXCIntegration._tipo_ixc_from_vd_sale_plan_row(row)
+            if t:
+                return t, row
+            return fb, row
+        return fb, None
 
     def resolve_cidade_ixc_id(self, cidade_slug):
         try:
@@ -1198,6 +622,70 @@ class IXCIntegration:
         except Exception:
             pass
         return self.CIDADES_MAP.get(cidade_slug, '') or ''
+
+    def resolve_plano_venda_id(self, cidade_slug, plano_codigo):
+        """ID do plano de venda (vd) no IXC: Operação (PlanoDefinicao) > .env > mapa legado."""
+        force = (getattr(settings, 'IXC_FORCE_PLANO_VENDA_ID', None) or '').strip()
+        if force:
+            return force
+        slug = (cidade_slug or '').strip()
+        codigo = (plano_codigo or '').strip()
+        if slug and codigo:
+            try:
+                from .operacao_models import CidadeOperacao, PlanoDefinicao
+
+                cidade = CidadeOperacao.objects.select_related('grupo_planos').get(slug=slug)
+                definicao = PlanoDefinicao.objects.filter(
+                    grupo=cidade.grupo_planos, codigo=codigo
+                ).first()
+                if definicao and (definicao.ixc_plano_venda_id or '').strip():
+                    return definicao.ixc_plano_venda_id.strip()
+            except Exception:
+                pass
+        default_env = (getattr(settings, 'IXC_DEFAULT_PLANO_VENDA_ID', None) or '').strip()
+        if default_env:
+            return default_env
+        return (self.PLANOS_MAP.get(codigo) or '').strip()
+
+    def resolve_canal_venda_id(self, origem_label):
+        """Canal de venda no IXC a partir da origem da ficha: Operação (OrigemCanalVenda) > .env > mapa legado."""
+        force = (getattr(settings, 'IXC_FORCE_CANAL_VENDA_ID', None) or '').strip()
+        if force:
+            return force
+        label = (origem_label or '').strip()
+        if label:
+            try:
+                from .operacao_models import OrigemCanalVenda
+
+                o = OrigemCanalVenda.objects.filter(ativo=True, label__iexact=label).first()
+                if o and (o.ixc_id or '').strip():
+                    return o.ixc_id.strip()
+            except Exception:
+                pass
+            ll = label.lower()
+            for k, v in self.ORIGENS_MAP.items():
+                if k.lower() == ll:
+                    return v
+        default_env = (getattr(settings, 'IXC_DEFAULT_CANAL_VENDA_ID', None) or '').strip()
+        return default_env
+
+    def _resolve_plano_e_canal_venda(self, cadastro):
+        """Tupla (id_plano_venda, id_canal_venda, id_campanha) para payloads comerciais (ex.: teste cliente_contrato)."""
+        id_plano = (
+            self.resolve_plano_venda_id(
+                getattr(cadastro, 'cidade', None), getattr(cadastro, 'plano', None)
+            )
+            or ''
+        ).strip()
+        id_canal = (self.resolve_canal_venda_id(getattr(cadastro, 'origem', None)) or '').strip()
+        if getattr(settings, 'IXC_SEND_CANAL_AS_ID_CAMPANHA', False) and id_canal:
+            id_campanha = id_canal
+        else:
+            id_campanha = (
+                (getattr(settings, 'IXC_FORCE_CAMPANHA_ID', None) or '').strip()
+                or (getattr(settings, 'IXC_DEFAULT_CAMPANHA_ID', None) or '').strip()
+            )
+        return id_plano, id_canal, id_campanha
 
     @staticmethod
     def _ixc_display_pii(cadastro):
@@ -1591,44 +1079,53 @@ class IXCIntegration:
 
     def create_crm_prospect(self, cadastro, *, link_contato_id=None, ixc_lead_resource=None, force=False):
         """
-        Cria prospecção no IXC, reutilizando a ficha do cadastro.
-        Tenta vários nomes de recurso até um aceitar o POST (configurável por IXC_CRM_PROSPECT_RESOURCE).
-        `force=True` ignora IXC_CREATE_CRM_PROSPECT (etapa 2 do painel).
+        Etapa 2 no painel: POST de prospecção CRM no IXC (Postman — ``/webservice/v1/crm_canditados`` em primeiro lugar).
+        Para ``crm_canditados`` / ``crm_candidatos`` usa ``build_crm_candidatos_payload``; para ``crm_prospect`` (legado)
+        usa ``build_crm_prospect_payload``. Ordem dos recursos: ``IXC_CRM_PROSPECT_RESOURCE`` ou fila padrão em
+        ``_crm_prospect_resources_to_try``. ``force=True`` ignora IXC_CREATE_CRM_PROSPECT.
         """
         if not force and not getattr(settings, 'IXC_CREATE_CRM_PROSPECT', False):
             return {
                 'status': 'skipped',
                 'message': 'IXC_CREATE_CRM_PROSPECT=False',
-                'logs': ['[CRM_PROSPECT] desativado nas configurações (use etapa 2 com force ou ative o .env).'],
+                'logs': ['[CRM_ETAPA2] desativado nas configurações (use etapa 2 com force ou ative o .env).'],
             }
         if not self.url or not self.token:
             return {
                 'status': 'error',
                 'message': 'API do IXC não configurada.',
-                'logs': ['[CRM_PROSPECT] IXC_API_URL/IXC_API_TOKEN ausentes.'],
+                'logs': ['[CRM_ETAPA2] IXC_API_URL/IXC_API_TOKEN ausentes.'],
             }
-        payload = self.build_crm_prospect_payload(
-            cadastro,
-            link_contato_id=link_contato_id,
-            ixc_lead_resource=ixc_lead_resource,
-        )
-        debug_path = self._save_debug_json(cadastro.pk, payload, 'CRM_PROSPECT')
         all_logs = []
-        if debug_path:
-            all_logs.append(f'[CRM_PROSPECT] debug_json={debug_path}')
         if link_contato_id:
             all_logs.append(
-                f'[CRM_PROSPECT] vinculo_ixc_id={link_contato_id} recurso_etapa1={ixc_lead_resource or "(vazio)"}'
+                f'[CRM_ETAPA2] vinculo_ixc_id={link_contato_id} recurso_etapa1={ixc_lead_resource or "(vazio)"}'
             )
 
         resources_to_try = self._crm_prospect_resources_to_try()
         last_error = None
         for idx, resource in enumerate(resources_to_try):
+            if self._crm_etapa2_resource_uses_candidatos_payload(resource):
+                payload = self.build_crm_candidatos_payload(
+                    cadastro,
+                    link_contato_id=link_contato_id,
+                    ixc_lead_resource=ixc_lead_resource,
+                )
+            else:
+                payload = self.build_crm_prospect_payload(
+                    cadastro,
+                    link_contato_id=link_contato_id,
+                    ixc_lead_resource=ixc_lead_resource,
+                )
+            debug_path = self._save_debug_json(cadastro.pk, payload, f'CRM_ETAPA2_{resource}')
+            if debug_path:
+                all_logs.append(f'[CRM_ETAPA2] debug_json={debug_path}')
+
             endpoint = f"{self.url}/webservice/v1/{resource}"
             result = self._post_ixc(
                 endpoint,
                 payload,
-                'CRM_PROSPECT',
+                'CRM_ETAPA2',
                 extra_headers={'ixcsoft': 'incluir'},
             )
             all_logs.extend(result.get('logs', []))
@@ -1646,11 +1143,11 @@ class IXCIntegration:
                 nxt = resources_to_try[idx + 1] if idx + 1 < len(resources_to_try) else None
                 if nxt:
                     all_logs.append(
-                        f'[CRM_PROSPECT] recurso `{resource}` indisponível no IXC; tentando `{nxt}`.'
+                        f'[CRM_ETAPA2] recurso `{resource}` indisponível no IXC; tentando `{nxt}`.'
                     )
                 else:
                     all_logs.append(
-                        f'[CRM_PROSPECT] recurso `{resource}` indisponível no IXC (sem mais recursos na fila).'
+                        f'[CRM_ETAPA2] recurso `{resource}` indisponível no IXC (sem mais recursos na fila).'
                     )
                 last_error = result
                 continue
@@ -1658,37 +1155,37 @@ class IXCIntegration:
             if result.get('status') != 'success':
                 return {
                     'status': 'error',
-                    'message': result.get('message') or 'Falha HTTP ao criar prospecção.',
+                    'message': result.get('message') or 'Falha HTTP na etapa 2 (IXC).',
                     'logs': all_logs,
                 }
 
             if response_type == 'error':
                 return {
                     'status': 'error',
-                    'message': response_message or 'IXC retornou erro ao criar prospecção.',
-                    'logs': all_logs + [f'[CRM_PROSPECT] erro_api: {response_message}'],
+                    'message': response_message or 'IXC retornou erro na etapa 2.',
+                    'logs': all_logs + [f'[CRM_ETAPA2] erro_api: {response_message}'],
                 }
 
             prospect_id = self._extract_id(response_data)
             if prospect_id in (None, '', 0, '0'):
                 if isinstance(response_data, dict) and len(response_data) == 0:
                     all_logs.append(
-                        '[CRM_PROSPECT] IXC retornou 200 com JSON vazio (doc: sem corpo). '
-                        'Confira no CRM se a prospecção foi criada.'
+                        '[CRM_ETAPA2] IXC retornou 200 com JSON vazio (doc: sem corpo). '
+                        'Confira no CRM se o registro foi criado.'
                     )
                     return {
                         'status': 'warning',
                         'prospect_id': None,
                         'prospect_resource': resource,
-                        'message': 'IXC aceitou o cadastro da prospecção sem retornar ID no JSON. Verifique no IXC.',
+                        'message': 'IXC aceitou o cadastro sem retornar ID no JSON. Verifique no IXC.',
                         'logs': all_logs,
                     }
                 return {
                     'status': 'error',
-                    'message': 'IXC não retornou ID da prospecção.',
-                    'logs': all_logs + ['[CRM_PROSPECT] id ausente na resposta'],
+                    'message': 'IXC não retornou ID do registro (etapa 2).',
+                    'logs': all_logs + ['[CRM_ETAPA2] id ausente na resposta'],
                 }
-            all_logs.append(f'[CRM_PROSPECT] recurso_ativo={resource} id={prospect_id}')
+            all_logs.append(f'[CRM_ETAPA2] recurso_ativo={resource} id={prospect_id}')
             return {
                 'status': 'success',
                 'prospect_id': prospect_id,
@@ -1700,14 +1197,25 @@ class IXCIntegration:
         msg_tail = ''
         if last_error and isinstance(last_error.get('data'), dict):
             msg_tail = str(last_error['data'].get('message', '') or '')
-        base_msg = msg_tail or 'Nenhum recurso de prospecção disponível neste IXC.'
-        if self._is_demo_ixc_host() and last_error and self._is_resource_unavailable(last_error):
+        base_msg = msg_tail or 'Nenhum recurso da etapa 2 disponível neste IXC.'
+        demo_recurso_indisponivel = (
+            self._is_demo_ixc_host()
+            and last_error
+            and self._is_resource_unavailable(last_error)
+        )
+        if demo_recurso_indisponivel:
             base_msg = (
                 f'{base_msg} '
-                'No IXC demo (demo.ixcsoft.com.br) o webservice de prospecção costuma não existir; '
-                'a etapa 1 em `contato` é a suportada. Para a etapa 2, use o IXC do seu provedor e o recurso '
-                'indicado no Postman (IXC_CRM_PROSPECT_RESOURCE / IXC_CRM_PROSPECT_FALLBACK_RESOURCES).'
+                'No IXC demo alguns webservices podem estar desativados. No provedor real use '
+                '`crm_canditados` (Postman) ou configure `IXC_CRM_PROSPECT_RESOURCE` / '
+                '`IXC_CRM_PROSPECT_FALLBACK_RESOURCES`.'
             )
+            return {
+                'status': 'warning',
+                'message': base_msg,
+                'prospect_id': None,
+                'logs': all_logs or (last_error.get('logs', []) if last_error else []),
+            }
         return {
             'status': 'error',
             'message': base_msg,
@@ -1835,442 +1343,18 @@ class IXCIntegration:
             return json.load(f)
 
     def _ixc_id_cliente_for_cadastro(self, cadastro):
-        """id_cliente IXC: .env > prospecção (crm_canditados) > contato (lead)."""
-        ex = (settings.IXC_CONTRATO_TEST_ID_CLIENTE or '').strip()
-        if ex:
-            return ex
+        """id_cliente IXC: vínculo da ficha (prospecção > contato) > .env só se a ficha não tiver IXC.
+
+        ``IXC_CONTRATO_TEST_ID_CLIENTE`` é fallback de homologação; se vier **antes** do vínculo da ficha,
+        todo contrato/teste ia para o cliente fixo (ex.: 2306) mesmo após novo lead/prospect.
+        """
         pid = (cadastro.ixc_prospect_id or '').strip()
         if pid:
             return pid
-        return (cadastro.ixc_lead_id or '').strip()
-
-    def _id_cliente_para_radusuarios(self, cadastro):
-        """id_cliente no POST radusuarios: .env > lead ou prospect (configurável), não misturar com teste contrato."""
-        ex = (settings.IXC_CONTRATO_TEST_ID_CLIENTE or '').strip()
-        if ex:
-            return ex
-        modo = (getattr(settings, 'IXC_RADUSUARIOS_ID_CLIENTE_FONTE', None) or 'lead').strip().lower()
-        lead = (cadastro.ixc_lead_id or '').strip()
-        prospect = (cadastro.ixc_prospect_id or '').strip()
-        if modo == 'prospect':
-            return prospect or lead
-        return lead or prospect
-
-    @staticmethod
-    def _slug_pppoe_login_part(text, max_len=48):
-        """Apenas [a-z0-9], minúsculo, sem acentos (trecho login PPPoE)."""
-        if not text:
-            return ''
-        nfd = unicodedata.normalize('NFD', str(text))
-        ascii_v = ''.join(c for c in nfd if unicodedata.category(c) != 'Mn')
-        buf = []
-        for c in ascii_v.lower():
-            if c.isalnum():
-                buf.append(c)
-        return ''.join(buf)[:max_len]
-
-    def build_pppoe_login_for_cadastro(self, cadastro):
-        """Login no formato nomedarua.nomedocliente (minúsculo, só letras/números e um ponto)."""
-        rua = self._slug_pppoe_login_part(cadastro.endereco, 44)
-        nome = self._slug_pppoe_login_part(cadastro.nome_razao, 44)
-        if not nome:
-            nome = 'cliente'
-        if not rua:
-            rua = self._slug_pppoe_login_part(cadastro.bairro, 24) or 'rua'
-        login = f'{rua}.{nome}'.lower()
-        login = re.sub(r'[^a-z0-9.]', '', login)
-        login = re.sub(r'\.{2,}', '.', login).strip('.')
-        if len(login) > 64:
-            login = login[:64].rstrip('.')
-        return login or f'cli{cadastro.pk}'
-
-    def build_radusuarios_pppoe_payload(self, cadastro):
-        """POST ``radusuarios`` — login PPPoE + senha = CPF (dígitos). Retorna (payload, erro_msg, lookup_logs)."""
-        from .models import only_digits_br
-
-        lookup_logs = []
-
-        id_cliente = self._id_cliente_para_radusuarios(cadastro)
-        if not id_cliente:
-            return None, (
-                'id_cliente ausente para radusuarios: envie ao IXC (lead+prospecção) ou defina '
-                'IXC_CONTRATO_TEST_ID_CLIENTE. Com lead e prospect, o padrão é usar o lead (contato); '
-                'ajuste IXC_RADUSUARIOS_ID_CLIENTE_FONTE=prospect se o seu IXC exigir o id da prospecção.'
-            ), lookup_logs
-
-        id_contrato = (getattr(cadastro, 'ixc_contrato_id', None) or '').strip()
-        if not id_contrato:
-            id_contrato = (settings.IXC_RADUSUARIOS_TEST_ID_CONTRATO or '').strip()
-        if not id_contrato:
-            id_contrato = (settings.IXC_CONTRATO_TEST_ID_CONTRATO or '').strip()
-        if not id_contrato and getattr(settings, 'IXC_RADUSUARIOS_LOOKUP_CONTRATO_LISTAR', True):
-            fetched, flogs = self._fetch_first_contrato_id_for_id_cliente(id_cliente)
-            lookup_logs.extend(flogs)
-            if fetched:
-                id_contrato = fetched
-        if not id_contrato:
-            return None, (
-                'id_contrato ausente. O IXC exige o contrato. Opções: '
-                '(1) teste «contrato + PPPoE» com sucesso — grava ixc_contrato_id; '
-                '(2) IXC_RADUSUARIOS_TEST_ID_CONTRATO ou IXC_CONTRATO_TEST_ID_CONTRATO no .env; '
-                '(3) contrato já existente no IXC para o mesmo id_cliente — com '
-                'IXC_RADUSUARIOS_LOOKUP_CONTRATO_LISTAR=True (padrão) tentamos listar automaticamente. '
-                'Confira logs acima e logs/ixc_debug/.'
-            ), lookup_logs
-
-        senha = only_digits_br(cadastro.documento)
-        if not senha:
-            return None, 'Documento (CPF/CNPJ) ausente para senha PPPoE.', lookup_logs
-        if getattr(cadastro, 'tipo_pessoa', 'pf') == 'pf':
-            if len(senha) != 11:
-                return None, f'CPF deve ter 11 dígitos para senha PPPoE (encontrado {len(senha)}).', lookup_logs
-        elif len(senha) != 14:
-            return None, f'CNPJ deve ter 14 dígitos para senha PPPoE (encontrado {len(senha)}).', lookup_logs
-
-        login = self.build_pppoe_login_for_cadastro(cadastro)
-
-        ixc_data = cadastro.get_ixc_data()
-        id_cidade_rs = (self.resolve_cidade_ixc_id(cadastro.cidade) or '').strip()
-        _, cep_display, _ = self._ixc_display_pii(cadastro)
-        endereco = (ixc_data.get('endereco') or '').strip().upper()
-        if not endereco:
-            endereco = 'ENDERECO NAO INFORMADO'
-        bairro = (ixc_data.get('bairro') or '').strip().upper()
-        if not bairro:
-            bairro = 'NAO INFORMADO'
-        numero = (ixc_data.get('numero') or 'S/N').strip().upper()
-        cidade_val = id_cidade_rs if id_cidade_rs else (str(cadastro.cidade or '').strip() or '1')
-        if str(cidade_val).strip().isdigit():
-            cidade_val = self._ixc_fk_value(str(cidade_val).strip())
-            payload_cidade_id = cidade_val
-        else:
-            payload_cidade_id = None
-
-        payload = {
-            'autenticacao': (settings.IXC_RADUSUARIOS_AUTENTICACAO or 'L').strip(),
-            'id_cliente': str(id_cliente),
-            'id_contrato': str(id_contrato),
-            'login': login,
-            'senha_md5': (settings.IXC_RADUSUARIOS_SENHA_MD5 or 'N').strip(),
-            'senha': senha,
-            'login_simultaneo': (settings.IXC_RADUSUARIOS_LOGIN_SIMULTANEO or '1').strip(),
-            'ativo': (settings.IXC_RADUSUARIOS_ATIVO or 'S').strip(),
-            'auto_preencher_ip': (settings.IXC_RADUSUARIOS_AUTO_PREENCHER_IP or 'S').strip(),
-            'fixar_ip': (settings.IXC_RADUSUARIOS_FIXAR_IP or 'N').strip(),
-            'relacionar_ip_ao_login': (settings.IXC_RADUSUARIOS_RELACIONAR_IP_AO_LOGIN or 'N').strip(),
-            'autenticacao_por_mac': (settings.IXC_RADUSUARIOS_AUTENTICACAO_POR_MAC or 'N').strip(),
-            'auto_preencher_mac': (settings.IXC_RADUSUARIOS_AUTO_PREENCHER_MAC or 'S').strip(),
-            'relacionar_mac_ao_login': (settings.IXC_RADUSUARIOS_RELACIONAR_MAC_AO_LOGIN or 'S').strip(),
-            'tipo_vinculo_plano': (settings.IXC_RADUSUARIOS_TIPO_VINCULO_PLANO or 'D').strip(),
-            # Vários IXC exigem endereço no WS radusuarios (erro «Preencha Endereço» sem estes campos).
-            'endereco': endereco,
-            'numero': numero,
-            'bairro': bairro,
-            'complemento': (ixc_data.get('complemento') or '').strip().upper(),
-            'cep': cep_display or (cadastro.cep or '').strip(),
-            'cidade': cidade_val,
-            'referencia': (ixc_data.get('referencia') or '').strip().upper(),
-        }
-        if payload_cidade_id is not None:
-            payload['id_cidade'] = payload_cidade_id
-
-        ed_pad = (getattr(settings, 'IXC_RADUSUARIOS_ENDERECO_PADRAO_CLIENTE', None) or '').strip()
-        if ed_pad:
-            payload['endereco_padrao_cliente'] = ed_pad
-            # Algumas bases IXC validam só o nome curto do formulário.
-            payload['endereco_padrao'] = ed_pad
-
-        row = None
-        merged_plano = []
-        do_merge = getattr(settings, 'IXC_RADUSUARIOS_MERGE_ENDERECO_CONTRATO', True)
-        if do_merge:
-            row, flogs = self._fetch_cliente_contrato_row_by_id(id_contrato)
-            lookup_logs.extend(flogs)
-            if row:
-                self._merge_radusuarios_endereco_desde_contrato(row, payload)
-                merged_plano = self._merge_radusuarios_plano_desde_contrato(row, payload)
-                lookup_logs.append('[RADUSUARIOS] endereco_e_plano_mesclados_do_cliente_contrato')
-                lookup_logs.append(f'[RADUSUARIOS] plano_mesclado_chaves={merged_plano}')
-                if not merged_plano:
-                    lookup_logs.append(
-                        f'[RADUSUARIOS] aviso: nenhuma FK de plano reconhecida na linha do contrato; '
-                        f'amostra_chaves_ixc={sorted(row.keys())[:80]}'
-                    )
-                ex_cli = (settings.IXC_CONTRATO_TEST_ID_CLIENTE or '').strip()
-                id_cli_ixc = self._id_cliente_from_cliente_contrato_row(row)
-                cur_cli = str(payload.get('id_cliente', '') or '').strip()
-                if not ex_cli and id_cli_ixc and id_cli_ixc != cur_cli:
-                    payload['id_cliente'] = id_cli_ixc
-                    lookup_logs.append(
-                        f'[RADUSUARIOS] id_cliente alinhado ao contrato IXC: {cur_cli!r} -> {id_cli_ixc!r} '
-                        f'(IXC_RADUSUARIOS_ID_CLIENTE_FONTE={getattr(settings, "IXC_RADUSUARIOS_ID_CLIENTE_FONTE", "lead")!r} '
-                        'apontava outro vínculo; o listar cliente_contrato traz o dono real do contrato.)'
-                    )
-                elif id_cli_ixc and id_cli_ixc == cur_cli:
-                    lookup_logs.append(f'[RADUSUARIOS] id_cliente conferido com listagem contrato: {cur_cli!r}')
-                elif not id_cli_ixc:
-                    lookup_logs.append(
-                        '[RADUSUARIOS] aviso: listagem contrato sem id_cliente reconhecido nas chaves; '
-                        'se «plano não existe neste contrato», tente IXC_RADUSUARIOS_ID_CLIENTE_FONTE=prospect.'
-                    )
-                if isinstance(merged_plano, list) and merged_plano == ['id_vd_contrato']:
-                    hint = sorted(
-                        k
-                        for k in row
-                        if isinstance(k, str)
-                        and any(
-                            x in k.lower()
-                            for x in ('tipo', 'mapa', 'grupo', 'conex', 'plano', 'vd', 'radius', 'fibra')
-                        )
-                    )[:50]
-                    lookup_logs.append(
-                        f'[RADUSUARIOS] dica_ixc: só id_vd no merge; confira no IXC o ID de «Fibra» e do grupo. '
-                        f'Chaves da listagem do contrato com tipo/map/grupo/plano (amostra)={hint}'
-                    )
-
-        # Plano de venda (id_vd_contrato): priorizar o valor do listar cliente_contrato quando o merge
-        # trouxe esse campo — no IXC o ID 1 pode ser o Plano de venda real do contrato (ex.: demo).
-        # Só substituímos pela ficha/Operação para '0' (inválido) ou '1' quando NÃO veio do contrato
-        # (ex.: resquício sem merge), para não quebrar «Este plano não existe neste contrato!».
-        vd_cur = str(payload.get('id_vd_contrato', '') or '').strip()
-        ip_op = (self.resolve_plano_venda_id(cadastro.cidade, cadastro.plano) or '').strip()
-        vd_veio_do_contrato = isinstance(merged_plano, list) and 'id_vd_contrato' in merged_plano
-        substituir_vd_pela_ficha = False
-        if ip_op and vd_cur in ('0', '1'):
-            if vd_cur == '0':
-                substituir_vd_pela_ficha = True
-            elif vd_cur == '1' and not vd_veio_do_contrato:
-                substituir_vd_pela_ficha = True
-        if substituir_vd_pela_ficha:
-            vnorm = self._ixc_fk_value(ip_op.strip())
-            payload['id_vd_contrato'] = vnorm if vnorm is not None else ip_op.strip()
-            lookup_logs.append(
-                f'[RADUSUARIOS] id_vd_contrato ajustado: valor anterior {vd_cur!r} (sem plano de venda '
-                f'confiável do contrato); usando ficha/Operação (resolve_plano_venda_id): {ip_op!r}'
-            )
-        elif vd_cur == '1' and vd_veio_do_contrato and ip_op and ip_op.strip() != '1':
-            lookup_logs.append(
-                '[RADUSUARIOS] id_vd_contrato=1 mantido (Plano de venda vindo do cliente_contrato; '
-                f'não substituir pela ficha id={ip_op!r} — o IXC valida o plano junto ao contrato).'
-            )
-
-        icid = payload.get('id_cidade')
-        if icid not in (None, '', 0, '0'):
-            cval = payload.get('cidade')
-            if cval in (None, '', 0, '0') or str(cval).strip() in ('0', ''):
-                payload['cidade'] = str(icid).strip()
-                lookup_logs.append('[RADUSUARIOS] cidade alinhada a id_cidade (evita 0 vindo do merge IXC).')
-
-        if getattr(settings, 'IXC_RADUSUARIOS_LOOKUP_VD_CONTRATO_LISTAR', True) and self._radusuarios_postar_id_vd_contrato_no_ixc(
-            merged_plano
-        ):
-            ivd = str(payload.get('id_vd_contrato') or '').strip()
-            if ivd:
-                falta_tipo = not str(payload.get('tipo_conexao_mapa') or '').strip()
-                falta_grupo = not str(payload.get('id_grupo') or '').strip()
-                if falta_tipo or falta_grupo:
-                    aux_row, vlogs = self._fetch_radusuarios_plano_aux_row_via_vd(ivd, id_contrato)
-                    lookup_logs.extend(vlogs)
-                    if aux_row:
-                        extra = self._merge_radusuarios_plano_desde_contrato(aux_row, payload)
-                        for k in extra:
-                            if k not in merged_plano:
-                                merged_plano.append(k)
-                        lookup_logs.append(f'[RADUSUARIOS] plano_complementado_via_listagem_vd chaves={extra}')
-
-        env_fallback = getattr(
-            settings, 'IXC_RADUSUARIOS_USAR_GRUPO_MAPA_ENV_SE_CONTRATO_SEM_FK', False
-        )
-        usar_grupo_env = (not do_merge) or (row is None) or (do_merge and row is not None and not merged_plano and env_fallback)
-        if usar_grupo_env:
-            payload['tipo_conexao_mapa'] = (settings.IXC_RADUSUARIOS_TIPO_CONEXAO_MAPA or '58').strip()
-            payload['id_grupo'] = (settings.IXC_RADUSUARIOS_ID_GRUPO or '9').strip()
-            lookup_logs.append(
-                '[RADUSUARIOS] id_grupo+tipo_conexao_mapa via .env '
-                '(merge off, sem linha de contrato, ou IXC_RADUSUARIOS_USAR_GRUPO_MAPA_ENV_SE_CONTRATO_SEM_FK=True)'
-            )
-
-        if getattr(settings, 'IXC_RADUSUARIOS_LISTAR_MODELO_RADIUS', True) and isinstance(merged_plano, list):
-            falta_grupo_no_merge = 'id_grupo' not in merged_plano
-            falta_mapa_no_merge = 'tipo_conexao_mapa' not in merged_plano
-            if falta_grupo_no_merge or falta_mapa_no_merge:
-                ivd_rad = str(payload.get('id_vd_contrato', '') or '').strip()
-                rad_mod, rlogs = self._fetch_radusuarios_primeiro_por_id_contrato(
-                    str(id_contrato),
-                    id_vd_contrato_prefer=ivd_rad or None,
-                )
-                lookup_logs.extend(rlogs)
-                if isinstance(rad_mod, dict):
-                    ex = self._merge_radusuarios_grupo_tipo_apenas_de_linha_radius(rad_mod, payload, merged_plano)
-                    if ex:
-                        lookup_logs.append(
-                            f'[RADUSUARIOS] grupo_mapa_de_radusuarios_mesmo_contrato chaves={ex}'
-                        )
-                falta_grupo_no_merge = 'id_grupo' not in merged_plano
-                falta_mapa_no_merge = 'tipo_conexao_mapa' not in merged_plano
-                if (falta_grupo_no_merge or falta_mapa_no_merge) and str(
-                    payload.get('id_cliente', '') or ''
-                ).strip():
-                    icy = str(payload['id_cliente']).strip()
-                    ivd = str(payload.get('id_vd_contrato', '') or '').strip()
-                    rad2, rlogs2 = self._fetch_radusuarios_modelo_por_cliente_e_plano(icy, ivd, str(id_contrato))
-                    lookup_logs.extend(rlogs2)
-                    if isinstance(rad2, dict):
-                        ex2 = self._merge_radusuarios_grupo_tipo_apenas_de_linha_radius(rad2, payload, merged_plano)
-                        if ex2:
-                            lookup_logs.append(
-                                f'[RADUSUARIOS] grupo_mapa_de_radusuarios_mesmo_cliente_plano chaves={ex2}'
-                            )
-
-        if row and isinstance(row, dict):
-            IXCIntegration._merge_radusuarios_fallback_desde_linha_cc(
-                row,
-                payload,
-                merged_plano,
-                lookup_logs,
-                getattr(settings, 'IXC_RADUSUARIOS_FALLBACK_CC_LINHA_PARA_MAPA', True),
-            )
-
-        self._completar_radusuarios_campos_obrigatorios(payload, lookup_logs)
-
-        if getattr(settings, 'IXC_RADUSUARIOS_OMITIR_GRUPO_MAPA_ENV_COM_VD_MERGE', True) and isinstance(
-            merged_plano, list
-        ) and 'id_vd_contrato' in merged_plano:
-            if 'id_grupo' not in merged_plano and 'id_grupo' in payload:
-                payload.pop('id_grupo', None)
-                lookup_logs.append(
-                    '[RADUSUARIOS] omitido id_grupo (merge do contrato não trouxe; 9 do .env costuma invalidar o plano). '
-                    'IXC_RADUSUARIOS_OMITIR_GRUPO_MAPA_ENV_COM_VD_MERGE=False para forçar .env.'
-                )
-            if 'tipo_conexao_mapa' not in merged_plano and 'tipo_conexao_mapa' in payload:
-                payload.pop('tipo_conexao_mapa', None)
-                lookup_logs.append(
-                    '[RADUSUARIOS] omitido tipo_conexao_mapa (idem; 58 do .env). '
-                    'Se o IXC pedir «Preencha tipo/plano», preencha IXC_RADUSUARIOS_ID_GRUPO/TIPO_CONEXAO_MAPA com os IDs do plano no seu IXC.'
-                )
-
-        postar_vd = self._radusuarios_postar_id_vd_contrato_no_ixc(merged_plano)
-        if postar_vd:
-            lookup_logs.append(
-                '[RADUSUARIOS] id_vd_contrato permanece no POST (veio do merge cliente_contrato; '
-                'IXC valida plano junto ao contrato).'
-            )
-        if not postar_vd:
-            removed = []
-            for k in (
-                'id_vd_contrato',
-                'id_vd_contrato_desejado',
-                'id_plano',
-                'id_plano_venda',
-                'id_plano_velocidade',
-            ):
-                if k in payload:
-                    del payload[k]
-                    removed.append(k)
-            if removed:
-                lookup_logs.append(
-                    f'[RADUSUARIOS] omitidos_do_post_ixc (sem id_vd no POST; JSON mínimo provedor): {removed}'
-                )
-
-        uf = (cadastro.uf or '').strip().upper()
-        if uf and not (isinstance(payload.get('uf'), str) and payload['uf'].strip()):
-            payload['uf'] = uf
-
-        addr_keys = sorted(
-            k
-            for k in payload
-            if any(
-                t in k.lower()
-                for t in ('endereco', 'cidade', 'cep', 'bairro', 'numero', 'complemento', 'referencia', 'latitude', 'longitude')
-            )
-        )
-        plano_keys = sorted(
-            k
-            for k in payload
-            if any(
-                t in k.lower()
-                for t in (
-                    'plano',
-                    'vd_contrato',
-                    'grupo',
-                    'conexao_mapa',
-                    'concentrador',
-                    'porta_serv',
-                    'tipo_conexao',
-                    'servico',
-                    'produto',
-                )
-            )
-        )
-        lookup_logs.append(f'[RADUSUARIOS] chaves_endereco_no_payload={addr_keys}')
-        lookup_logs.append(f'[RADUSUARIOS] chaves_plano_conexao_no_payload={plano_keys}')
-        return payload, None, lookup_logs
-
-    def create_radusuarios_pppoe_test(self, cadastro):
-        """POST ``webservice/v1/radusuarios`` com ``ixcsoft: incluir`` (teste PPPoE)."""
-        if not self.url or not self.token:
-            return {
-                'status': 'error',
-                'message': 'API do IXC não configurada (IXC_API_URL / IXC_API_TOKEN).',
-                'logs': ['[RADUSUARIOS] IXC ausente.'],
-            }
-        prev_contrato = (getattr(cadastro, 'ixc_contrato_id', None) or '').strip()
-        payload, err, lookup_logs = self.build_radusuarios_pppoe_payload(cadastro)
-        logs = list(lookup_logs)
-        if err:
-            return {'status': 'error', 'message': err, 'logs': logs + [f'[RADUSUARIOS] {err}']}
-
-        if not prev_contrato and any('obtido via listar' in line for line in lookup_logs):
-            cid = str(payload.get('id_contrato', '')).strip()
-            if cid:
-                from .models import Cadastro
-
-                Cadastro.objects.filter(pk=cadastro.pk).update(ixc_contrato_id=cid)
-                logs.append('[RADUSUARIOS] ixc_contrato_id gravado no cadastro (listagem IXC).')
-
-        resource = (settings.IXC_RADUSUARIOS_RESOURCE or 'radusuarios').strip()
-        endpoint = f'{self.url}/webservice/v1/{resource}'
-        debug_path = self._save_debug_json(cadastro.pk, payload, 'RADUSUARIOS_TEST')
-        if debug_path:
-            logs.append(f'[RADUSUARIOS] debug_json={debug_path}')
-        logs.append(f'[RADUSUARIOS] login={payload.get("login")!r}')
-
-        result = self._post_ixc(
-            endpoint,
-            payload,
-            'RADUSUARIOS',
-            extra_headers={'ixcsoft': 'incluir'},
-        )
-        logs.extend(result.get('logs', []))
-
-        if result.get('status') != 'success':
-            return {
-                'status': 'error',
-                'message': result.get('message') or 'Falha HTTP ao criar login PPPoE.',
-                'logs': logs,
-            }
-
-        body = result.get('data') if isinstance(result.get('data'), dict) else {}
-        response_type = str(body.get('type', '')).lower()
-        response_message = str(body.get('message', ''))
-        if response_type == 'error':
-            return {
-                'status': 'error',
-                'message': response_message or 'IXC retornou erro ao incluir radusuarios.',
-                'logs': logs + [f'[RADUSUARIOS] erro_api: {response_message}'],
-            }
-
-        rad_id = self._extract_id(body)
-        msg_ok = f'Login PPPoE criado: {payload.get("login")}.'
-        if rad_id not in (None, '', 0, '0'):
-            msg_ok = f'Login PPPoE criado: {payload.get("login")} (ID: {rad_id}).'
-        return {
-            'status': 'success',
-            'message': msg_ok,
-            'radusuario_id': rad_id,
-            'pppoe_login': payload.get('login'),
-            'logs': logs,
-        }
+        lid = (cadastro.ixc_lead_id or '').strip()
+        if lid:
+            return lid
+        return (settings.IXC_CONTRATO_TEST_ID_CLIENTE or '').strip()
 
     def build_cliente_contrato_test_payload(self, cadastro):
         """Monta JSON para POST ``cliente_contrato`` (teste). Retorna (payload, erro_msg)."""
@@ -2282,8 +1366,8 @@ class IXCIntegration:
         id_cliente = self._ixc_id_cliente_for_cadastro(cadastro)
         if not id_cliente:
             return None, (
-                'id_cliente ausente: defina IXC_CONTRATO_TEST_ID_CLIENTE no .env ou conclua «Enviar para IXC» '
-                'para gravar ixc_prospect_id (crm_canditados), de preferência; senão ixc_lead_id (contato).'
+                'id_cliente ausente: conclua «Enviar para IXC» nesta ficha (ixc_prospect_id ou ixc_lead_id) ou defina '
+                'IXC_CONTRATO_TEST_ID_CLIENTE no .env (fallback só sem vínculo IXC no cadastro).'
             )
 
         id_plano, _, _ = self._resolve_plano_e_canal_venda(cadastro)
@@ -2306,21 +1390,31 @@ class IXCIntegration:
             else:
                 id_filial = (self.resolve_filial_id(cadastro.cidade) or '').strip() or '1'
 
-        payload['tipo'] = (settings.IXC_CONTRATO_TEST_TIPO or 'I').strip() or 'I'
         payload['id_cliente'] = str(id_cliente)
-        # Plano de venda (IXC): continua vindo do cadastro / Operação ou IXC_CONTRATO_TEST_ID_VD_CONTRATO.
+        # Plano de venda (IXC): cadastro / Operação ou IXC_CONTRATO_TEST_ID_VD_CONTRATO.
         payload['id_vd_contrato'] = str(id_vd)
         payload['id_filial'] = str(id_filial)
-        payload['contrato'] = str(cadastro.plano_velocidade or cadastro.plano or 'Contrato teste')[:200]
+        base_tipo = (settings.IXC_CONTRATO_TEST_TIPO or 'I').strip() or 'I'
+        desc_contrato = (getattr(settings, 'IXC_CONTRATO_TEST_CONTRATO_DESCRICAO', None) or '').strip()
+        if desc_contrato:
+            payload['contrato'] = desc_contrato[:200]
+        else:
+            payload['contrato'] = str(cadastro.plano_velocidade or cadastro.plano or 'Contrato teste')[:200]
         payload['data'] = timezone.now().strftime('%d/%m/%Y')
-        payload['id_tipo_contrato'] = (settings.IXC_CONTRATO_TEST_ID_TIPO_CONTRATO or '10').strip()
-        # Plano 19, modelo 4, tipo doc 501, tipo cobrança ID 10, vendedor 9, filial 1 — demo IXC (telas de referência).
-        payload['id_modelo'] = (settings.IXC_CONTRATO_TEST_ID_MODELO or '4').strip()
-        payload['id_tipo_documento'] = (settings.IXC_CONTRATO_TEST_ID_TIPO_DOCUMENTO or '501').strip()
+        # id_tipo_contrato: aplicado depois do alinhamento ao vd (template traz "10" genérico e quebra o IXC).
+        # Defaults alinhados ao Postman oficial IXC Provedor (ajuste por .env / demo).
+        payload['id_modelo'] = (settings.IXC_CONTRATO_TEST_ID_MODELO or '1').strip()
+        payload['id_tipo_documento'] = (settings.IXC_CONTRATO_TEST_ID_TIPO_DOCUMENTO or '502').strip()
         payload['id_carteira_cobranca'] = (settings.IXC_CONTRATO_TEST_ID_CARTEIRA_COBRANCA or '1').strip()
-        payload['id_vendedor'] = (settings.IXC_CONTRATO_TEST_ID_VENDEDOR or '9').strip()
+        payload['id_vendedor'] = (settings.IXC_CONTRATO_TEST_ID_VENDEDOR or '1').strip()
+        comissao_v = (getattr(settings, 'IXC_CONTRATO_TEST_COMISSAO', None) or '').strip()
+        if comissao_v:
+            payload['comissao'] = comissao_v
+        tipo_doc_ativ = (getattr(settings, 'IXC_CONTRATO_TEST_ID_TIPO_DOC_ATIV', None) or '').strip()
+        if tipo_doc_ativ:
+            payload['id_tipo_doc_ativ'] = tipo_doc_ativ
         payload['cc_previsao'] = (settings.IXC_CONTRATO_TEST_CC_PREVISAO or 'M').strip()
-        payload['tipo_cobranca'] = (settings.IXC_CONTRATO_TEST_TIPO_COBRANCA_ID or '10').strip()
+        payload['tipo_cobranca'] = (settings.IXC_CONTRATO_TEST_TIPO_COBRANCA_ID or 'P').strip()
         # Fidelidade em meses: 12 se o cliente marcou fidelidade na ficha, senão 0.
         payload['fidelidade'] = '12' if getattr(cadastro, 'fidelidade', True) else '0'
         payload['renovacao_automatica'] = (settings.IXC_CONTRATO_TEST_RENOVACAO_AUTOMATICA or 'S').strip()
@@ -2342,6 +1436,35 @@ class IXCIntegration:
             st = (getattr(settings, 'IXC_CONTRATO_TEST_STATUS', None) or '').strip()
             if st:
                 payload['status'] = st
+        sync_plano = getattr(settings, 'IXC_CONTRATO_TEST_TIPO_SINCR_COM_PLANO', True)
+        if sync_plano:
+            # Evita enviar id_tipo_contrato / tipo_produtos_plano do template antes do merge — o IXC
+            # valida contrato vs plano de venda (vd) e rejeita FK genérica (ex.: 10) com id_vd=124.
+            payload['id_tipo_contrato'] = ''
+            payload['tipo_produtos_plano'] = ''
+            tipo_resolved, vd_row = self._resolve_tipo_contrato_alinhado_ao_plano_venda(id_vd, base_tipo)
+            payload['tipo'] = tipo_resolved
+            if vd_row:
+                IXCIntegration._merge_cliente_contrato_campos_do_vd(payload, vd_row)
+            id_tc_ok = str(payload.get('id_tipo_contrato') or '').strip()
+            if not id_tc_ok:
+                env_tc = (getattr(settings, 'IXC_CONTRATO_TEST_ID_TIPO_CONTRATO', None) or '').strip()
+                if env_tc:
+                    # Tela «Contrato»: tipo de cobrança (ex. 10) — use quando o listar vd não devolve a FK.
+                    payload['id_tipo_contrato'] = env_tc
+                elif vd_row:
+                    payload.pop('id_tipo_contrato', None)
+                else:
+                    payload['id_tipo_contrato'] = '10'
+            if not str(payload.get('tipo_produtos_plano') or '').strip():
+                payload.pop('tipo_produtos_plano', None)
+        else:
+            payload['id_tipo_contrato'] = (
+                (getattr(settings, 'IXC_CONTRATO_TEST_ID_TIPO_CONTRATO', None) or '').strip()
+                or str(payload.get('id_tipo_contrato') or '').strip()
+                or '10'
+            )
+            payload['tipo'] = base_tipo
         return payload, None
 
     def _post_cliente_contrato_aguardando_assinatura(self, contrato_id, logs):
@@ -2396,6 +1519,14 @@ class IXCIntegration:
         logs = []
         if debug_path:
             logs.append(f'[CLIENTE_CONTRATO] debug_json={debug_path}')
+        logs.append(
+            f"[CLIENTE_CONTRATO] incluir_preview tipo={payload.get('tipo')!r} id_vd={payload.get('id_vd_contrato')!r} "
+            f"id_tipo_contrato={payload.get('id_tipo_contrato')!r} tipo_produtos_plano={payload.get('tipo_produtos_plano')!r}"
+        )
+        logs.append(
+            f"[CLIENTE_CONTRATO] id_cliente_no_body={payload.get('id_cliente')!r} — no IXC abra este cliente "
+            '(aba Contratos). Ordem: ixc_prospect_id > ixc_lead_id > IXC_CONTRATO_TEST_ID_CLIENTE (.env só fallback).'
+        )
 
         result = self._post_ixc(
             endpoint,
@@ -2453,26 +1584,6 @@ class IXCIntegration:
                 'contrato_id': contrato_id,
                 'logs': logs,
             }
-            if getattr(settings, 'IXC_CLIENTE_CONTRATO_CRIAR_RADUSUARIOS_APOS_INCLUIR', True):
-                cadastro.ixc_contrato_id = cid
-                logs.append('[CLIENTE_CONTRATO] tentando radusuarios (PPPoE) após sucesso do contrato.')
-                rad_out = self.create_radusuarios_pppoe_test(cadastro)
-                logs.extend(rad_out.get('logs', []))
-                out['radusuarios'] = {
-                    'status': rad_out.get('status', 'error'),
-                    'message': rad_out.get('message', ''),
-                    'radusuario_id': rad_out.get('radusuario_id'),
-                    'pppoe_login': rad_out.get('pppoe_login'),
-                }
-                if rad_out.get('status') == 'success':
-                    tail = str(rad_out.get('message') or '').strip()
-                    if tail:
-                        out['message'] = f'{out["message"]} {tail}'.strip()[:900]
-                else:
-                    rmsg = str(rad_out.get('message') or 'falha').strip()[:220]
-                    out['message'] = (
-                        f'{out["message"]} Aviso: login PPPoE (radusuarios) não foi criado: {rmsg}'
-                    ).strip()[:900]
             return out
 
         if lead_only:

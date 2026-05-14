@@ -21,6 +21,15 @@ Documento interno de referência para manter **consistência**, **reutilização
 
 ---
 
+## 1.1 IDs IXC: teste (.env / defaults) vs produção (por cidade)
+
+- Tudo que aparece como **ID fixo** no arquivo ``.env`` de exemplo, nos **defaults** de ``core/settings.py`` para variáveis ``IXC_*``, ou nos **dicts de fallback** em ``integrations.py`` (``FILIAIS_MAP``, ``CIDADES_MAP``, ``PLANOS_MAP``, ``ORIGENS_MAP``), serve **apenas para homologar** o fluxo (demo, Postman, máquina local).
+- **Não** são os IDs finais de operação: na produção real, **cada cidade** terá a sua combinação de **filial**, **carteira de cobrança**, **planos (vd)**, **tipo de documento**, **tipo de cobrança**, **canais de venda / leads**, **recurso** ``cliente_contrato_<n>`` de assinatura, etc.
+- Caminho previsto: preencher **Operação** no painel (``CidadeOperacao``, ``PlanoDefinicao`` com ``ixc_plano_venda_id``, ``OrigemCanalVenda``, …) e, onde ainda não houver modelo no Django, **substituir** os valores no ``.env`` por ambiente quando os IDs oficiais forem enviados.
+- Regra mental: **.env de teste ≠ .env de produção**; qualquer número que «funcione no demo» pode ser inválido na base Fibramar.
+
+---
+
 ## 2. Stack e estrutura da aplicação
 
 - **Framework:** Django (projeto `core`, app `cadastros`).
@@ -123,6 +132,16 @@ Prefixo: raiz do site (`''` em `core.urls` → rotas em `cadastros/urls.py`).
 **Variáveis de ambiente (trecho IXC):** ver `env.example` / `settings` — `IXC_API_URL`, `IXC_API_TOKEN`, `IXC_LEAD_RESOURCE`, `IXC_*_PLANO/CANAL`, `IXC_CHAIN_CRM_CANDIDATOS_AFTER_LEAD`, `IXC_CRM_CANDIDATOS_RESOURCE`, `IXC_CRM_CANDIDATOS_FALLBACK_RESOURCES`, `IXC_CRM_PROSPECT_RESOURCE`, `IXC_CRM_PROSPECT_FALLBACK_RESOURCES` (CSV, só nomes da doc Postman do provedor), `IXC_LEAD_POST_ALTERAR`, `IXC_REUSE_LOCAL_LEAD_ID`, etc.
 
 **Auditoria local:** `logs/ixc_debug/debug_id_*_CRM_LEAD|CRM_PROSPECT_*.json`
+
+**Tela IXC «Contrato do cliente» ↔ JSON `cliente_contrato` (incluir):**
+
+| Rótulo na tela | Campo típico no POST | Notas |
+|----------------|----------------------|--------|
+| Plano de venda | `id_vd_contrato` | Input `#id_vd_contrato` (busca F2/F3 no IXC). |
+| Tipo | `tipo` | Deve ser **o mesmo** «tipo» do registro do plano de venda (vd) escolhido; o IXC valida contrato vs vd. |
+| Cliente | `id_cliente` | |
+| Tipo de cobrança | `tipo_cobranca` | |
+| Modelo para impressão | `id_modelo` | |
 
 ---
 
